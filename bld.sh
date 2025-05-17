@@ -29,7 +29,7 @@ function usage() {
 	echo "     3: Adafruit Feather RP2040 DVI"
 	echo "     4: Waveshare RP2040-PiZero"
 	echo "     5: Adafruit Metro RP2350"
-	echo "     hwconfig 3 and 4 are RP2040-based boards with no wifi, so -2 -r and -w are not allowed"
+	echo "     6: RP2040/RP2350 Tiny with custom PCB"
 	echo "  -h: display this help"
 	echo ""
 	echo "To install the RISC-V toolchain:"
@@ -171,7 +171,7 @@ fi
 
 # -w is not compatible with HWCONFIG 3, 4 and 5 those boards have no Wifi module
 if [[ $USEPICOW -eq 1 && $HWCONFIG -gt 2 ]] ; then
-	echo "Option -w is not compatible with HWCONFIG 3, 4 and 5 those boards have no Wifi module"
+	echo "Option -w is not compatible with HWCONFIG 3, 4, 5 and 6. Those boards have no Wifi module"
 	exit 1
 fi
 
@@ -192,6 +192,9 @@ case $HWCONFIG in
 		;;
 	5)
 		UF2="${APP}AdafruitMetroRP2350.uf2"
+		;;
+	6)
+		UF2="${APP}RP2XXX0TinyWithPCB.uf2"
 		;;
 	*)
 		echo "Invalid value: $HWCONFIG specified for option -c, must be 1, 2, 3 or 4"

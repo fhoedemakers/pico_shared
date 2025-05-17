@@ -19,7 +19,7 @@ if ( HW_CONFIG EQUAL 1 )
 	set(WII_SDA "-1" CACHE STRING "Select the SDA GPIO pin for Wii Classic controller")
 	set(WII_SCL "-1" CACHE STRING "Select the SCL GPIO pin for Wii Classic controller")
     set(WIIPAD_I2C "i2c1" CACHE STRING "Select the I2C bus for Wii Classic controller")
-    
+    set(UART_ENABLED 0 CACHE STRING "Enable UART output") # Disable UART output for Pimoroni Pico DV Demo Base
 elseif ( HW_CONFIG EQUAL 2 )
 	# --------------------------------------------------------------------
 	# Alternate config for use with different SDcard reader and HDMI board
@@ -46,6 +46,7 @@ elseif ( HW_CONFIG EQUAL 2 )
 	set(WII_SDA "-1" CACHE STRING "Select the SDA GPIO pin for Wii Classic controller")
 	set(WII_SCL "-1" CACHE STRING "Select the SCL GPIO pin for Wii Classic controller")
     set(WIIPAD_I2C "i2c1" CACHE STRING "Select the I2C bus for Wii Classic controller")
+	set(UART_ENABLED 1 CACHE STRING "Enable UART output") 
 elseif ( HW_CONFIG EQUAL 3 )
 	# --------------------------------------------------------------------
 	# Alternate config for use with Adafruit Feather RP2040 DVI + SD Wing
@@ -69,6 +70,7 @@ elseif ( HW_CONFIG EQUAL 3 )
 	set(WII_SDA "2" CACHE STRING "Select the SDA GPIO pin for Wii Classic controller")
 	set(WII_SCL "3" CACHE STRING "Select the SCL GPIO pin for Wii Classic controller")
     set(WIIPAD_I2C "i2c1" CACHE STRING "Select the I2C bus for Wii Classic controller")
+	set(UART_ENABLED 1 CACHE STRING "Enable UART output")
 elseif ( HW_CONFIG EQUAL 4 )
     # --------------------------------------------------------------------
 	# Alternate config for use with Waveshare RP2040-PiZero
@@ -92,6 +94,7 @@ elseif ( HW_CONFIG EQUAL 4 )
     set(WII_SDA "2" CACHE STRING "Select the SDA GPIO pin for Wii Classic controller")
     set(WII_SCL "3" CACHE STRING "Select the SCL GPIO pin for Wii Classic controller")
     set(WIIPAD_I2C "i2c1" CACHE STRING "Select the I2C bus for Wii Classic controller")
+	set(UART_ENABLED 1 CACHE STRING "Enable UART output")
 elseif ( HW_CONFIG EQUAL 5 )
     # --------------------------------------------------------------------
 	# Adafruit Metro RP2350
@@ -115,6 +118,31 @@ elseif ( HW_CONFIG EQUAL 5 )
     set(WII_SDA "20" CACHE STRING "Select the SDA GPIO pin for Wii Classic controller")
     set(WII_SCL "21" CACHE STRING "Select the SCL GPIO pin for Wii Classic controller")
     set(WIIPAD_I2C "i2c0" CACHE STRING "Select the I2C bus for Wii Classic controller")
+	set(UART_ENABLED 1 CACHE STRING "Enable UART output")
+elseif ( HW_CONFIG EQUAL 6 )
+    # --------------------------------------------------------------------
+	# RP2040/RP2350 Tiny With PCB
+	# --------------------------------------------------------------------
+	set(DVICONFIG "dviConfig_RP2XX0_TinyPCB" CACHE STRING
+    "Select a default pin configuration from common_dvi_pin_configs.h")
+    set(LED_GPIO_PIN "-1" CACHE STRING "Select the GPIO pin for LED")  
+    set(SD_CS "5" CACHE STRING "Specify the Chip Select GPIO pin for the SD card")
+    set(SD_SCK "2" CACHE STRING "Specify de Clock GPIO pin for the SD card")
+    set(SD_MOSI "3" CACHE STRING "Select the Master Out Slave In GPIO pin for the SD card")
+    set(SD_MISO "4" CACHE STRING "Select the Master In Slave Out GPIO pin for the SD card")
+    set(SD_SPI "spi0" CACHE STRING "Select the SPI bus for SD card")
+    set(NES_CLK "14" CACHE STRING "Select the Clock GPIO pin for NES controller")
+    set(NES_DATA "26" CACHE STRING "Select the Data GPIO pin for NES controller")
+    set(NES_LAT "15" CACHE STRING "Select the Latch GPIO pin for NES controller")
+    set(NES_PIO "pio0" CACHE STRING "Select the PIO for NES controller")
+    set(NES_CLK_1 "27" CACHE STRING "Select the Clock GPIO pin for second NES controller")
+	set(NES_DATA_1 "29" CACHE STRING "Select the Data GPIO pin for second NES controller")
+	set(NES_LAT_1 "28" CACHE STRING "Select the Latch GPIO pin for second NES controller")
+    set(NES_PIO_1 "pio1" CACHE STRING "Select the PIO for second NES controller")
+    set(WII_SDA "-1" CACHE STRING "Select the SDA GPIO pin for Wii Classic controller")
+    set(WII_SCL "-1" CACHE STRING "Select the SCL GPIO pin for Wii Classic controller")
+    set(WIIPAD_I2C "i2c0" CACHE STRING "Select the I2C bus for Wii Classic controller")
+	set(UART_ENABLED 0 CACHE STRING "Enable UART output") 
 endif ( )
 
 # --------------------------------------------------------------------
@@ -136,3 +164,4 @@ message("Wii controller SDA    : ${WII_SDA}")
 message("Wii controller SCL    : ${WII_SCL}")
 message("Wii controller I2C    : ${WIIPAD_I2C}")
 message("LED pin               : ${LED_GPIO_PIN}")
+message("UART output enabled   : ${UART_ENABLED}")

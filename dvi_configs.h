@@ -34,6 +34,11 @@ namespace {
         .pinClock = 14,
         .invert = false,
     };
+    constexpr dvi::Config dviConfig_RP2XX0_TinyPCB = {
+        .pinTMDS = {8, 10, 12},
+        .pinClock = 6,
+        .invert = true,
+    };
 }
 #ifndef DVICONFIG
 #define DVICONFIG dviConfig_PimoroniDemoDVSock
