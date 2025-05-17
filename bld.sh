@@ -194,7 +194,7 @@ case $HWCONFIG in
 		UF2="${APP}AdafruitMetroRP2350.uf2"
 		;;
 	6)
-		UF2="${APP}RP2XXX0TinyWithPCB.uf2"
+		UF2="${APP}RP2XX0TinyWithPCB.uf2"
 		;;
 	*)
 		echo "Invalid value: $HWCONFIG specified for option -c, must be 1, 2, 3 or 4"
