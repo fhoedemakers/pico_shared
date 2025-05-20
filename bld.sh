@@ -29,7 +29,7 @@ function usage() {
 	echo "     3: Adafruit Feather RP2040 DVI"
 	echo "     4: Waveshare RP2040-PiZero"
 	echo "     5: Adafruit Metro RP2350"
-	echo "     6: RP2040/RP2350 Tiny with custom PCB"
+	echo "     6: Waveshare RP2040-Zero/RP2350-Zero with custom PCB"
 	echo "  -h: display this help"
 	echo ""
 	echo "To install the RISC-V toolchain:"
