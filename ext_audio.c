@@ -49,16 +49,16 @@ struct audio_buffer_pool *init_audio()
     bool __unused ok;
     const struct audio_format *output_format;
 #if USE_AUDIO_I2S
-#if PICO_AUDIO_I2S_PIO == 1
-    int sm =  pio_claim_unused_sm(pio1, false); 
-#else
-    int sm =  pio_claim_unused_sm(pio0, false);
-#endif
+// #if PICO_AUDIO_I2S_PIO == 1
+//     int sm =  pio_claim_unused_sm(pio1, false); 
+// #else
+//     int sm =  pio_claim_unused_sm(pio0, false);
+// #endif
     struct audio_i2s_config config = {
         .data_pin = PICO_AUDIO_I2S_DATA_PIN,
         .clock_pin_base = PICO_AUDIO_I2S_CLOCK_PIN_BASE,
-        .dma_channel =  10, //dma_claim_unused_channel(true),
-        .pio_sm = sm,
+        .dma_channel =  0, // dma_claim_unused_channel(true),
+        .pio_sm = 0,
     };
 
     output_format = audio_i2s_setup(&audio_format, &config);
