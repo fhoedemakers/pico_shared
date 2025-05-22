@@ -17,6 +17,7 @@
 #include "wiipad.h"
 #include "settings.h"
 #include "FrensHelpers.h"
+#include "ext_audio.h"
 
 // Pico W devices use a GPIO on the WIFI chip for the LED,
 // so when building for Pico W, CYW43_WL_GPIO_LED_PIN will be defined
@@ -810,6 +811,9 @@ namespace Frens
             multicore_launch_core1(core1_main);
         }
         initVintageControllers(CPUFreqKHz);
+#if USE_EXTERNAL_AUDIO == 1
+        struct audio_buffer_pool *ap = init_audio();
+#endif
         return ok;
     }
 
