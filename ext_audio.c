@@ -57,8 +57,8 @@ struct audio_buffer_pool *init_audio()
     struct audio_i2s_config config = {
         .data_pin = PICO_AUDIO_I2S_DATA_PIN,
         .clock_pin_base = PICO_AUDIO_I2S_CLOCK_PIN_BASE,
-        .dma_channel =  0, // dma_claim_unused_channel(true),
-        .pio_sm = 0,
+        // .dma_channel =  0, // dma_claim_unused_channel(true),
+        // .pio_sm = 0,
     };
 
     output_format = audio_i2s_setup(&audio_format, &config);
