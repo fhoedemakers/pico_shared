@@ -61,10 +61,6 @@ const audio_format_t *audio_i2s_setup(const audio_format_t *intended_audio_forma
     uint8_t sm = shared_state.pio_sm = pio_claim_unused_sm(audio_pio, false); //config->pio_sm;
     //pio_sm_claim(audio_pio, sm);
     
-    
-    
-
-
     const struct pio_program *program =
 #if PICO_AUDIO_I2S_CLOCK_PINS_SWAPPED
         &audio_i2s_swapped_program
@@ -77,8 +73,8 @@ const audio_format_t *audio_i2s_setup(const audio_format_t *intended_audio_forma
     audio_i2s_program_init(audio_pio, sm, offset, config->data_pin, config->clock_pin_base);
 
     __mem_fence_release();
-    uint8_t dma_channel = config->dma_channel;
-    dma_channel_claim(dma_channel);
+    uint8_t dma_channel = dma_claim_unused_channel(true);        // config->dma_channel;
+    // dma_channel_claim(dma_channel);
 
     shared_state.dma_channel = dma_channel;
 
