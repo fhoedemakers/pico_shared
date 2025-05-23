@@ -43,9 +43,15 @@ extern "C" {
 #if !(PICO_AUDIO_I2S_DMA_IRQ == 0 || PICO_AUDIO_I2S_DMA_IRQ == 1)
 #error PICO_AUDIO_I2S_DMA_IRQ must be 0 or 1
 #endif
-
+#if PICO_RP2040
 #if !(PICO_AUDIO_I2S_PIO == 0 || PICO_AUDIO_I2S_PIO == 1)
 #error PICO_AUDIO_I2S_PIO ust be 0 or 1
+#endif
+#endif
+#if PICO_RP2350
+#if !(PICO_AUDIO_I2S_PIO == 0 || PICO_AUDIO_I2S_PIO == 1 || PICO_AUDIO_I2S_PIO == 2)
+#error PICO_AUDIO_I2S_PIO ust be 0, 1 or 2
+#endif
 #endif
 
 #ifndef PICO_AUDIO_I2S_MAX_CHANNELS
@@ -119,8 +125,8 @@ extern "C" {
 typedef struct audio_i2s_config {
     uint8_t data_pin;
     uint8_t clock_pin_base;
-    uint8_t dma_channel;
-    uint8_t pio_sm;
+    // uint8_t dma_channel;
+    // uint8_t pio_sm;
 } audio_i2s_config_t;
 
 /** \brief Set up system to output I2S audio
