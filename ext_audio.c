@@ -3,6 +3,8 @@
  *
  * SPDX-License-Identifier: BSD-3-Clause
  */
+
+
 #if USE_EXTERNAL_AUDIO == 1
 #include <stdio.h>
 #include <math.h>
@@ -31,19 +33,26 @@ bi_decl(bi_3pins_with_names(PICO_AUDIO_I2S_DATA_PIN, "I2S DIN", PICO_AUDIO_I2S_C
 #endif
 
 
-struct audio_buffer_pool *init_audio(int Khz, int channels)
+/**
+ * @brief Initializes the external (i2s for now) audio subsystem and creates an audio buffer pool.
+ *
+ * This function sets up the audio system with the specified sample rate and number of channels,
+ * allocating and returning a pointer to an audio buffer pool structure for audio data management.
+ *
+ * @param Hz The sample rate in Hertz (e.g., 44100 for CD quality audio).
+ * @param channels The number of audio channels (e.g., 1 for mono, 2 for stereo).
+ * @return Pointer to the initialized audio_buffer_pool structure, or NULL on failure.
+ */
+struct audio_buffer_pool *init_audio(int Hz, int channels)
 {
-
-
-    static audio_format_t audio_format;
-    
+    static audio_format_t audio_format;   
     // = {
     //     .format = AUDIO_BUFFER_FORMAT_PCM_S16, // 
     //     .sample_freq = 44100,                  // placeholder, will be set below
     //     .channel_count = 1 // placeholder, will be set below
     // };
     audio_format.format = AUDIO_BUFFER_FORMAT_PCM_S16;    
-    audio_format.sample_freq = Khz;
+    audio_format.sample_freq = Hz;
     audio_format.channel_count = channels;  // 1 for mono, 2 for stereo
     static struct audio_buffer_format producer_format = {
         .format = &audio_format,
@@ -54,11 +63,6 @@ struct audio_buffer_pool *init_audio(int Khz, int channels)
     bool __unused ok;
     const struct audio_format *output_format;
 #if USE_AUDIO_I2S
-// #if PICO_AUDIO_I2S_PIO == 1
-//     int sm =  pio_claim_unused_sm(pio1, false); 
-// #else
-//     int sm =  pio_claim_unused_sm(pio0, false);
-// #endif
     struct audio_i2s_config config = {
         .data_pin = PICO_AUDIO_I2S_DATA_PIN,
         .clock_pin_base = PICO_AUDIO_I2S_CLOCK_PIN_BASE,

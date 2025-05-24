@@ -816,7 +816,7 @@ namespace Frens
         }
         initVintageControllers(CPUFreqKHz);
 #if USE_EXTERNAL_AUDIO == 1
-        audio_buffer_pool *ap = init_audio();
+        audio_buffer_pool *ap = init_audio(DVIAUDIOFREQ, 1);  // TODO set channels to 2 for stereo
 #endif
         return ok;
     }
