@@ -31,18 +31,23 @@ bi_decl(bi_3pins_with_names(PICO_AUDIO_I2S_DATA_PIN, "I2S DIN", PICO_AUDIO_I2S_C
 #endif
 
 
-struct audio_buffer_pool *init_audio()
+struct audio_buffer_pool *init_audio(int Khz, int channels)
 {
 
 
-    static audio_format_t audio_format = {
-        .format = AUDIO_BUFFER_FORMAT_PCM_S16, // 
-        .sample_freq = 44100,                  // 
-        .channel_count = 1,                    // Mono
-    };
+    static audio_format_t audio_format;
+    
+    // = {
+    //     .format = AUDIO_BUFFER_FORMAT_PCM_S16, // 
+    //     .sample_freq = 44100,                  // placeholder, will be set below
+    //     .channel_count = 1 // placeholder, will be set below
+    // };
+    audio_format.format = AUDIO_BUFFER_FORMAT_PCM_S16;    
+    audio_format.sample_freq = Khz;
+    audio_format.channel_count = channels;  // 1 for mono, 2 for stereo
     static struct audio_buffer_format producer_format = {
         .format = &audio_format,
-        .sample_stride = 2
+        .sample_stride = 2  // 2 bytes per sample because we are using 16 bit samples
     };
     struct audio_buffer_pool *producer_pool = audio_new_producer_pool(&producer_format, 3,
                                                                       SAMPLES_PER_BUFFER); // todo correct size
