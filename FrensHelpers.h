@@ -7,7 +7,7 @@
 
 #include "dvi/dvi.h"
 #include "dvi_configs.h"
-#include "ext_audio.h"
+#include "audio_i2s.h"
 enum class ScreenMode
     {
         SCANLINE_8_7,
@@ -54,7 +54,7 @@ namespace Frens
     // Mutex for synchronization
     extern mutex_t framebuffer_mutex;
 #if USE_EXTERNAL_AUDIO == 1
-    extern struct audio_buffer_pool *ap;
+    extern audio_i2s_hw_t *i2s_audio_hw;
 #endif
     bool endsWith(std::string const &str, std::string const &suffix);
     std::string str_tolower(std::string s);

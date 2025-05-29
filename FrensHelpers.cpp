@@ -56,7 +56,7 @@ namespace Frens
     static bool usingFramebuffer = false;
 
 #if USE_EXTERNAL_AUDIO == 1
-    struct audio_buffer_pool *ap;
+    audio_i2s_hw_t *i2s_audio_hw;
 #endif
 
     bool isFrameBufferUsed()
@@ -771,6 +771,7 @@ namespace Frens
         printf("Size program in flash :   %8d bytes (%d) Kbytes\n", &__flash_binary_end - &__flash_binary_start, (&__flash_binary_end - &__flash_binary_start) / 1024);
         // round ROM_FILE_ADDRESS address up to 4k boundary of flash_binary_end
         ROM_FILE_ADDR = ((uintptr_t)&__flash_binary_end + 0xFFF) & ~0xFFF;
+        //ROM_FILE_ADDR =  0x1004a000;
         // calculate max rom size
         maxRomSize = flash_end - (uint8_t *)ROM_FILE_ADDR;
         printf("ROM_FILE_ADDR         : 0x%08x\n", ROM_FILE_ADDR);
@@ -816,7 +817,7 @@ namespace Frens
         }
         initVintageControllers(CPUFreqKHz);
 #if USE_EXTERNAL_AUDIO == 1
-        audio_buffer_pool *ap = init_audio(DVIAUDIOFREQ, 1);  // TODO set channels to 2 for stereo
+        i2s_audio_hw = audio_i2s_setup(DVIAUDIOFREQ);  
 #endif
         return ok;
     }
