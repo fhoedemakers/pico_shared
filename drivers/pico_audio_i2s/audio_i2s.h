@@ -56,11 +56,13 @@
 extern "C" {
 #endif
 
-#define AUDIO_BUFFER_SIZE 768   // 737
-extern int32_t audio_buffer[3][AUDIO_BUFFER_SIZE]; // Three buffers
-extern volatile int current_buffer ;            // Index of buffer being filled
-extern volatile int dma_buffer ;                // Index of buffer being sent by DMA
-extern volatile int audio_buffer_index; 
+
+#define AUDIO_RING_SIZE 4096
+#define DMA_BLOCK_SIZE 256 // Size of each DMA block transfer
+extern uint32_t audio_ring[AUDIO_RING_SIZE];
+extern volatile size_t write_index ;
+extern volatile size_t read_index;
+
 
 typedef struct {
     int sm;      // State machine index
@@ -81,7 +83,7 @@ void audio_i2s_free_32(int32_t *samples);
 void audio_i2s_free_16(int16_t *samples);
 PIO audio_i2s_get_pio(void); 
 void start_dma_transfer(int32_t* buffer, size_t count) ;
-void flush_audio_buffer(void);
+void restart_dma_transfer_if_needed(void);
 #ifdef __cplusplus
 }
 #endif

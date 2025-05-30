@@ -33,14 +33,14 @@
 #include "pico/stdlib.h"
 #include <stdlib.h>
 #include "audio_i2s.pio.h"
+#include "string.h"
 
 #define AUDIO_PIO __CONCAT(pio, PICO_AUDIO_I2S_PIO)
 #define GPIO_FUNC_PIOx __CONCAT(GPIO_FUNC_PIO, PICO_AUDIO_I2S_PIO)
 
-int32_t audio_buffer[3][AUDIO_BUFFER_SIZE]; // Two buffers
-volatile int current_buffer = 0;			// Index of buffer being filled
-volatile int dma_buffer = 0;				// Index of buffer being sent by DMA
-volatile int audio_buffer_index = 0;
+uint32_t audio_ring[AUDIO_RING_SIZE];
+volatile size_t write_index = 0;
+volatile size_t read_index = 0;
 
 static audio_i2s_hw_t audio_i2s = {
 	.sm = -1,		  // State machine index, initialized to -1 (not set)
@@ -108,6 +108,21 @@ PIO audio_i2s_get_pio(void)
 
 void __isr dma_handler()
 {
+	// Clear the interrupt
+	dma_hw->ints0 = 1u << audio_i2s.dma_chan;
+	// Advance read_index by block size
+	read_index = (read_index + DMA_BLOCK_SIZE) % AUDIO_RING_SIZE;
+	// printf("DMA transfer complete, read_index: %zu\n", read_index);
+	//  Start next DMA transfer if enough data is available
+	size_t available = (write_index >= read_index)
+						   ? (write_index - read_index)
+						   : (AUDIO_RING_SIZE - read_index + write_index);
+
+	if (available >= DMA_BLOCK_SIZE)
+	{
+		dma_channel_set_read_addr(audio_i2s.dma_chan, &audio_ring[read_index], false);
+		dma_channel_set_trans_count(audio_i2s.dma_chan, DMA_BLOCK_SIZE, true); // true = start immediately
+	}
 }
 /**
  * @brief Initializes and sets up the I2S audio hardware with the specified sample frequency.
@@ -125,6 +140,10 @@ audio_i2s_hw_t *audio_i2s_setup(int freqHZ)
 	{
 		samplefreq = freqHZ;
 	}
+	memset(audio_ring, 0, sizeof(audio_ring)); // Initialize the audio ring buffer to zero
+	write_index = DMA_BLOCK_SIZE;			   // Start writing after the first block
+	read_index = 0;							   // Reset read index
+	// Set up the PIO and GPIO pins for I2S audio output
 	gpio_set_function(PICO_AUDIO_I2S_DATA_PIN, GPIO_FUNC_PIOx);
 	gpio_set_function(PICO_AUDIO_I2S_CLOCK_PIN_BASE, GPIO_FUNC_PIOx);
 	gpio_set_function(PICO_AUDIO_I2S_CLOCK_PIN_BASE + 1, GPIO_FUNC_PIOx);
@@ -156,7 +175,7 @@ audio_i2s_hw_t *audio_i2s_setup(int freqHZ)
 	channel_config_set_read_increment(&c, true);
 	channel_config_set_write_increment(&c, false);
 	channel_config_set_dreq(&c, pio_get_dreq(AUDIO_PIO, audio_i2s.sm, true)); // true = TX
-
+#if 0
 	dma_channel_configure(
 		audio_i2s.dma_chan,
 		&c,
@@ -165,6 +184,16 @@ audio_i2s_hw_t *audio_i2s_setup(int freqHZ)
 		AUDIO_BUFFER_SIZE,			   // Number of transfers
 		false						   // Don't start yet
 	);
+#else
+	dma_channel_configure(
+		audio_i2s.dma_chan,
+		&c,
+		&AUDIO_PIO->txf[audio_i2s.sm], // Write address (PIO FIFO)
+		&audio_ring[read_index],	   // Read address (ring buffer)
+		DMA_BLOCK_SIZE,				   // Number of transfers per block
+		false						   // Don't start yet
+	);
+#endif
 	if (audio_i2s.dma_chan >= 4)
 	{
 		dma_channel_set_irq1_enabled(audio_i2s.dma_chan, true);
@@ -177,7 +206,9 @@ audio_i2s_hw_t *audio_i2s_setup(int freqHZ)
 		irq_set_exclusive_handler(DMA_IRQ_0, dma_handler);
 		irq_set_enabled(DMA_IRQ_0, true);
 	}
-	return &audio_i2s; // Return the audio_i2s hardware structure for further use
+	dma_channel_set_read_addr(audio_i2s.dma_chan, &audio_ring[read_index], false);
+	dma_channel_set_trans_count(audio_i2s.dma_chan, DMA_BLOCK_SIZE, true); // true = start immediately
+	return &audio_i2s;													   // Return the audio_i2s hardware structure for further use
 }
 
 void start_dma_transfer(int32_t *buffer, size_t count)
@@ -308,13 +339,27 @@ void audio_i2s_free_16(int16_t *samples)
 	free(samples1);
 }
 
-void flush_audio_buffer()
+/**
+ * @brief Checks the status of the audio DMA for I2S audio output.
+ *
+ * It is responsible for monitoring and managing the DMA state to ensure smooth
+ * audio playback via the I2S interface.
+ *
+ * Typically, this function should be called regularly (e.g., from an interrupt
+ * handler or main loop) to handle DMA events, refill buffers, or recover from
+ * underrun/overrun conditions.
+ */
+void   __not_in_flash_func(check_audio_dma)(void)
 {
-	if (audio_buffer_index > 0)
+	if (!dma_channel_is_busy(audio_i2s.dma_chan))
 	{
-		// Send the remaining samples (audio_buffer, audio_buffer_index)
-		start_dma_transfer(audio_buffer[dma_buffer], audio_buffer_index);
-		audio_buffer_index = 0;
-		current_buffer ^= 1;
+		size_t available = (write_index >= read_index)
+							   ? (write_index - read_index)
+							   : (AUDIO_RING_SIZE - read_index + write_index);
+		if (available >= DMA_BLOCK_SIZE)
+		{
+			dma_channel_set_read_addr(audio_i2s.dma_chan, &audio_ring[read_index], false);
+			dma_channel_set_trans_count(audio_i2s.dma_chan, DMA_BLOCK_SIZE, true);
+		}
 	}
 }
