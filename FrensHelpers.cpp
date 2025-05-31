@@ -771,7 +771,6 @@ namespace Frens
         printf("Size program in flash :   %8d bytes (%d) Kbytes\n", &__flash_binary_end - &__flash_binary_start, (&__flash_binary_end - &__flash_binary_start) / 1024);
         // round ROM_FILE_ADDRESS address up to 4k boundary of flash_binary_end
         ROM_FILE_ADDR = ((uintptr_t)&__flash_binary_end + 0xFFF) & ~0xFFF;
-        ROM_FILE_ADDR = 0x10054000;
         //ROM_FILE_ADDR =  0x1004a000;
         // calculate max rom size
         maxRomSize = flash_end - (uint8_t *)ROM_FILE_ADDR;

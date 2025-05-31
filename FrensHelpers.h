@@ -7,7 +7,9 @@
 
 #include "dvi/dvi.h"
 #include "dvi_configs.h"
+#if USE_EXTERNAL_AUDIO
 #include "audio_i2s.h"
+#endif
 enum class ScreenMode
     {
         SCANLINE_8_7,
