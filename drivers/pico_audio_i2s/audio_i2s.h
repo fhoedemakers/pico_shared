@@ -36,10 +36,6 @@ extern "C" {
 
 #define AUDIO_RING_SIZE 1024 // Size of the audio ring buffer (must be a multiple of DMA_BLOCK_SIZE)
 #define DMA_BLOCK_SIZE 256 // Size of each DMA block transfer
-// extern uint32_t audio_ring[AUDIO_RING_SIZE];
-// extern volatile size_t write_index ;
-// extern volatile size_t read_index;
-
 
 typedef struct {
     int sm;      // State machine index
@@ -49,7 +45,7 @@ typedef struct {
 
 audio_i2s_hw_t *audio_i2s_setup(int freqHZ);
 void audio_i2s_update_pio_frequency(uint32_t sample_freq);
-void audio_i2s_out_32(int32_t sample);
+void audio_i2s_out_32(uint32_t sample32);
 void audio_i2s_enqueue_sample(uint32_t sample32);
 #ifdef __cplusplus
 }
