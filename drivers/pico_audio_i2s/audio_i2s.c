@@ -193,34 +193,40 @@ audio_i2s_hw_t *audio_i2s_setup(int freqHZ)
  */
 void __not_in_flash_func(audio_i2s_enqueue_sample)(uint32_t sample32)
 {
-	// Ensure we don't write past the end of the buffer
+#if 0
 	static int droppedsamples = 0;
+#endif
+	// Ensure we don't write past the end of the buffer
+
 	size_t next_write = (write_index + 1) % AUDIO_RING_SIZE;
 	if (next_write != read_index)
 	{
 		audio_ring[write_index] = sample32;
 		write_index = next_write;
+		// If the DMA channel is not busy, check if we have enough data to continue the transfer
+	    // If write_index is ahead of read_index, we have data to send.
+		if (!dma_channel_is_busy(audio_i2s.dma_chan))
+		{
+			size_t available = (write_index >= read_index)
+								   ? (write_index - read_index)
+								   : (AUDIO_RING_SIZE - read_index + write_index);
+			if (available >= DMA_BLOCK_SIZE)
+			{
+				dma_channel_set_read_addr(audio_i2s.dma_chan, &audio_ring[read_index], false);
+				dma_channel_set_trans_count(audio_i2s.dma_chan, DMA_BLOCK_SIZE, true);
+			}
+		}
 	}
+#if 0
 	else
 	{
 		// Buffer is full, drop sample
 		droppedsamples++;
-		if (droppedsamples % 100 == 0)
+		if (droppedsamples % 1000 == 0)
 		{
-			printf("Audio buffer full, dropping samples: %d\n", droppedsamples);
+			printf("Dropped samples: %d\n", droppedsamples);
 		}
 	}
-	// If the DMA channel is not busy, check if we have enough data to continue the transfer
-	// If write_index is ahead of read_index, we have data to send.
-	if (!dma_channel_is_busy(audio_i2s.dma_chan))
-	{
-		size_t available = (write_index >= read_index)
-							   ? (write_index - read_index)
-							   : (AUDIO_RING_SIZE - read_index + write_index);
-		if (available >= DMA_BLOCK_SIZE)
-		{
-			dma_channel_set_read_addr(audio_i2s.dma_chan, &audio_ring[read_index], false);
-			dma_channel_set_trans_count(audio_i2s.dma_chan, DMA_BLOCK_SIZE, true);
-		}
-	}
+#endif
+	
 }
