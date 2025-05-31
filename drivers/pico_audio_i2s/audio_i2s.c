@@ -1,30 +1,22 @@
-/*****************************************************************************
- * |  Pico Audio I2S Library
- * |
- * |  Description:
- * |    This library provides functions for audio output using the I2S protocol
- * |    on the Raspberry Pi Pico (RP2040) and Pico 2 (RP2350) via the PIO (Programmable I/O) hardware.
- * |    It supports initialization, frequency configuration, sample output, and
- * |    volume adjustment for streaming audio to external I2S DACs.
- * |
- * |  Features:
- * |    - I2S hardware setup and configuration
- * |    - Output of audio samples (single or block)
- * |    - Adjustable sample rate (frequency)
- * |    - Volume scaling for 16-bit and 32-bit samples
- * |    - Memory management helpers for audio buffers
- * |
- * |  Usage:
- * |    1. Call audio_i2s_setup() to initialize the I2S hardware.
- * |    2. Use audio_i2s_update_pio_frequency() to set the sample rate.
- * |    3. Output audio samples using audio_i2s_out() or audio_i2s_out_32().
- * |    4. Use volume adjustment and buffer management functions as needed.
- * |
- * |  Author: Frank Hoedemakers. Based on the Pico Audio I2S PIO example in the pico_extras
- * |  repository (https://github.com/raspberrypi/pico-extras/tree/master/src/rp2_common/pico_audio_i2s)
- * |  and Waveshare Pico Audio Demo code. (https://www.waveshare.com/wiki/Pico-Audio)
- * |  License: MIT
- ******************************************************************************/
+/*
+ *  pico_audio_i2s.c
+ *
+ *  Purpose:
+ *  This library provides an I2S audio output driver for the Raspberry Pi Pico (RP2040) and Pico 2 (RP2350).
+ *  It uses the PIO (Programmable I/O) subsystem and DMA (Direct Memory Access) to stream 32-bit audio samples
+ *  from a ring buffer to an external I2S audio device with minimal CPU intervention.
+ *
+ *  Features:
+ *    - Configurable sample rate and PIO state machine setup for I2S protocol
+ *    - Ring buffer management for continuous audio streaming
+ *    - DMA-based transfer for low-latency, high-throughput audio output
+ *    - Interrupt-driven buffer refill and underrun handling
+ *    - Simple API for initializing, updating, and outputting audio samples
+ *
+ *  Intended for use in embedded audio applications, emulators, and projects requiring high-quality digital audio output.
+ *  Based on: https://github.com/raspberrypi/pico-extras/tree/master/src/rp2_common/pico_audio_i2s
+ *            and the xample code provided in https://www.waveshare.com/wiki/Pico-Audio
+ */
 
 #include "audio_i2s.h"
 #include "hardware/pio.h"
@@ -34,20 +26,24 @@
 #include <stdlib.h>
 #include "audio_i2s.pio.h"
 #include "string.h"
+#include "stdio.h"
 
 #define AUDIO_PIO __CONCAT(pio, PICO_AUDIO_I2S_PIO)
 #define GPIO_FUNC_PIOx __CONCAT(GPIO_FUNC_PIO, PICO_AUDIO_I2S_PIO)
 
+// Ring buffer for audio samples. It holds AUDIO_RING_SIZE samples, which are 32-bit integers.
 uint32_t audio_ring[AUDIO_RING_SIZE];
 volatile size_t write_index = 0;
 volatile size_t read_index = 0;
 
+// Audio I2S hardware structure that holds the state machine, PIO instance, and DMA channel.
 static audio_i2s_hw_t audio_i2s = {
 	.sm = -1,		  // State machine index, initialized to -1 (not set)
 	.pio = AUDIO_PIO, // PIO instance for audio I2S
 	.dma_chan = -1	  // DMA channel for audio transfer, initialized to -1 (not set)
 };
 
+// Sample frequency for the audio I2S interface, initialized to the default PICO_AUDIO_I2S_FREQ.
 static int samplefreq = PICO_AUDIO_I2S_FREQ;
 
 /**
@@ -67,24 +63,10 @@ void audio_i2s_update_pio_frequency(uint32_t sample_freq)
 }
 
 /**
- * @brief Outputs a block of 256 audio samples to the I2S interface.
- *
- * This function sends an array of 32-bit signed integer audio samples to the I2S output.
- * It is intended for streaming audio data to an external I2S device.
- *
- * @param samples Pointer to an array of 32-bit signed audio samples to output.
- */
-void audio_i2s_out(int32_t *samples)
-{
-	for (uint16_t i = 0; i < 256; i++)
-		pio_sm_put_blocking(AUDIO_PIO, audio_i2s.sm, samples[i]);
-}
-
-/**
  * @brief Outputs a 32-bit audio sample to the I2S interface.
  *
  * This function sends a single 32-bit signed integer audio sample to the I2S output.
- * It is intended to be used for streaming audio data to an external I2S device.
+ * It is intended to be used for streaming audio data to an external I2S device withou using DMA.
  *
  * @param sample The 32-bit signed audio sample to output.
  */
@@ -94,26 +76,20 @@ void audio_i2s_out_32(int32_t sample)
 }
 
 /**
- * @brief Retrieves the PIO instance used for audio I2S operations.
+ * @brief DMA interrupt handler for audio I2S output.
  *
- * This function returns the PIO instance that is currently configured for audio I2S output.
- * It can be used to access the PIO hardware directly if needed.
- *
- * @return The PIO instance used for audio I2S operations.
+ * This function is called when the DMA transfer is complete. It clears the interrupt,
+ * updates the read index to point to the next block of audio data, and checks if there
+ * is enough data available in the ring buffer to continue the DMA transfer.
  */
-PIO audio_i2s_get_pio(void)
-{
-	return audio_i2s.pio;
-}
-
 void __isr dma_handler()
 {
 	// Clear the interrupt
 	dma_hw->ints0 = 1u << audio_i2s.dma_chan;
 	// Advance read_index by block size
 	read_index = (read_index + DMA_BLOCK_SIZE) % AUDIO_RING_SIZE;
-	// printf("DMA transfer complete, read_index: %zu\n", read_index);
-	//  Start next DMA transfer if enough data is available
+	// Check if we have enough data to continue DMA transfer
+	// If write_index is ahead of read_index, we have data to send
 	size_t available = (write_index >= read_index)
 						   ? (write_index - read_index)
 						   : (AUDIO_RING_SIZE - read_index + write_index);
@@ -171,20 +147,12 @@ audio_i2s_hw_t *audio_i2s_setup(int freqHZ)
 		audio_i2s.dma_chan = dma_claim_unused_channel(true);
 	}
 	dma_channel_config c = dma_channel_get_default_config(audio_i2s.dma_chan);
-	channel_config_set_transfer_data_size(&c, DMA_SIZE_32); // 32-bit samples
-	channel_config_set_read_increment(&c, true);
-	channel_config_set_write_increment(&c, false);
+	channel_config_set_transfer_data_size(&c, DMA_SIZE_32);					  // 32-bit samples
+	channel_config_set_read_increment(&c, true);							  // Read address will increment
+	channel_config_set_write_increment(&c, false);							  // Write address (PIO FIFO) will not increment
 	channel_config_set_dreq(&c, pio_get_dreq(AUDIO_PIO, audio_i2s.sm, true)); // true = TX
-#if 0
-	dma_channel_configure(
-		audio_i2s.dma_chan,
-		&c,
-		&AUDIO_PIO->txf[audio_i2s.sm], // Write address (PIO FIFO)
-		audio_buffer,				   // Read address (your buffer)
-		AUDIO_BUFFER_SIZE,			   // Number of transfers
-		false						   // Don't start yet
-	);
-#else
+
+	// Set up the DMA channel configuration
 	dma_channel_configure(
 		audio_i2s.dma_chan,
 		&c,
@@ -193,7 +161,10 @@ audio_i2s_hw_t *audio_i2s_setup(int freqHZ)
 		DMA_BLOCK_SIZE,				   // Number of transfers per block
 		false						   // Don't start yet
 	);
-#endif
+
+	// Enable the DMA channel interrupt
+	// This will trigger when the DMA transfer is complete.
+	// chan 1-3 are used for PIO0, chan 4-7 for PIO1
 	if (audio_i2s.dma_chan >= 4)
 	{
 		dma_channel_set_irq1_enabled(audio_i2s.dma_chan, true);
@@ -211,146 +182,36 @@ audio_i2s_hw_t *audio_i2s_setup(int freqHZ)
 	return &audio_i2s;													   // Return the audio_i2s hardware structure for further use
 }
 
-void start_dma_transfer(int32_t *buffer, size_t count)
-{
-	// Reconfigure the DMA read address and transfer count if needed
-	dma_channel_set_read_addr(audio_i2s.dma_chan, buffer, false);
-	dma_channel_set_trans_count(audio_i2s.dma_chan, count, true); // true = start immediately
-}
 /**
- * @brief Audio output over time
+ * @brief Enqueues a 32-bit audio sample into the ring buffer for I2S output.
  *
- * This functin repeats the audio output for a specified duration in seconds.
+ * This function adds a 32-bit audio sample to the ring buffer. If the buffer is full, it drops the sample
+ * and prints a warning message every 100 dropped samples. It also checks if the DMA channel is busy and
+ * starts a new DMA transfer if there is enough data available in the ring buffer.
  *
- * @param samples Pointer to an array of 32-bit audio samples.
- * @param time In seconds, the duration for which the audio samples should be processed.
+ * @param sample32 The 32-bit audio sample to enqueue.
  */
-void audio_i2s_Time_out(int32_t *samples, uint32_t time)
+void __not_in_flash_func(audio_i2s_enqueue_sample)(uint32_t sample32)
 {
-	for (uint32_t i = 0; i < (samplefreq * time) / 256; i++)
-		audio_i2s_out(samples);
-}
-
-/**
- * @brief Audio output over time
- *
- * This function repeats the audio output for a specified duration in milliseconds.
- *
- * @param samples Pointer to an array of 32-bit audio samples.
- * @param time_ms In millieseconds, the duration for which the audio samples should be processed.
- */
-void audio_i2s_Time_out_ms(int32_t *samples, uint32_t time_ms)
-{
-	for (uint32_t i = 0; i < (samplefreq * time_ms) / (1000 * 256); i++)
-		audio_i2s_out(samples);
-}
-
-/**
- * @brief Adjusts the volume of a buffer of 16-bit audio samples and returns a new buffer of 32-bit samples.
- *
- * This function takes an array of 16-bit signed audio samples, applies a volume adjustment,
- * and returns a pointer to a newly allocated array of 32-bit signed samples with the volume applied.
- *
- * @param samples Pointer to the input buffer containing 16-bit signed audio samples.
- * @param len Number of samples in the input buffer.
- * @param volume Volume adjustment factor (typically 0-255, where 255 is 100% volume).
- * @return Pointer to a newly allocated buffer of 32-bit signed samples with volume applied.
- *         The caller is responsible for freeing this buffer.
- */
-int32_t *audio_i2s_Volume_32(int16_t *samples, uint32_t len, uint8_t volume)
-{
-	uint32_t *samples1 = (uint32_t *)calloc(len, sizeof(uint32_t));
-	for (uint32_t i = 0; i < len; i++)
-		samples1[i] = (((samples[i] * volume) / 100) * 65536) + ((samples[i] * volume) / 100);
-	return samples1;
-}
-
-/**
- * @brief Adjusts the volume of an array of 32-bit audio samples.
- *
- * This function applies a volume scaling factor to each sample in the provided array.
- *
- * @param samples Pointer to the array of 32-bit signed audio samples.
- * @param len Number of samples in the array.
- * @param volume Volume scaling factor (typically 0-255, where 255 is maximum volume).
- * @return Pointer to the processed array of samples.
- */
-int32_t *audio_i2s_Volume_321(int32_t *samples, uint32_t len, uint8_t volume)
-{
-	uint32_t *samples1 = (uint32_t *)calloc(len, sizeof(uint32_t));
-	int16_t a, b;
-	for (uint32_t i = 0; i < len; i++)
+	// Ensure we don't write past the end of the buffer
+	static int droppedsamples = 0;
+	size_t next_write = (write_index + 1) % AUDIO_RING_SIZE;
+	if (next_write != read_index)
 	{
-
-		a = samples[i] >> 16;
-		b = samples[i];
-		samples1[i] = (((a * volume) / 100) * 65536) + ((b * volume) / 100);
+		audio_ring[write_index] = sample32;
+		write_index = next_write;
 	}
-
-	return samples1;
-}
-
-/**
- * @brief Adjusts the volume of a buffer of 16-bit audio samples.
- *
- * This function applies a volume scaling factor to an array of 16-bit signed audio samples.
- * The scaling is determined by the provided volume parameter.
- *
- * @param samples Pointer to the input buffer containing 16-bit signed audio samples.
- * @param len The number of samples in the buffer.
- * @param volume The volume scaling factor (typically 0-255, where 255 is maximum volume).
- * @return Pointer to a buffer containing the volume-adjusted 32-bit signed audio samples.
- */
-int32_t *audio_i2s_Volume_16(int16_t *samples, uint32_t len, uint8_t volume)
-{
-	int32_t *samples1 = (int32_t *)calloc(len, sizeof(int32_t));
-	for (uint32_t i = 0; i < len; i++)
-		samples1[i] = (samples[i] * volume) / 100;
-	return samples1;
-}
-
-/**
- * @brief Frees memory allocated for a 32-bit integer audio sample buffer.
- *
- * This function releases the memory previously allocated for an array of
- * 32-bit signed integer audio samples used in I2S audio processing.
- *
- * @param samples Pointer to the buffer of 32-bit audio samples to be freed.
- */
-void audio_i2s_free_32(int32_t *samples)
-{
-	int32_t *samples1 = samples;
-	samples = NULL;
-	free(samples1);
-}
-
-/**
- * @brief Frees memory allocated for 16-bit audio samples.
- *
- * This function releases the memory previously allocated for an array of
- * 16-bit signed integer audio samples used in I2S audio processing.
- *
- * @param samples Pointer to the buffer of 16-bit audio samples to be freed.
- */
-void audio_i2s_free_16(int16_t *samples)
-{
-	int16_t *samples1 = samples;
-	samples = NULL;
-	free(samples1);
-}
-
-/**
- * @brief Checks the status of the audio DMA for I2S audio output.
- *
- * It is responsible for monitoring and managing the DMA state to ensure smooth
- * audio playback via the I2S interface.
- *
- * Typically, this function should be called regularly (e.g., from an interrupt
- * handler or main loop) to handle DMA events, refill buffers, or recover from
- * underrun/overrun conditions.
- */
-void   __not_in_flash_func(check_audio_dma)(void)
-{
+	else
+	{
+		// Buffer is full, drop sample
+		droppedsamples++;
+		if (droppedsamples % 100 == 0)
+		{
+			printf("Audio buffer full, dropping samples: %d\n", droppedsamples);
+		}
+	}
+	// If the DMA channel is not busy, check if we have enough data to continue the transfer
+	// If write_index is ahead of read_index, we have data to send.
 	if (!dma_channel_is_busy(audio_i2s.dma_chan))
 	{
 		size_t available = (write_index >= read_index)
