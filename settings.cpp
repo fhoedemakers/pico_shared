@@ -15,6 +15,7 @@ namespace Frens
         printf("currentDir: %s\n", settings.currentDir);
         printf("fgcolor: %d\n", settings.fgcolor);
         printf("bgcolor: %d\n", settings.bgcolor);
+        printf("useI2SAudio: %d\n", settings.useI2SAudio);
         printf("\n");
     }
     void resetsettings()

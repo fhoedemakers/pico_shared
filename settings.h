@@ -15,6 +15,7 @@ struct settings
     int bgcolor;
     // int reserved[3];
     char currentDir[FF_MAX_LFN];
+    int useI2SAudio; // 0 = use DVIAudio, 1 = use I2S Audio
 };
 namespace Frens
 {
