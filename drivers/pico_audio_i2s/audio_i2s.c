@@ -65,14 +65,14 @@ void audio_i2s_update_pio_frequency(uint32_t sample_freq)
 /**
  * @brief Outputs a 32-bit audio sample to the I2S interface.
  *
- * This function sends a single 32-bit signed integer audio sample to the I2S output.
+ * This function sends a single 32-bit unsigned integer audio sample to the I2S output.
  * It is intended to be used for streaming audio data to an external I2S device withou using DMA.
  *
- * @param sample The 32-bit signed audio sample to output.
+ * @param sample The 32-bit unsigned audio sample to output.
  */
-void audio_i2s_out_32(int32_t sample)
+void audio_i2s_out_32(uint32_t sample32)
 {
-	pio_sm_put_blocking(AUDIO_PIO, audio_i2s.sm, sample);
+	pio_sm_put_blocking(AUDIO_PIO, audio_i2s.sm, sample32);
 }
 
 /**
