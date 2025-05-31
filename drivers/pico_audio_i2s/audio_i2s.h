@@ -34,11 +34,11 @@ extern "C" {
 #endif
 
 
-#define AUDIO_RING_SIZE 4096
+#define AUDIO_RING_SIZE 1024 // Size of the audio ring buffer (must be a multiple of DMA_BLOCK_SIZE)
 #define DMA_BLOCK_SIZE 256 // Size of each DMA block transfer
-extern uint32_t audio_ring[AUDIO_RING_SIZE];
-extern volatile size_t write_index ;
-extern volatile size_t read_index;
+// extern uint32_t audio_ring[AUDIO_RING_SIZE];
+// extern volatile size_t write_index ;
+// extern volatile size_t read_index;
 
 
 typedef struct {
