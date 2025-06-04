@@ -55,10 +55,6 @@ namespace Frens
     mutex_t framebuffer_mutex;
     static bool usingFramebuffer = false;
 
-#if USE_I2S_AUDIO
-    audio_i2s_hw_t *i2s_audio_hw;
-#endif
-
     bool isFrameBufferUsed()
     {
         return usingFramebuffer;
@@ -816,9 +812,7 @@ namespace Frens
             multicore_launch_core1(core1_main);
         }
         initVintageControllers(CPUFreqKHz);
-#if USE_I2S_AUDIO
-        i2s_audio_hw = audio_i2s_setup(DVIAUDIOFREQ);  
-#endif
+        EXT_AUDIO_SETUP(DVIAUDIOFREQ);  // Initialize external audio if needed
         return ok;
     }
 
