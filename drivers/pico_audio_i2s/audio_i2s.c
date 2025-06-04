@@ -32,7 +32,7 @@
 #define GPIO_FUNC_PIOx __CONCAT(GPIO_FUNC_PIO, PICO_AUDIO_I2S_PIO)
 
 // Ring buffer for audio samples. It holds AUDIO_RING_SIZE samples, which are 32-bit integers.
-uint32_t audio_ring[AUDIO_RING_SIZE];
+uint32_t *audio_ring = NULL;
 volatile size_t write_index = 0;
 volatile size_t read_index = 0;
 
@@ -116,7 +116,8 @@ audio_i2s_hw_t *audio_i2s_setup(int freqHZ)
 	{
 		samplefreq = freqHZ;
 	}
-	memset(audio_ring, 0, sizeof(audio_ring)); // Initialize the audio ring buffer to zero
+	audio_ring = malloc(AUDIO_RING_SIZE * sizeof(uint32_t)); // Allocate memory for the audio ring buffer
+	memset(audio_ring, 0, AUDIO_RING_SIZE * sizeof(uint32_t)); // Initialize the audio ring buffer to zero
 	write_index = DMA_BLOCK_SIZE;			   // Start writing after the first block
 	read_index = 0;							   // Reset read index
 	// Set up the PIO and GPIO pins for I2S audio output
