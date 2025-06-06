@@ -160,6 +160,7 @@ if [[ $PICO_PLATFORM == rp2350* ]] ; then
 	if [[ $HWCONFIG -eq 3 || $HWCONFIG -eq 4 ]] ; then
 		echo "HWCONFIG $HWCONFIG is not compatible with Pico 2"
 		echo "Please use -c 1 or -c 2 or -c 5"
+		exit 1
 	fi
 else 
 	# HWCONFIG 5 is not compatible with pico
