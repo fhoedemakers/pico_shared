@@ -1,5 +1,9 @@
 # Release notes
 
+## 7/6/2025
+
+- Enable I2S audio on the Pimoroni Pico DV Demo Base. This allows audio output through external speakers connected to the line-out jack of the Pimoroni Pico DV Demo Base. 
+
 ## 20/5/2025
 - Added Custom PCB design for use with Waveshare [RP2040-Zero](https://www.waveshare.com/rp2040-zero.htm) or [RP2350-Zero](https://www.waveshare.com/rp2350-zero.htm) mini development board. The PCB is designed to fit in a 3D-printed case. PCB and Case design by [@DynaMight1124](https://github.com/DynaMight1124)
 - Added new configuration to BoardConfigs.cmake and bld.sh to support the new configuration for this PCB. 
