@@ -160,6 +160,7 @@ if [[ $PICO_PLATFORM == rp2350* ]] ; then
 	if [[ $HWCONFIG -eq 3 || $HWCONFIG -eq 4 ]] ; then
 		echo "HWCONFIG $HWCONFIG is not compatible with Pico 2"
 		echo "Please use -c 1 or -c 2 or -c 5"
+		exit 1
 	fi
 else 
 	# HWCONFIG 5 is not compatible with pico
@@ -227,11 +228,11 @@ fi
 mkdir build || exit 1
 cd build || exit 1
 if [ -z "$TOOLCHAIN_PATH" ] ; then
-	cmake -DCMAKE_BUILD_TYPE=$BUILD -DPICO_BOARD=$PICO_BOARD -DHW_CONFIG=$HWCONFIG -DPICO_PLATFORM=$PICO_PLATFORM ..
+	cmake -DCMAKE_BUILD_TYPE=$BUILD -DPICO_BOARD=$PICO_BOARD -DHW_CONFIG=$HWCONFIG -DPICO_PLATFORM=$PICO_PLATFORM .. || exit 1
 else
-	cmake -DCMAKE_BUILD_TYPE=$BUILD -DPICO_BOARD=$PICO_BOARD -DHW_CONFIG=$HWCONFIG -DPICO_PLATFORM=$PICO_PLATFORM -DPICO_TOOLCHAIN_PATH=$TOOLCHAIN_PATH ..
+	cmake -DCMAKE_BUILD_TYPE=$BUILD -DPICO_BOARD=$PICO_BOARD -DHW_CONFIG=$HWCONFIG -DPICO_PLATFORM=$PICO_PLATFORM -DPICO_TOOLCHAIN_PATH=$TOOLCHAIN_PATH .. ||  exit 1
 fi
-make -j $BUILDPROC
+make -j $BUILDPROC || exit 1
 cd ..
 echo ""
 if [ -f build/${APP}.uf2 ] ; then

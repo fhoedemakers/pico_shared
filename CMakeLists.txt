@@ -13,9 +13,11 @@ wiipad.cpp
 FrensFonts.cpp
 ffwrappers.c
 )
-add_subdirectory(drivers/pico_fatfs)      
+add_subdirectory(drivers/pico_fatfs)     
+add_subdirectory(drivers/pico_audio_i2s)
+
 target_include_directories(pico_shared INTERFACE
         .
 )
-target_link_libraries(pico_shared INTERFACE pico_fatfs )
+target_link_libraries(pico_shared INTERFACE pico_fatfs pico_audio_i2s)
 

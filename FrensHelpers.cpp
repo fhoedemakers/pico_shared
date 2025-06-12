@@ -18,6 +18,7 @@
 #include "settings.h"
 #include "FrensHelpers.h"
 
+
 // Pico W devices use a GPIO on the WIFI chip for the LED,
 // so when building for Pico W, CYW43_WL_GPIO_LED_PIN will be defined
 // NOTE: Building for Pico2 W makes the emulator not work: ioctl timeouts and red flicker
@@ -766,6 +767,7 @@ namespace Frens
         printf("Size program in flash :   %8d bytes (%d) Kbytes\n", &__flash_binary_end - &__flash_binary_start, (&__flash_binary_end - &__flash_binary_start) / 1024);
         // round ROM_FILE_ADDRESS address up to 4k boundary of flash_binary_end
         ROM_FILE_ADDR = ((uintptr_t)&__flash_binary_end + 0xFFF) & ~0xFFF;
+        //ROM_FILE_ADDR =  0x1004a000;
         // calculate max rom size
         maxRomSize = flash_end - (uint8_t *)ROM_FILE_ADDR;
         printf("ROM_FILE_ADDR         : 0x%08x\n", ROM_FILE_ADDR);
@@ -810,6 +812,7 @@ namespace Frens
             multicore_launch_core1(core1_main);
         }
         initVintageControllers(CPUFreqKHz);
+        EXT_AUDIO_SETUP(DVIAUDIOFREQ);  // Initialize external audio if needed
         return ok;
     }
 
