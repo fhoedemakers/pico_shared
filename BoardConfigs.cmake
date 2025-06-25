@@ -1,4 +1,19 @@
-set(PICO_BOARD_HEADER_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/pico_shared/boards)
+# check if $ENV{PICO_SDK_PATH} is set and points to a valid directory
+if (NOT DEFINED ENV{PICO_SDK_PATH} OR NOT IS_DIRECTORY $ENV{PICO_SDK_PATH})
+    message(FATAL_ERROR "PICO_SDK_PATH environment variable is not set or points to an invalid directory. Please set it to the path of the Pico SDK.")
+endif()
+set(PICO_SDK_PATH $ENV{PICO_SDK_PATH})
+# set PICO_PIO_USB_PATH from environment variable or fail if not set
+if(NOT DEFINED PICO_PIO_USB_PATH)
+  if(NOT DEFINED ENV{PICO_PIO_USB_PATH})
+    message(FATAL_ERROR "PICO_PIO_USB_PATH environment variable is not set. Please fetch the repo https://github.com/sekigon-gonnoc/Pico-PIO-USB and set the PICO_PIO_USB_PATH environment variable to the path of the repo.")
+  endif()
+  set(PICO_PIO_USB_PATH $ENV{PICO_PIO_USB_PATH})
+endif()
+# error when PICO_PIO_USB_PATH is not a directory
+if(NOT IS_DIRECTORY ${PICO_PIO_USB_PATH})
+  message(FATAL_ERROR "PICO_PIO_USB_PATH is not a directory: ${PICO_PIO_USB_PATH}")
+endif()
 set(BOARD pico_sdk)
 if ( HW_CONFIG EQUAL 1 )
 	# This default Config is for Pimoroni Pico DV Demo Base, note uart is disabled because gpio 1 is used for NES controller
@@ -179,13 +194,7 @@ elseif ( HW_CONFIG EQUAL 6 )
     set(PICO_AUDIO_I2S_PIO 1 CACHE STRING "Select the PIO for I2S audio output")
     set(PICO_AUDIO_I2S_CLOCK_PINS_SWAPPED 0 CACHE STRING "Set to 1 if the I2S clock pins are swapped")
 endif ( )
-# set PICO_PIO_USB_PATH from environment variable or fail if not set
-if(NOT DEFINED PICO_PIO_USB_PATH)
-  if(NOT DEFINED ENV{PICO_PIO_USB_PATH})
-    message(FATAL_ERROR "PICO_PIO_USB_PATH environment variable is not set. Please fetch the repo https://github.com/sekigon-gonnoc/Pico-PIO-USB and set the PICO_PIO_USB_PATH environment variable to the path of the repo.")
-  endif()
-  set(PICO_PIO_USB_PATH $ENV{PICO_PIO_USB_PATH})
-endif()
+
 if (NOT DEFINED ENABLE_PIO_USB)
   message("Disable PIO USB support by default")
   set(ENABLE_PIO_USB 0 CACHE BOOL "Enable PIO USB support")
