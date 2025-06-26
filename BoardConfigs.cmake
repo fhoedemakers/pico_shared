@@ -1,8 +1,28 @@
+# BoardConfigs.cmake
+# This file is shared between several Raspberry Pi Pico emulator projects.
+# It sets the hardware configuration, board type, and other parameters based on the selected hardware configuration.
+# It also checks for the PICO_SDK_PATH and PICO_PIO_USB_PATH environment variables.
+# The hardware configuration can be set using the HW_CONFIG variable, which determines the pin configurations and other settings for the emulator.
+# The PICO_SDK_PATH and PICO_PIO_USB_PATH variables must be set to the paths of the Pico SDK and the Pico PIO USB library, respectively.
+# The script also sets default values for various parameters such as the DVI configuration, SD card pins, NES controller pins, Wii controller I2C pins, and I2S audio settings.
+# It also sets the default board type for TinyUSB and Pico SDK.
+# This file is included in the main CMakeLists.txt file of the project.
+# Note:
+#  - Latest master branch of TinyUsb is required for this project. 
+#    This is because the project uses the PIO USB driver which is not available in the stable release of TinyUSB.
+#  - Also the latest branch of https://github.com/sekigon-gonnoc/Pico-PIO-USB is required for the PIO USB driver.
+#    The envirinment variable PICO_PIO_USB_PATH must be set to the path of the Pico-PIO-USB repository.
+#
 # check if $ENV{PICO_SDK_PATH} is set and points to a valid directory
 if (NOT DEFINED ENV{PICO_SDK_PATH} OR NOT IS_DIRECTORY $ENV{PICO_SDK_PATH})
     message(FATAL_ERROR "PICO_SDK_PATH environment variable is not set or points to an invalid directory. Please set it to the path of the Pico SDK.")
 endif()
 set(PICO_SDK_PATH $ENV{PICO_SDK_PATH})
+# ensure the file ${PICO_SDK_PATH}/lib/tinyusb/hw/bsp/rp2040/boards/adafruit_metro_rp2350/adafruit_metro_rp2350.h exists
+# This to check whether the latest master branch of TinyUsb is used.
+if (NOT EXISTS ${PICO_SDK_PATH}/lib/tinyusb/hw/bsp/rp2040/boards/adafruit_metro_rp2350/adafruit_metro_rp2350.h)
+    message(FATAL_ERROR "Please pull the latest master branch of TinyUsb in ${PICO_SDK_PATH}/lib/tinyusb/")
+endif()
 # set PICO_PIO_USB_PATH from environment variable or fail if not set
 if(NOT DEFINED PICO_PIO_USB_PATH)
   if(NOT DEFINED ENV{PICO_PIO_USB_PATH})
@@ -11,10 +31,13 @@ if(NOT DEFINED PICO_PIO_USB_PATH)
   set(PICO_PIO_USB_PATH $ENV{PICO_PIO_USB_PATH})
 endif()
 # error when PICO_PIO_USB_PATH is not a directory
-if(NOT IS_DIRECTORY ${PICO_PIO_USB_PATH})
-  message(FATAL_ERROR "PICO_PIO_USB_PATH is not a directory: ${PICO_PIO_USB_PATH}")
+if(NOT EXISTS ${PICO_PIO_USB_PATH}/src/pio_usb.c)
+  message(FATAL_ERROR "Pico PIO usb repo not found in ${PICO_PIO_USB_PATH}. Please fetch the repo")
 endif()
+
+# Default tinyusb board type
 set(BOARD pico_sdk)
+
 if ( HW_CONFIG EQUAL 1 )
 	# This default Config is for Pimoroni Pico DV Demo Base, note uart is disabled because gpio 1 is used for NES controller
 	set(DVICONFIG "dviConfig_PimoroniDemoDVSock" CACHE STRING
@@ -42,6 +65,8 @@ if ( HW_CONFIG EQUAL 1 )
     set(PICO_AUDIO_I2S_CLOCK_PIN_BASE 27 CACHE STRING "Select the GPIO pin for I2S clock")
     set(PICO_AUDIO_I2S_PIO 1 CACHE STRING "Select the PIO for I2S audio output")
     set(PICO_AUDIO_I2S_CLOCK_PINS_SWAPPED 0 CACHE STRING "Set to 1 if the I2S clock pins are swapped")
+    set(ENABLE_PIO_USB 0 CACHE BOOL "Enable PIO USB support")
+    set(PIO_DP_PLUS_PIN -1 CACHE STRING "PIO USB DP pin.")
 elseif ( HW_CONFIG EQUAL 2 )
 	# --------------------------------------------------------------------
 	# Alternate config for use with different SDcard reader and HDMI board
@@ -74,6 +99,8 @@ elseif ( HW_CONFIG EQUAL 2 )
     set(PICO_AUDIO_I2S_CLOCK_PIN_BASE -1 CACHE STRING "Select the GPIO pin for I2S clock")
     set(PICO_AUDIO_I2S_PIO 1 CACHE STRING "Select the PIO for I2S audio output")
     set(PICO_AUDIO_I2S_CLOCK_PINS_SWAPPED 0 CACHE STRING "Set to 1 if the I2S clock pins are swapped")
+    set(ENABLE_PIO_USB 0 CACHE BOOL "Enable PIO USB support")
+    set(PIO_DP_PLUS_PIN -1 CACHE STRING "PIO USB DP pin.")
 elseif ( HW_CONFIG EQUAL 3 )
 	# --------------------------------------------------------------------
 	# Alternate config for use with Adafruit Feather RP2040 DVI + SD Wing
@@ -103,6 +130,8 @@ elseif ( HW_CONFIG EQUAL 3 )
     set(PICO_AUDIO_I2S_CLOCK_PIN_BASE -1 CACHE STRING "Select the GPIO pin for I2S clock")
     set(PICO_AUDIO_I2S_PIO 1 CACHE STRING "Select the PIO for I2S audio output")
     set(PICO_AUDIO_I2S_CLOCK_PINS_SWAPPED 0 CACHE STRING "Set to 1 if the I2S clock pins are swapped")
+    set(ENABLE_PIO_USB 0 CACHE BOOL "Enable PIO USB support")
+    set(PIO_DP_PLUS_PIN -1 CACHE STRING "PIO USB DP pin.")
 elseif ( HW_CONFIG EQUAL 4 )
     # --------------------------------------------------------------------
 	# Alternate config for use with Waveshare RP2040-PiZero
@@ -132,6 +161,8 @@ elseif ( HW_CONFIG EQUAL 4 )
     set(PICO_AUDIO_I2S_CLOCK_PIN_BASE -1 CACHE STRING "Select the GPIO pin for I2S clock")
     set(PICO_AUDIO_I2S_PIO 1 CACHE STRING "Select the PIO for I2S audio output")
     set(PICO_AUDIO_I2S_CLOCK_PINS_SWAPPED 0 CACHE STRING "Set to 1 if the I2S clock pins are swapped")
+    set(ENABLE_PIO_USB 1 CACHE BOOL "Enable PIO USB support")
+    set(PIO_DP_PLUS_PIN 6 CACHE STRING "PIO USB DP pin.")
 elseif ( HW_CONFIG EQUAL 5 )
     # --------------------------------------------------------------------
 	# Adafruit Metro RP2350
@@ -161,9 +192,10 @@ elseif ( HW_CONFIG EQUAL 5 )
     set(PICO_AUDIO_I2S_CLOCK_PIN_BASE -1 CACHE STRING "Select the GPIO pin for I2S clock")
     set(PICO_AUDIO_I2S_PIO 1 CACHE STRING "Select the PIO for I2S audio output")
     set(PICO_AUDIO_I2S_CLOCK_PINS_SWAPPED 0 CACHE STRING "Set to 1 if the I2S clock pins are swapped")
-    set(BOARD "adafruit_metro_rp2350") 
-    set(PICO_BOARD "adafruit_metro_rp2350")
-    set(ENABLE_PIO_USB 1 CACHE BOOL "Enable PIO USB support")
+    set(BOARD "adafruit_metro_rp2350")         # found in $PICO__SDK_PATH/lib/tinyusb/hw/bsp/rp2040/boards/adafruit_metro_rp2350/board.h
+    set(PICO_BOARD "adafruit_metro_rp2350")    # found in $PICO__SDK_PATH/lib/tinyusb/hw/bsp/rp2040/boards/adafruit_metro_rp2350/adafruit_metro_rp2350.h
+    set(ENABLE_PIO_USB 1  CACHE BOOL "Enable PIO USB support")
+    set(PIO_DP_PLUS_PIN -1 CACHE STRING "PIO USB DP pin.")
 elseif ( HW_CONFIG EQUAL 6 )
     # --------------------------------------------------------------------
 	# RP2040/RP2350 Tiny With PCB
@@ -193,15 +225,11 @@ elseif ( HW_CONFIG EQUAL 6 )
     set(PICO_AUDIO_I2S_CLOCK_PIN_BASE -1 CACHE STRING "Select the GPIO pin for I2S clock")
     set(PICO_AUDIO_I2S_PIO 1 CACHE STRING "Select the PIO for I2S audio output")
     set(PICO_AUDIO_I2S_CLOCK_PINS_SWAPPED 0 CACHE STRING "Set to 1 if the I2S clock pins are swapped")
+    set(ENABLE_PIO_USB 0  BOOL "Enable PIO USB support")
+    set(PIO_DP_PLUS_PIN -1 CACHE STRING "PIO USB DP pin.")
 endif ( )
 
-if (NOT DEFINED ENABLE_PIO_USB)
-  message("Disable PIO USB support by default")
-  set(ENABLE_PIO_USB 0 CACHE BOOL "Enable PIO USB support")
-endif()
-if ( NOT DEFINED PIO_DP_PLUS_PIN )
-  set(PIO_DP_PLUS_PIN -1 CACHE STRING "PIO USB DP pin.")
-endif()
+
 # --------------------------------------------------------------------
 message("Hardware configuration: ${HW_CONFIG}")
 message("Pico SDK board type   : ${PICO_BOARD}")
