@@ -718,6 +718,32 @@ namespace Frens
         return PICO_OK;
     }
 
+    /// @brief Finds an unused DMA channel.
+    /// This function iterates through the available DMA channels (0-11) and returns the first unused channel.
+    /// If no unused channel is found, it will panic.
+    /// @return the number of the unused DMA channel (0-11).
+    int GetUnUsedDMAChan()
+    {
+        // Get an unused DMA channel
+        int dma_chan = -1;
+        printf("Searching for unused DMA channel...");
+        for (int i = 0; i < 12; i++)
+        {
+            if (!dma_channel_is_claimed(i))
+            {
+                dma_chan = i;
+                printf(" found unused DMA channel %d\n", dma_chan);
+                break;
+            }
+        }
+        if (dma_chan == -1)
+        {
+            panic("No unused DMA channel found");
+        }
+        return dma_chan;
+    }
+
+
     void initVintageControllers(uint32_t CPUFreqKHz)
     {
 #if NES_PIN_CLK != -1
@@ -730,17 +756,13 @@ namespace Frens
         wiipad_begin();
 #endif
     }
+    
+    // Initialize the PIO USB board
     // replaces board_init() in $PICO_SDK_PATH/lib/tinyusb/src/hw/bsp/rp2040/family.c
     void pio_usb_board_init(void)
     {
 #if (CFG_TUH_ENABLED && CFG_TUH_RPI_PIO_USB) || (CFG_TUD_ENABLED && CFG_TUD_RPI_PIO_USB)
-        // Set the system clock to a multiple of 12mhz for bit-banging USB with pico-usb
-        // set_sys_clock_khz(120000, true);
-        // set_sys_clock_khz(180000, true);
-        // set_sys_clock_khz(192000, true);
-        // set_sys_clock_khz(240000, true);
-        // set_sys_clock_khz(264000, true);
-
+        // power on the PIO USB VBUSEN pin if needed.
 #ifdef PICO_DEFAULT_PIO_USB_VBUSEN_PIN
         gpio_init(PICO_DEFAULT_PIO_USB_VBUSEN_PIN);
         gpio_set_dir(PICO_DEFAULT_PIO_USB_VBUSEN_PIN, GPIO_OUT);
@@ -750,6 +772,11 @@ namespace Frens
         // rp2040 use pico-pio-usb for host tuh_configure() can be used to passed pio configuration to the host stack
         // Note: tuh_configure() must be called before tuh_init()
         pio_usb_configuration_t pio_cfg = PIO_USB_DEFAULT_CONFIG;
+        // find an unused DMA channel
+        pio_cfg.tx_ch = GetUnUsedDMAChan();
+        // 
+        pio_cfg.pio_rx_num = PIO_USB_USE_PIO;
+        pio_cfg.pio_tx_num = PIO_USB_USE_PIO;
         pio_cfg.pin_dp = PICO_DEFAULT_PIO_USB_DP_PIN;
         tuh_configure(BOARD_TUH_RHPORT, TUH_CFGID_RPI_PIO_USB_CONFIGURATION, &pio_cfg);
 #endif
@@ -789,22 +816,7 @@ namespace Frens
         {
             printf("Error initializing LED: %d\n", rc);
         }
-#if CFG_TUH_RPI_PIO_USB
-        printf("Using PIO USB.\n");
-        pio_usb_board_init();
-        tusb_rhport_init_t host_init = {
-            .role = TUSB_ROLE_HOST,
-            .speed = TUSB_SPEED_AUTO};
-        tusb_init(BOARD_TUH_RHPORT, &host_init);
 
-        if (board_init_after_tusb)
-        {
-            board_init_after_tusb();
-        }
-#else
-        printf("Using internal USB.\n");
-        tusb_init();
-#endif
         // Calculate the address in flash where roms will be stored
         printf("Flash binary start    : 0x%08x\n", &__flash_binary_start);
         printf("Flash binary end      : 0x%08x\n", &__flash_binary_end);
@@ -850,6 +862,26 @@ namespace Frens
             mutex_init(&framebuffer_mutex);
         }
         initDVandAudio(marginTop, marginBottom, audiobufferSize);
+        // init USB driver
+        // USB driver is initalized after display driver to prevent the display driver
+        // from using the PIO state machines already claimed by the USB driver.
+        // This is only needed for the PIO USB driver.
+#if CFG_TUH_RPI_PIO_USB
+        printf("Using PIO USB.\n");
+        pio_usb_board_init();
+        tusb_rhport_init_t host_init = {
+            .role = TUSB_ROLE_HOST,
+            .speed = TUSB_SPEED_AUTO};
+        tusb_init(BOARD_TUH_RHPORT, &host_init);
+
+        if (board_init_after_tusb)
+        {
+            board_init_after_tusb();
+        }
+#else
+        printf("Using internal USB.\n");
+        tusb_init();
+#endif
         if (usingFramebuffer)
         {
             multicore_launch_core1(coreFB_main);
