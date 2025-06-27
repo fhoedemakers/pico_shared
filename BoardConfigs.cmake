@@ -164,7 +164,7 @@ elseif ( HW_CONFIG EQUAL 4 )
     set(PICO_AUDIO_I2S_CLOCK_PIN_BASE -1 CACHE STRING "Select the GPIO pin for I2S clock")
     set(PICO_AUDIO_I2S_PIO 1 CACHE STRING "Select the PIO for I2S audio output")
     set(PICO_AUDIO_I2S_CLOCK_PINS_SWAPPED 0 CACHE STRING "Set to 1 if the I2S clock pins are swapped")
-    set(ENABLE_PIO_USB 1 CACHE BOOL "Enable PIO USB support")
+    set(ENABLE_PIO_USB 0 CACHE BOOL "Enable PIO USB support") # Does not work with Waveshare RP2040-PiZero see https://www.waveshare.com/rp2040-pizero.htm
     set(PIO_USB_USE_PIO 1 CACHE BOOL "Select the PIO used for PIO-USB")
     set(PIO_DP_PLUS_PIN 6 CACHE STRING "PIO USB DP pin.")
 elseif ( HW_CONFIG EQUAL 5 )
