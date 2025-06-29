@@ -100,9 +100,14 @@ elseif ( HW_CONFIG EQUAL 2 )
     set(PICO_AUDIO_I2S_CLOCK_PIN_BASE -1 CACHE STRING "Select the GPIO pin for I2S clock")
     set(PICO_AUDIO_I2S_PIO 1 CACHE STRING "Select the PIO for I2S audio output")
     set(PICO_AUDIO_I2S_CLOCK_PINS_SWAPPED 0 CACHE STRING "Set to 1 if the I2S clock pins are swapped")
-    set(ENABLE_PIO_USB 0 CACHE BOOL "Enable PIO USB support")
+    # PIO USB support is not enabled by default, as it requires additional hardware and works only
+    # with RP2350 boards. RP2040 boards do not have sufficent memory for the PIO USB driver to run with the emulator.
+    # If you want to use PIO USB, set ENABLE_PIO_USB to 1
+    set(ENABLE_PIO_USB  0 CACHE BOOL "Enable PIO USB support")
+    # use pio1
     set(PIO_USB_USE_PIO 1 CACHE BOOL "Select the PIO used for PIO-USB")
-    set(PIO_DP_PLUS_PIN -1 CACHE STRING "PIO USB DP pin.")
+    # connect the DP+ pin to GPIO 20, DP- will be GPIO 21
+    set(PIO_DP_PLUS_PIN 20 CACHE STRING "PIO USB DP pin.")
 elseif ( HW_CONFIG EQUAL 3 )
 	# --------------------------------------------------------------------
 	# Alternate config for use with Adafruit Feather RP2040 DVI + SD Wing
