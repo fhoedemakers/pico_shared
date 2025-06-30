@@ -25,17 +25,18 @@ if(NOT DEFINED PICO_PIO_USB_PATH)
     set(PICO_PIO_USB_PATH $ENV{PICO_PIO_USB_PATH})
   endif()
 endif()
+# ensure the file ${PICO_SDK_PATH}/lib/tinyusb/hw/bsp/rp2040/boards/adafruit_metro_rp2350/adafruit_metro_rp2350.h exists
+# This to check whether the latest master branch of TinyUsb is used.
+# This is needed for supporting the Adafruit Metro RP2350 board.
+if (NOT EXISTS ${PICO_SDK_PATH}/lib/tinyusb/hw/bsp/rp2040/boards/adafruit_metro_rp2350/adafruit_metro_rp2350.h)
+    message(FATAL_ERROR "Please pull the latest master branch of TinyUsb in ${PICO_SDK_PATH}/lib/tinyusb/")
+endif()
 if(DEFINED PICO_PIO_USB_PATH)
     # check PICO_PIO_USB_PATH is valid
     if(NOT EXISTS ${PICO_PIO_USB_PATH}/src/pio_usb.c)
         message(FATAL_ERROR "Pico PIO usb repo not found in ${PICO_PIO_USB_PATH}. Please fetch the repo")
     endif()
-    # ensure the file ${PICO_SDK_PATH}/lib/tinyusb/hw/bsp/rp2040/boards/adafruit_metro_rp2350/adafruit_metro_rp2350.h exists
-    # This to check whether the latest master branch of TinyUsb is used.
-    # This is needed for PIO USB support.
-    if (NOT EXISTS ${PICO_SDK_PATH}/lib/tinyusb/hw/bsp/rp2040/boards/adafruit_metro_rp2350/adafruit_metro_rp2350.h)
-        message(FATAL_ERROR "Please pull the latest master branch of TinyUsb in ${PICO_SDK_PATH}/lib/tinyusb/")
-    endif()
+    
 else()
     # disable PIO USB support if PICO_PIO_USB_PATH is not set
     set(ENABLE_PIO_USB 0 CACHE BOOL "Enable PIO USB support")
@@ -109,7 +110,7 @@ elseif ( HW_CONFIG EQUAL 2 )
     # PIO USB support is not enabled by default, as it requires additional hardware and works only
     # with RP2350 boards. RP2040 boards do not have sufficent memory for the PIO USB driver to run with the emulator.
     # If you want to use PIO USB, set ENABLE_PIO_USB to 1
-    #set(ENABLE_PIO_USB  0 CACHE BOOL "Enable PIO USB support")
+    #set(ENABLE_PIO_USB  1 CACHE BOOL "Enable PIO USB support")
     # use pio1
     set(PIO_USB_USE_PIO 1 CACHE BOOL "Select the PIO used for PIO-USB")
     # connect the DP+ pin to GPIO 20, DP- will be GPIO 21
