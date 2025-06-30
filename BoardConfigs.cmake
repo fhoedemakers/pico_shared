@@ -18,21 +18,27 @@ if (NOT DEFINED ENV{PICO_SDK_PATH} OR NOT IS_DIRECTORY $ENV{PICO_SDK_PATH})
     message(FATAL_ERROR "PICO_SDK_PATH environment variable is not set or points to an invalid directory. Please set it to the path of the Pico SDK.")
 endif()
 set(PICO_SDK_PATH $ENV{PICO_SDK_PATH})
-# ensure the file ${PICO_SDK_PATH}/lib/tinyusb/hw/bsp/rp2040/boards/adafruit_metro_rp2350/adafruit_metro_rp2350.h exists
-# This to check whether the latest master branch of TinyUsb is used.
-if (NOT EXISTS ${PICO_SDK_PATH}/lib/tinyusb/hw/bsp/rp2040/boards/adafruit_metro_rp2350/adafruit_metro_rp2350.h)
-    message(FATAL_ERROR "Please pull the latest master branch of TinyUsb in ${PICO_SDK_PATH}/lib/tinyusb/")
-endif()
+
 # set PICO_PIO_USB_PATH from environment variable or fail if not set
 if(NOT DEFINED PICO_PIO_USB_PATH)
-  if(NOT DEFINED ENV{PICO_PIO_USB_PATH})
-    message(FATAL_ERROR "PICO_PIO_USB_PATH environment variable is not set. Please fetch the repo https://github.com/sekigon-gonnoc/Pico-PIO-USB and set the PICO_PIO_USB_PATH environment variable to the path of the repo.")
+  if(DEFINED ENV{PICO_PIO_USB_PATH})
+    set(PICO_PIO_USB_PATH $ENV{PICO_PIO_USB_PATH})
   endif()
-  set(PICO_PIO_USB_PATH $ENV{PICO_PIO_USB_PATH})
 endif()
-# error when PICO_PIO_USB_PATH is not a directory
-if(NOT EXISTS ${PICO_PIO_USB_PATH}/src/pio_usb.c)
-  message(FATAL_ERROR "Pico PIO usb repo not found in ${PICO_PIO_USB_PATH}. Please fetch the repo")
+if(DEFINED PICO_PIO_USB_PATH)
+    # check PICO_PIO_USB_PATH is valid
+    if(NOT EXISTS ${PICO_PIO_USB_PATH}/src/pio_usb.c)
+        message(FATAL_ERROR "Pico PIO usb repo not found in ${PICO_PIO_USB_PATH}. Please fetch the repo")
+    endif()
+    # ensure the file ${PICO_SDK_PATH}/lib/tinyusb/hw/bsp/rp2040/boards/adafruit_metro_rp2350/adafruit_metro_rp2350.h exists
+    # This to check whether the latest master branch of TinyUsb is used.
+    # This is needed for PIO USB support.
+    if (NOT EXISTS ${PICO_SDK_PATH}/lib/tinyusb/hw/bsp/rp2040/boards/adafruit_metro_rp2350/adafruit_metro_rp2350.h)
+        message(FATAL_ERROR "Please pull the latest master branch of TinyUsb in ${PICO_SDK_PATH}/lib/tinyusb/")
+    endif()
+else()
+    # disable PIO USB support if PICO_PIO_USB_PATH is not set
+    set(ENABLE_PIO_USB 0 CACHE BOOL "Enable PIO USB support")
 endif()
 
 # Default tinyusb board type
@@ -241,7 +247,7 @@ elseif ( HW_CONFIG EQUAL 6 )
 endif ( )
 
 if (NOT ENABLE_PIO_USB ) 
-    set(ENABLE_PIO_USB 0)
+    set(ENABLE_PIO_USB 0 CACHE BOOL "Enable PIO USB support")
 endif()
 # --------------------------------------------------------------------
 message("Hardware configuration: ${HW_CONFIG}")
