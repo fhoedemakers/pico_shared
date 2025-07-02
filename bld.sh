@@ -218,10 +218,14 @@ fi
 # if [ "$PICO_PLATFORM" = "rp2350-arm-s" ] ; then
 # 	UF2="pico2_$UF2"
 # fi	
+PIOUSB=
+if [ $USEPIOUSB -eq 1 ] ; then
+	PIOUSB="_pio_usb"
+fi	
 if [ "$PICO_PLATFORM" = "rp2350-riscv" ] ; then
-	UF2="${PICO_BOARD}_riscv_$UF2"
+	UF2="${PICO_BOARD}${PIOUSB}_riscv_$UF2"
 else
-	UF2="${PICO_BOARD}_$UF2"
+	UF2="${PICO_BOARD}${PIOUSB}_$UF2"
 fi
 echo "Building $PROJECT"
 echo "Using Pico SDK version: $SDKVERSION"
