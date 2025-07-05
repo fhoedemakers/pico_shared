@@ -577,6 +577,8 @@ static char *globalErrorMessage;
 
 void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, const char *allowedExtensions)
 {
+    int margintop = dvi_->getBlankSettings().top;
+    int marginbottom = dvi_->getBlankSettings().bottom;
     // Use the entire screen resolution of 320x240 pixels. This makes a 40x30 screen with 8x8 font possible.
     scaleMode8_7_ = Frens::applyScreenMode(ScreenMode::NOSCANLINE_1_1);
     dvi_->getBlankSettings().top = 0;
@@ -840,6 +842,7 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
                             snprintf(fullPath, FF_MAX_LFN, "%s/%s", curdir, selectedRomOrFolder);
                             printf("Full path: %s\n", fullPath);
                         }   
+                        Frens::freePsram((void *)ROM_FILE_ADDR);
                         ROM_FILE_ADDR = (uintptr_t) Frens::flashromtoPsram(fullPath, false);
                     }
                     else
@@ -942,8 +945,13 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
     free(screenBuffer);
     free(buffer);
 
-
+   
     Frens::savesettings();
+
+    // Reset the screen mode to the original settings
+    scaleMode8_7_ = Frens::applyScreenMode(settings.screenMode);
+    dvi_->getBlankSettings().top = margintop;
+    dvi_->getBlankSettings().bottom = marginbottom;
     if (!Frens::isPsramEnabled())
     {
 #if WII_PIN_SDA >= 0 and WII_PIN_SCL >= 0

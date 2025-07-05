@@ -68,11 +68,24 @@ namespace Frens
     {
         return psRamEnabled;
     }
+
+    void freePsram(void *pMem)
+    {
 #if PSRAM_CS_PIN
-    PicoPlusPsram &psram_ = PicoPlusPsram::getInstance();
-    
+        if (pMem)
+        {
+            PicoPlusPsram &psram_ = PicoPlusPsram::getInstance();
+            size_t uFreeing = psram_.GetSize(pMem);
+            printf("Freeing %zu bytes from PSRAM\n", uFreeing);
+            psram_.Free(pMem);
+        }
+#endif
+    } 
+
     bool initPsram()
     {
+#if PSRAM_CS_PIN
+         PicoPlusPsram &psram_ = PicoPlusPsram::getInstance();
         if (psram_.GetMemorySize() > 0)
         {
             psRamEnabled = true;
@@ -85,9 +98,10 @@ namespace Frens
             psramMemorySize = 0;
             printf("PSRAM initialization failed or not present.\n");
         }
+#endif
         return psRamEnabled;
     }
-#endif
+
     bool isFrameBufferUsed()
     {
         return usingFramebuffer;
@@ -419,6 +433,7 @@ namespace Frens
     void *flashromtoPsram(char *selectdRom, bool swapbytes)
     {
 #if PSRAM_CS_PIN
+        PicoPlusPsram &psram_ = PicoPlusPsram::getInstance();
         // Get filesize of rom
         FIL fil;
         FRESULT fr;
