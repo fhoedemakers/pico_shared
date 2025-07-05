@@ -29,7 +29,7 @@ function usage() {
 	echo "        Custom pcb"
 	echo "     3: Adafruit Feather RP2040 DVI"
 	echo "     4: Waveshare RP2040-PiZero"
-	echo "     5: Adafruit Metro RP2350"
+	echo "     5: Adafruit Metro RP2350 (latest branch of TinyUSB is required for this board)"
 	echo "     6: Waveshare RP2040-Zero/RP2350-Zero with custom PCB"
 	echo "  -m: Run cmake only, do not build the project"
 	echo "  -h: display this help"
