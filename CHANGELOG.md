@@ -1,5 +1,10 @@
 # Release notes
 
+## 5/7/2025
+
+- Enabled PIO-USB for certain board configurations.
+- Refactored bld.sh
+
 ## 7/6/2025
 
 - Enable I2S audio on the Pimoroni Pico DV Demo Base. This allows audio output through external speakers connected to the line-out jack of the Pimoroni Pico DV Demo Base. 
