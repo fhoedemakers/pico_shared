@@ -23,7 +23,9 @@
 #include "wiipad.h"
 #include "settings.h"
 #include "FrensHelpers.h"
-
+#if PSRAM_CS_PIN
+#include "PicoPlusPsram.h"
+#endif
 // Pico W devices use a GPIO on the WIFI chip for the LED,
 // so when building for Pico W, CYW43_WL_GPIO_LED_PIN will be defined
 // NOTE: Building for Pico2 W makes the emulator not work: ioctl timeouts and red flicker
@@ -60,6 +62,32 @@ namespace Frens
     mutex_t framebuffer_mutex;
     static bool usingFramebuffer = false;
 
+    bool psRamEnabled = false;
+    size_t psramMemorySize = 0;
+    bool isPsramEnabled()
+    {
+        return psRamEnabled;
+    }
+#if PSRAM_CS_PIN
+    PicoPlusPsram &psram_ = PicoPlusPsram::getInstance();
+    
+    bool initPsram()
+    {
+        if (psram_.GetMemorySize() > 0)
+        {
+            psRamEnabled = true;
+            psramMemorySize = psram_.GetMemorySize();
+            printf("PSRAM initialized with size: %zu bytes\n", psramMemorySize);
+        }
+        else
+        {
+            psRamEnabled = false;
+            psramMemorySize = 0;
+            printf("PSRAM initialization failed or not present.\n");
+        }
+        return psRamEnabled;
+    }
+#endif
     bool isFrameBufferUsed()
     {
         return usingFramebuffer;
@@ -388,6 +416,93 @@ namespace Frens
         return scaleMode8_7_;
     }
 
+    void *flashromtoPsram(char *selectdRom, bool swapbytes)
+    {
+#if PSRAM_CS_PIN
+        // Get filesize of rom
+        FIL fil;
+        FRESULT fr;
+        size_t tmpSize;
+        bool ok = false;
+        printf("Reading current game from %s and starting emulator\n", selectdRom);
+        if (swapbytes)
+        {
+            printf("Rom will be byteswapped.\n");
+        }
+        fr = f_open(&fil, selectdRom, FA_READ);
+        if (fr != FR_OK)
+        {
+            snprintf(ErrorMessage, 40, "Cannot open %s:%d\n", selectdRom, fr);
+            printf("%s\n", ErrorMessage);
+            selectdRom[0] = 0;
+            return nullptr;
+        }
+        FSIZE_t filesize = f_size(&fil);
+        void *pMem = psram_.Malloc(filesize);
+        if (!pMem)
+        {
+            snprintf(ErrorMessage, 40, "Cannot allocate %d bytes in PSRAM\n", filesize);
+            printf("%s\n", ErrorMessage);
+            selectdRom[0] = 0;
+            f_close(&fil);
+            return nullptr;
+        }
+        // write contents of file into pMem
+        size_t r;
+        fr = f_read(&fil, pMem, filesize, &r);
+        if (fr != FR_OK)
+        {
+            snprintf(ErrorMessage, 40, "Cannot read %s:%d\n", selectdRom, fr);
+            selectdRom[0] = 0;
+            printf("%s\n", ErrorMessage);
+            psram_.Free(pMem);
+        }
+        else
+        {
+            if (r != filesize)
+            {
+                snprintf(ErrorMessage, 40, "Read %d bytes, expected %d bytes\n", r, filesize);
+                printf("%s\n", ErrorMessage);
+                selectdRom[0] = 0;
+                psram_.Free(pMem);
+            }
+            else
+            {
+                if (swapbytes)
+                {
+                    // swap bytes in pMem
+                    for (size_t i = 0; i < filesize; i += 2)
+                    {
+                        unsigned char *p = (unsigned char *)pMem;
+                        unsigned char temp = p[i];
+                        p[i] = p[i + 1];
+                        p[i + 1] = temp;
+                    }
+                }
+                ok = true;
+                printf("Read %d bytes from %s into PSRAM at %p\n", r, selectdRom, pMem);
+                selectdRom[0] = 0; //
+            }
+            f_close(&fil);
+        }
+        if (ok)
+        {
+            printf("Starting emulator with rom in PSRAM at %p\n", pMem);
+            // return pointer to pMem
+            return pMem;
+        }
+        else
+        {
+            // return nullptr if error
+            return nullptr;
+        }
+#else 
+        // PSRAM not enabled, return nullptr
+        printf("PSRAM not enabled, cannot flash rom to PSRAM\n");
+        selectdRom[0] = 0;
+        return nullptr;
+#endif
+    }
     void flashrom(char *selectedRom, bool swapbytes)
     {
         // Determine loaded rom
@@ -743,7 +858,6 @@ namespace Frens
         return dma_chan;
     }
 
-
     void initVintageControllers(uint32_t CPUFreqKHz)
     {
 #if NES_PIN_CLK != -1
@@ -756,7 +870,7 @@ namespace Frens
         wiipad_begin();
 #endif
     }
-    
+
     // Initialize the PIO USB board
     // replaces board_init() in $PICO_SDK_PATH/lib/tinyusb/src/hw/bsp/rp2040/family.c
     void pio_usb_board_init(void)
@@ -774,7 +888,7 @@ namespace Frens
         pio_usb_configuration_t pio_cfg = PIO_USB_DEFAULT_CONFIG;
         // find an unused DMA channel
         pio_cfg.tx_ch = GetUnUsedDMAChan();
-        // 
+        //
         pio_cfg.pio_rx_num = PIO_USB_USE_PIO;
         pio_cfg.pio_tx_num = PIO_USB_USE_PIO;
         pio_cfg.pin_dp = PICO_DEFAULT_PIO_USB_DP_PIN;
@@ -816,22 +930,30 @@ namespace Frens
         {
             printf("Error initializing LED: %d\n", rc);
         }
-
-        // Calculate the address in flash where roms will be stored
-        printf("Flash binary start    : 0x%08x\n", &__flash_binary_start);
-        printf("Flash binary end      : 0x%08x\n", &__flash_binary_end);
-        printf("Flash size in bytes   :   %8d (%d)Kbytes\n", PICO_FLASH_SIZE_BYTES, PICO_FLASH_SIZE_BYTES / 1024);
-        uint8_t *flash_end = (uint8_t *)&__flash_binary_start + PICO_FLASH_SIZE_BYTES - 1;
-        printf("Flash end             : 0x%08x\n", flash_end);
-        printf("Size program in flash :   %8d bytes (%d) Kbytes\n", &__flash_binary_end - &__flash_binary_start, (&__flash_binary_end - &__flash_binary_start) / 1024);
-        // round ROM_FILE_ADDRESS address up to 4k boundary of flash_binary_end
-        ROM_FILE_ADDR = ((uintptr_t)&__flash_binary_end + 0xFFF) & ~0xFFF;
-        // ROM_FILE_ADDR =  0x1004a000;
-        //  calculate max rom size
-        maxRomSize = flash_end - (uint8_t *)ROM_FILE_ADDR;
-        printf("ROM_FILE_ADDR         : 0x%08x\n", ROM_FILE_ADDR);
-        printf("Max ROM size          :   %8d bytes (%d) KBytes\n", maxRomSize, maxRomSize / 1024);
-
+#if PSRAM_CS_PIN
+        initPsram();
+#endif
+        if (psRamEnabled == false)
+        {
+            // Calculate the address in flash where roms will be stored
+            printf("Flash binary start    : 0x%08x\n", &__flash_binary_start);
+            printf("Flash binary end      : 0x%08x\n", &__flash_binary_end);
+            printf("Flash size in bytes   :   %8d (%d)Kbytes\n", PICO_FLASH_SIZE_BYTES, PICO_FLASH_SIZE_BYTES / 1024);
+            uint8_t *flash_end = (uint8_t *)&__flash_binary_start + PICO_FLASH_SIZE_BYTES - 1;
+            printf("Flash end             : 0x%08x\n", flash_end);
+            printf("Size program in flash :   %8d bytes (%d) Kbytes\n", &__flash_binary_end - &__flash_binary_start, (&__flash_binary_end - &__flash_binary_start) / 1024);
+            // round ROM_FILE_ADDRESS address up to 4k boundary of flash_binary_end
+            ROM_FILE_ADDR = ((uintptr_t)&__flash_binary_end + 0xFFF) & ~0xFFF;
+            // ROM_FILE_ADDR =  0x1004a000;
+            //  calculate max rom size
+            maxRomSize = flash_end - (uint8_t *)ROM_FILE_ADDR;
+            printf("ROM_FILE_ADDR         : 0x%08x\n", ROM_FILE_ADDR);
+            printf("Max ROM size          :   %8d bytes (%d) KBytes\n", maxRomSize, maxRomSize / 1024);
+        } else {
+            maxRomSize = psramMemorySize;
+            printf("PSRAM size            :   %8zu bytes (%zu) KBytes\n", psramMemorySize, psramMemorySize / 1024);
+            printf("Max ROM size          :   %8zu bytes (%zu) KBytes\n", maxRomSize, maxRomSize / 1024);
+        }
         // reset settings to default in case SD card could not be mounted
         resetsettings();
         if (initSDCard())
@@ -843,8 +965,11 @@ namespace Frens
             // The watchdog timer is used to detect if the reboot was caused by the menu.
             // Use watchdog_enable_caused_reboot in stead of watchdog_caused_reboot because
             // when reset is pressed while in game, the watchdog will also be triggered.
-            if (watchdog_enable_caused_reboot())
+            if (watchdog_enable_caused_reboot() && psRamEnabled == false)
             {
+                // If the watchdog was triggered, we assume that the menu started the game.
+                // So we flash the rom to flash memory.
+                printf("Rebooted by menu, flashing rom.\n");
                 flashrom(selectedRom, swapbytes);
             }
         }

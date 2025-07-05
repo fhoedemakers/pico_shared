@@ -199,10 +199,11 @@ elseif ( HW_CONFIG EQUAL 5 )
     set(PICO_AUDIO_I2S_CLOCK_PINS_SWAPPED 0 CACHE STRING "Set to 1 if the I2S clock pins are swapped")
     set(BOARD "adafruit_metro_rp2350")         # found in $PICO__SDK_PATH/lib/tinyusb/hw/bsp/rp2040/boards/adafruit_metro_rp2350/board.h
     set(PICO_BOARD "adafruit_metro_rp2350")    # found in $PICO__SDK_PATH/lib/tinyusb/hw/bsp/rp2040/boards/adafruit_metro_rp2350/adafruit_metro_rp2350.h
-    #set(ENABLE_PIO_USB 1  CACHE BOOL "Enable PIO USB support")
+    set(ENABLE_PIO_USB 1  CACHE BOOL "Enable PIO USB support")
     set(PIO_USB_USE_PIO 1 CACHE BOOL "Select the PIO used for PIO-USB")
     set(PIO_DP_PLUS_PIN -1 CACHE STRING "PIO USB DP pin.")
     set(NEEDS_LATEST_TINYUSB_SDK 1 CACHE BOOL "Set to 1 if the latest TinyUSB SDK is needed for this board")
+    set(PSRAM_CS_PIN 0 CACHE STRING "Select the GPIO pin for PSRAM chip select")
 elseif ( HW_CONFIG EQUAL 6 )
     # --------------------------------------------------------------------
 	# RP2040/RP2350 Tiny With PCB
@@ -237,7 +238,9 @@ elseif ( HW_CONFIG EQUAL 6 )
     set(PIO_DP_PLUS_PIN -1 CACHE STRING "PIO USB DP pin.")
 endif ( )
 
-
+if (NOT DEFINED PSRAM_CS_PIN)
+    set(PSRAM_CS_PIN 0 CACHE STRING "Select the GPIO pin for PSRAM chip select")
+endif()
 if (NOT DEFINED ENABLE_PIO_USB ) 
     set(ENABLE_PIO_USB 0 CACHE BOOL "Enable PIO USB support")
 endif()

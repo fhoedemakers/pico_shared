@@ -365,18 +365,21 @@ void DrawScreen(int selectedRow)
         putText(SCREEN_COLS / 2 - strlen(tmpstr) / 2, SCREEN_ROWS - 1, tmpstr, CBLUE, CWHITE);
         if (strcmp(connectedGamePadName, "Dual Shock 4") == 0 || strcmp(connectedGamePadName, "Dual Sense") == 0 || strcmp(connectedGamePadName, "PSClassic") == 0)
         {
-            strcpy(s, "O Select, X Back"); 
-        } else if (strcmp(connectedGamePadName, "XInput") == 0 || strncmp(connectedGamePadName, "Genesis", 7) == 0)
+            strcpy(s, "O Select, X Back");
+        }
+        else if (strcmp(connectedGamePadName, "XInput") == 0 || strncmp(connectedGamePadName, "Genesis", 7) == 0)
         {
             strcpy(s, "B Select, A Back");
-        } else if (strcmp(connectedGamePadName, "Keyboard") == 0)
+        }
+        else if (strcmp(connectedGamePadName, "Keyboard") == 0)
         {
             strcpy(s, "X, Select, Z Back");
-        }else
+        }
+        else
         {
             strcpy(s, "A Select, B Back");
         }
-       putText(1, ENDROW + 2, s, settings.fgcolor, settings.bgcolor);
+        putText(1, ENDROW + 2, s, settings.fgcolor, settings.bgcolor);
     }
 
     for (auto line = 0; line < 240; line++)
@@ -420,7 +423,7 @@ void displayRoms(Frens::RomLister romlister, int startIndex)
     {
         putText(i, ENDROW + 1, "-", settings.fgcolor, settings.bgcolor);
     }
-    
+
     // strcpy(s, "A Select, B Back");
     // putText(1, ENDROW + 2, s, settings.fgcolor, settings.bgcolor);
     putText(SCREEN_COLS - strlen(PICOHWNAME_) - 1, ENDROW + 2, PICOHWNAME_, settings.fgcolor, settings.bgcolor);
@@ -581,7 +584,7 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
 
     Frens::SetFrameBufferProcessScanLineFunction(processMenuScanLine);
 
-    abSwapped = 1;  // Swap A and B buttons, so menu is consistent accrross different emilators
+    abSwapped = 1; // Swap A and B buttons, so menu is consistent accrross different emilators
 
     //
     menutitle = (char *)title;
@@ -754,7 +757,7 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
                         settings.firstVisibleRowINDEX = 0;
                         settings.selectedRow = STARTROW;
                         displayRoms(romlister, settings.firstVisibleRowINDEX);
-                        fr = my_getcwd(settings.currentDir, FF_MAX_LFN);  // f_getcwd(settings.currentDir, FF_MAX_LFN);
+                        fr = my_getcwd(settings.currentDir, FF_MAX_LFN); // f_getcwd(settings.currentDir, FF_MAX_LFN);
                         if (fr == FR_OK)
                         {
                             printf("Current dir: %s\n", settings.currentDir);
@@ -770,7 +773,7 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
                     printf("Cannot get current dir: %d\n", fr);
                 }
             }
-            else if ((PAD1_Latch & START) == START && (PAD1_Latch & SELECT) != SELECT)
+            else if ((PAD1_Latch & START) == START && ((PAD1_Latch & SELECT) != SELECT) && !Frens::isPsramEnabled())
             {
                 showLoadingScreen();
                 // reboot and start emulator with currently loaded game
@@ -805,7 +808,7 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
                     settings.selectedRow = STARTROW;
                     displayRoms(romlister, settings.firstVisibleRowINDEX);
                     // get full path name of folder
-                    fr = my_getcwd(settings.currentDir, FF_MAX_LFN);  //  f_getcwd(settings.currentDir, FF_MAX_LFN);
+                    fr = my_getcwd(settings.currentDir, FF_MAX_LFN); //  f_getcwd(settings.currentDir, FF_MAX_LFN);
                     if (fr != FR_OK)
                     {
                         printf("Cannot get current dir: %d\n", fr);
@@ -814,55 +817,81 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
                 }
                 else
                 {
-                    showLoadingScreen();
                     FRESULT fr;
                     FIL fil;
+                    showLoadingScreen();
                     char curdir[FF_MAX_LFN];
-                    fr = my_getcwd(curdir, sizeof(curdir));    // f_getcwd(curdir, sizeof(curdir));
+                    fr = my_getcwd(curdir, sizeof(curdir)); // f_getcwd(curdir, sizeof(curdir));
                     printf("Current dir: %s\n", curdir);
-                    // Create file containing full path name currently loaded rom
-                    // The contents of this file will be used by the emulator to flash and start the correct rom in main.cpp
-                    printf("Creating %s\n", ROMINFOFILE);
-                    fr = f_open(&fil, ROMINFOFILE, FA_CREATE_ALWAYS | FA_WRITE);
-                    if (fr == FR_OK)
+                    if (Frens::isPsramEnabled())
                     {
-                        for (auto i = 0; i < strlen(curdir); i++)
+                        char fullPath[FF_MAX_LFN];
+                        // concatenate the current directory and the selected rom or folder
+                        // and save it to the global variable selectedRomOrFolder
+                        if (strlen(curdir) + strlen(selectedRomOrFolder) + 2 > FF_MAX_LFN)
                         {
-
-                            int x = f_putc(curdir[i], &fil);
-                            printf("%c", curdir[i]);
-                            if (x < 0)
-                            {
-                                snprintf(globalErrorMessage, 40, "Error writing file %d", fr);
-                                printf("%s\n", globalErrorMessage);
-                                errorInSavingRom = true;
-                                break;
-                            }
+                            snprintf(globalErrorMessage, 40, "Path too long: %s/%s", curdir, selectedRomOrFolder);
+                            printf("%s\n", globalErrorMessage);
+                            errorInSavingRom = true;
+                            break;
                         }
-                        f_putc('/', &fil);
-                        printf("%c", '/');
-                        for (auto i = 0; i < strlen(selectedRomOrFolder); i++)
+                        else
                         {
-
-                            int x = f_putc(selectedRomOrFolder[i], &fil);
-                            printf("%c", selectedRomOrFolder[i]);
-                            if (x < 0)
-                            {
-                                snprintf(globalErrorMessage, 40, "Error writing file %d", fr);
-                                printf("%s\n", globalErrorMessage);
-                                errorInSavingRom = true;
-                                break;
-                            }
-                        }
-                        printf("\n");
+                            snprintf(fullPath, FF_MAX_LFN, "%s/%s", curdir, selectedRomOrFolder);
+                            printf("Full path: %s\n", fullPath);
+                        }   
+                        ROM_FILE_ADDR = (uintptr_t) Frens::flashromtoPsram(fullPath, false);
                     }
                     else
                     {
-                        printf("Cannot create %s:%d\n", ROMINFOFILE, fr);
-                        snprintf(globalErrorMessage, 40, "Cannot create %s:%d", ROMINFOFILE, fr);
-                        errorInSavingRom = true;
+                        // If PSRAM is not enabled, we need to create a file with the full path name of the rom
+                        // The emulator will read this file and flash the rom in main.cpp
+                       
+                        
+                        // Create file containing full path name currently loaded rom
+                        // The contents of this file will be used by the emulator to flash and start the correct rom in main.cpp
+                        printf("Creating %s\n", ROMINFOFILE);
+                        fr = f_open(&fil, ROMINFOFILE, FA_CREATE_ALWAYS | FA_WRITE);
+                        if (fr == FR_OK)
+                        {
+                            for (auto i = 0; i < strlen(curdir); i++)
+                            {
+
+                                int x = f_putc(curdir[i], &fil);
+                                printf("%c", curdir[i]);
+                                if (x < 0)
+                                {
+                                    snprintf(globalErrorMessage, 40, "Error writing file %d", fr);
+                                    printf("%s\n", globalErrorMessage);
+                                    errorInSavingRom = true;
+                                    break;
+                                }
+                            }
+                            f_putc('/', &fil);
+                            printf("%c", '/');
+                            for (auto i = 0; i < strlen(selectedRomOrFolder); i++)
+                            {
+
+                                int x = f_putc(selectedRomOrFolder[i], &fil);
+                                printf("%c", selectedRomOrFolder[i]);
+                                if (x < 0)
+                                {
+                                    snprintf(globalErrorMessage, 40, "Error writing file %d", fr);
+                                    printf("%s\n", globalErrorMessage);
+                                    errorInSavingRom = true;
+                                    break;
+                                }
+                            }
+                            printf("\n");
+                        }
+                        else
+                        {
+                            printf("Cannot create %s:%d\n", ROMINFOFILE, fr);
+                            snprintf(globalErrorMessage, 40, "Cannot create %s:%d", ROMINFOFILE, fr);
+                            errorInSavingRom = true;
+                        }
+                        f_close(&fil);
                     }
-                    f_close(&fil);
                     // break out of loop and reboot
                     // rom will be flashed and started by main.cpp
                     // Cannot flash here because of lockups (when using wii controller) and sound issues
@@ -912,21 +941,24 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
     }
     free(screenBuffer);
     free(buffer);
-#if WII_PIN_SDA >= 0 and WII_PIN_SCL >= 0
-    wiipad_end();
-#endif
+
 
     Frens::savesettings();
-
-    // Don't return from this function call, but reboot in order to get avoid several problems with sound and lockups (WII-pad)
-    // After reboot the emulator will and flash start the selected game.
-    Frens::resetWifi();
-    printf("Rebooting...\n");
-    watchdog_enable(100, 1);
-    while (1)
+    if (!Frens::isPsramEnabled())
     {
-        tight_loop_contents();
-        // printf("Waiting for reboot...\n");
-    };
-    // Never return
+#if WII_PIN_SDA >= 0 and WII_PIN_SCL >= 0
+        wiipad_end();
+#endif
+        // Don't return from this function call, but reboot in order to get avoid several problems with sound and lockups (WII-pad)
+        // After reboot the emulator will and flash start the selected game.
+        Frens::resetWifi();
+        printf("Rebooting...\n");
+        watchdog_enable(100, 1);
+        while (1)
+        {
+            tight_loop_contents();
+            // printf("Waiting for reboot...\n");
+        };
+        // Never return
+    }
 }

@@ -8,6 +8,10 @@
 #include "dvi/dvi.h"
 #include "dvi_configs.h"
 #include "external_audio.h"
+
+#ifndef PSRAM_CS_PIN
+#define PSRAM_CS_PIN 0 // 0 is no PSRAM
+#endif
 enum class ScreenMode
     {
         SCANLINE_8_7,
@@ -80,6 +84,9 @@ namespace Frens
     void markFrameReadyForReendering(bool waitForFrameReady = false);
     typedef void (*ProcessScanLineFunction)(int line, uint8_t *framebuffer, uint16_t *dvibuffer);
     void SetFrameBufferProcessScanLineFunction(ProcessScanLineFunction processScanLineFunction);
+    bool isPsramEnabled();
+    void *flashromtoPsram(char *selectdRom, bool swapbytes);
+   
     //extern volatile ProcessScanLineFunction processScanLineFunction;
    
 } // namespace Frens
