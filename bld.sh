@@ -184,7 +184,47 @@ if [[ $USEPICOW -eq 1 && $HWCONFIG -gt 2 ]] ; then
 	exit 1
 fi
 
-
+if [[ $HWCONFIG -eq 5 || $USEPIOUSB -eq 1 ]] ; then
+	usbvalid=1
+	if [ ! -d "${PICO_SDK_PATH}/lib/tinyusb/hw/bsp/rp2040/boards/adafruit_metro_rp2350" ] ; then
+		echo "You have not the latest master branch of the TinyUSB library."
+		if [[ $HWCONFIG -eq 5 ]] ; then 
+			 echo "This is needed for the Adafruit Metro RP2350."
+		fi
+		if [[ $USEPIOUSB -eq 1 ]] ; then
+			echo "This is needed for PIO USB support."
+		fi	
+		echo "Please install the latest TinyUSB library:"
+		echo " cd $PICO_SDK_PATH/lib/tinyusb"
+		echo " git checkout master"
+		echo " git pull"
+		usbvalid=0	
+	fi
+	piovalid=1
+	if [[ $USEPIOUSB -eq 1 ]] ; then
+		# check if environment var PICO_PIO_USB_PATH is set and points to a valid path	
+		if [ -z "$PICO_PIO_USB_PATH" ] ; then
+			echo "PICO_PIO_USB_PATH not set."
+			echo "Please set the PICO_PIO_USB_PATH environment variable to the location of the PIO USB library"
+			piovalid=0
+		elif [ ! -r "${PICO_PIO_USB_PATH}/src/pio_usb.h" ] ; then
+			echo "No valid PIO USB repo found."
+			echo "Please set the PICO_PIO_USB_PATH environment variable to the location of the PIO USB library"
+			piovalid=0
+		fi
+		if [ $piovalid -eq 0 ] ; then
+			echo "To install the PIO USB library:"
+			echo " git clone https://github.com/sekigon-gonnoc/Pico-PIO-USB.git"
+			echo " and set the PICO_PIO_USB_PATH environment variable to the location of the Pico-PIO-USB repository"
+			echo " Example: export PICO_PIO_USB_PATH=~/Pico-PIO-USB"
+			echo " or add it to your .bashrc file"
+		fi
+	fi
+	if [[ $piovalid -eq 0 || $usbvalid -eq 0 ]] ; then
+		echo "Please fix the above errors and try again."
+		exit 1
+	fi
+fi
 
 case $HWCONFIG in
 	1)
