@@ -203,7 +203,7 @@ elseif ( HW_CONFIG EQUAL 5 )
     set(PIO_USB_USE_PIO 1 CACHE BOOL "Select the PIO used for PIO-USB")
     set(PIO_DP_PLUS_PIN -1 CACHE STRING "PIO USB DP pin.")
     set(NEEDS_LATEST_TINYUSB_SDK 1 CACHE BOOL "Set to 1 if the latest TinyUSB SDK is needed for this board")
-    set(PSRAM_CS_PIN 0 CACHE STRING "Select the GPIO pin for PSRAM chip select")
+    set(PSRAM_CS_PIN 47 CACHE STRING "Select the GPIO pin for PSRAM chip select")
 elseif ( HW_CONFIG EQUAL 6 )
     # --------------------------------------------------------------------
 	# RP2040/RP2350 Tiny With PCB
