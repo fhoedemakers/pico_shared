@@ -931,7 +931,9 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
             displayRoms(romlister, settings.firstVisibleRowINDEX);
         }
     } // while 1
-    // Wait until user has released all buttons
+   
+    ClearScreen(CBLACK); // Removes artifacts from previous screen
+     // Wait until user has released all buttons
     while (1)
     {
         Menu_LoadFrame();
