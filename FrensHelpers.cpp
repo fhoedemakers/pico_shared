@@ -71,7 +71,7 @@ namespace Frens
 
     void freePsram(void *pMem)
     {
-#if PSRAM_CS_PIN
+#if PICO_RP2350 && PSRAM_CS_PIN
         if (pMem)
         {
             PicoPlusPsram &psram_ = PicoPlusPsram::getInstance();
@@ -84,20 +84,26 @@ namespace Frens
 
     bool initPsram()
     {
-#if PSRAM_CS_PIN
-         PicoPlusPsram &psram_ = PicoPlusPsram::getInstance();
+        psRamEnabled = false;
+        psramMemorySize = 0;
+
+        // Initialize PSRAM if available
+#if PICO_RP2350 && PSRAM_CS_PIN
+        PicoPlusPsram &psram_ = PicoPlusPsram::getInstance();
         if (psram_.GetMemorySize() > 0)
         {
             psRamEnabled = true;
             psramMemorySize = psram_.GetMemorySize();
-            printf("PSRAM initialized with size: %zu bytes\n", psramMemorySize);
+            printf("PSRAM initialized.\n");
         }
         else
         {
             psRamEnabled = false;
             psramMemorySize = 0;
-            printf("PSRAM initialization failed or not present.\n");
+            printf("PSRAM initialization failed or not present. Games will be loaded into flash.\n");
         }
+#else
+        printf("PSRAM not available. Games will be loaded into flash.\n");
 #endif
         return psRamEnabled;
     }
@@ -432,7 +438,7 @@ namespace Frens
 
     void *flashromtoPsram(char *selectdRom, bool swapbytes)
     {
-#if PSRAM_CS_PIN
+#if PICO_RP2350 && PSRAM_CS_PIN
         PicoPlusPsram &psram_ = PicoPlusPsram::getInstance();
         // Get filesize of rom
         FIL fil;
@@ -945,10 +951,8 @@ namespace Frens
         {
             printf("Error initializing LED: %d\n", rc);
         }
-#if PSRAM_CS_PIN
-        initPsram();
-#endif
-        if (psRamEnabled == false)
+        // Init PSRAM if available, otherwise use flash memory to store roms.
+        if (  initPsram() == false)
         {
             // Calculate the address in flash where roms will be stored
             printf("Flash binary start    : 0x%08x\n", &__flash_binary_start);
@@ -966,8 +970,8 @@ namespace Frens
             printf("Max ROM size          :   %8d bytes (%d) KBytes\n", maxRomSize, maxRomSize / 1024);
         } else {
             maxRomSize = psramMemorySize;
-            printf("PSRAM size            :   %8zu bytes (%zu) KBytes\n", psramMemorySize, psramMemorySize / 1024);
-            printf("Max ROM size          :   %8zu bytes (%zu) KBytes\n", maxRomSize, maxRomSize / 1024);
+            printf("  PSRAM size            :   %8zu bytes (%zu) KBytes\n", psramMemorySize, psramMemorySize / 1024);
+            printf("  Max ROM size          :   %8zu bytes (%zu) KBytes\n", maxRomSize, maxRomSize / 1024);
         }
         // reset settings to default in case SD card could not be mounted
         resetsettings();
@@ -980,7 +984,7 @@ namespace Frens
             // The watchdog timer is used to detect if the reboot was caused by the menu.
             // Use watchdog_enable_caused_reboot in stead of watchdog_caused_reboot because
             // when reset is pressed while in game, the watchdog will also be triggered.
-            if (watchdog_enable_caused_reboot() && psRamEnabled == false)
+            if (watchdog_enable_caused_reboot() && !isPsramEnabled())
             {
                 // If the watchdog was triggered, we assume that the menu started the game.
                 // So we flash the rom to flash memory.
