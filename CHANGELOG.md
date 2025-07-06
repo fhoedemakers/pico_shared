@@ -2,7 +2,7 @@
 
 ## 6/7/2025
 
-- If PSRAM is present (default pin 47), ROMs load from the SD card into PSRAM instead of flash (RP2350 boards only). This speeds up loading because the board no longer has to reboot to copy the ROM from the SD card to flash.
+- If PSRAM is present (default pin 47), ROMs load from the SD card into PSRAM instead of flash (RP2350 boards only). This speeds up loading because the board no longer has to reboot to copy the ROM from the SD card to flash. Based on https://github.com/AndrewCapon/PicoPlusPsram
 - Added -s option to bld.sh to allow an alternative GPIO pin for PSRAM chip select.
 - Added support for Pimoroni Pico Plus 2. (Use hardware configuration 2, which is also used for breadboard and PCB). No extra binary needed.
 
