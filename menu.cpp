@@ -827,6 +827,7 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
                     printf("Current dir: %s\n", curdir);
                     if (Frens::isPsramEnabled())
                     {
+                        // If PSRAM is enabled, we need to copy the rom to PSRAM
                         char fullPath[FF_MAX_LFN];
                         // concatenate the current directory and the selected rom or folder
                         // and save it to the global variable selectedRomOrFolder
@@ -835,23 +836,23 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
                             snprintf(globalErrorMessage, 40, "Path too long: %s/%s", curdir, selectedRomOrFolder);
                             printf("%s\n", globalErrorMessage);
                             errorInSavingRom = true;
-                            break;
                         }
                         else
                         {
                             snprintf(fullPath, FF_MAX_LFN, "%s/%s", curdir, selectedRomOrFolder);
                             printf("Full path: %s\n", fullPath);
+                            // If there is already a rom loaded in PSRAM, free it
+                            Frens::freePsram((void *)ROM_FILE_ADDR);
+                            // and load the new rom to PSRAM
+                            printf("Loading rom to PSRAM: %s\n", fullPath);
+                            ROM_FILE_ADDR = (uintptr_t) Frens::flashromtoPsram(fullPath, false);
                         }   
-                        Frens::freePsram((void *)ROM_FILE_ADDR);
-                        ROM_FILE_ADDR = (uintptr_t) Frens::flashromtoPsram(fullPath, false);
+                        
                     }
                     else
                     {
-                        // If PSRAM is not enabled, we need to create a file with the full path name of the rom
-                        // The emulator will read this file and flash the rom in main.cpp
-                       
-                        
-                        // Create file containing full path name currently loaded rom
+                        // If PSRAM is not enabled, we need to create a file with the full path name of the rom and reboot.
+                        // The emulator will read this file and flash the rom in main.cpp.
                         // The contents of this file will be used by the emulator to flash and start the correct rom in main.cpp
                         printf("Creating %s\n", ROMINFOFILE);
                         fr = f_open(&fil, ROMINFOFILE, FA_CREATE_ALWAYS | FA_WRITE);
@@ -894,11 +895,11 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
                             errorInSavingRom = true;
                         }
                         f_close(&fil);
+                       
                     }
-                    // break out of loop and reboot
-                    // rom will be flashed and started by main.cpp
-                    // Cannot flash here because of lockups (when using wii controller) and sound issues
-                    break;
+                    if (!errorInSavingRom) {                          
+                        break;  // from while(1) loop, so we can reboot or return to main.cpp
+                    }
                 }
             }
         }
@@ -954,13 +955,16 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
     scaleMode8_7_ = Frens::applyScreenMode(settings.screenMode);
     dvi_->getBlankSettings().top = margintop;
     dvi_->getBlankSettings().bottom = marginbottom;
+    // When PSRAM is not enabled, we need to reboot the system to start the emulator with the selected rom. In this case
+    // a reboot is neccessary to avoid lockups.
+    // If PSRAM is enabled, the rom is already loaded in PSRAM and the emulator will start the rom directly and we don't need to reboot.
     if (!Frens::isPsramEnabled())
     {
 #if WII_PIN_SDA >= 0 and WII_PIN_SCL >= 0
         wiipad_end();
 #endif
         // Don't return from this function call, but reboot in order to get avoid several problems with sound and lockups (WII-pad)
-        // After reboot the emulator will and flash start the selected game.
+        // After reboot the emulator will flash the rom and start the selected game.
         Frens::resetWifi();
         printf("Rebooting...\n");
         watchdog_enable(100, 1);
