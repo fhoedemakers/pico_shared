@@ -1,3 +1,4 @@
+#if PICO_RP2350
 #include "pico/stdlib.h"
 //#include "boards/pimoroni_pico_plus2_rp2350.h"
 #include "hardware/structs/ioqspi.h"
@@ -189,3 +190,4 @@ size_t __no_inline_not_in_flash_func(PicoPlusPsram::Init)(uint cs_pin)
 
     return psram_size;
 }
+#endif // PICO_RP2350
