@@ -18,7 +18,7 @@ function usage() {
 	echo "  -d: build in DEBUG configuration"
 	echo "  -2: build for Pico 2 board (RP2350)"
 	echo "  -r: build for Pico 2 board (RP2350) with riscv core"
-	echo "  -u: enable PIO USB support (default is disabled)"
+	echo "  -u: enable PIO USB support (default is disabled, RP2350 only)"
 	echo "  -s <ps-ram-cs>: specify the GPIO pin for PSRAM chip select (default is 47 for RP2350 boards)"
 	echo "  -w: build for Pico_w or Pico2_w"
 	echo "  -t <path to riscv toolchain>: only needed for riscv, specify the path to the riscv toolchain bin folder"
@@ -230,7 +230,11 @@ if [[ $HWCONFIG -eq 5 || $USEPIOUSB -eq 1 ]] ; then
 		exit 1
 	fi
 fi
-
+# use -u option only for RP2350 boards
+if [[ $USEPIOUSB -eq 1 && $PICO_PLATFORM != rp2350* ]] ; then
+	echo "Option -u (enable PIO-Usb) is only valid for RP2350 boards"
+	exit 1
+fi
 case $HWCONFIG in
 	1)
 		UF2="${APP}PimoroniDV.uf2"
