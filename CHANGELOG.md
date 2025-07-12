@@ -1,4 +1,8 @@
 # Release notes
+## 12/7/2025
+
+- Make PIO USB only available for RP2350, because of memory limitations on RP2040.
+- Move PIO USB to Pio2, this fixes the NES controller not working on controller port 2.
 
 ## 6/7/2025
 
