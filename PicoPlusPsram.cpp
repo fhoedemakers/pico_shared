@@ -107,6 +107,9 @@ size_t __no_inline_not_in_flash_func(PicoPlusPsram::Detect)(void)
 
 size_t __no_inline_not_in_flash_func(PicoPlusPsram::Init)(uint cs_pin) 
 {
+    if (cs_pin == 0) {
+        return 0; // Invalid CS pin
+    }
     gpio_set_function(cs_pin, GPIO_FUNC_XIP_CS1);
 
     size_t psram_size = Detect();

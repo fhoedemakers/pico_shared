@@ -1,5 +1,5 @@
 #pragma once
-
+#if PICO_RP2350
 #include "lwmem/lwmem.h"
 
 class PicoPlusPsram
@@ -122,3 +122,4 @@ class PicoPlusPsram
     lwmem_stats_t m_lwmemStats;
 #endif
 };
+#endif
