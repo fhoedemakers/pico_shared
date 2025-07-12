@@ -7,7 +7,7 @@
 #include "hardware/flash.h"
 #include "hardware/watchdog.h"
 #include "util/exclusive_proc.h"
-#if CFG_TUH_RPI_PIO_USB
+#if CFG_TUH_RPI_PIO_USB && PICO_RP2350
 #include "bsp/board_api.h"
 #include "board.h"
 #include "pio_usb.h"
@@ -894,6 +894,7 @@ namespace Frens
     // replaces board_init() in $PICO_SDK_PATH/lib/tinyusb/src/hw/bsp/rp2040/family.c
     void pio_usb_board_init(void)
     {
+#if PICO_RP2350
 #if (CFG_TUH_ENABLED && CFG_TUH_RPI_PIO_USB) || (CFG_TUD_ENABLED && CFG_TUD_RPI_PIO_USB)
         // power on the PIO USB VBUSEN pin if needed.
 #ifdef PICO_DEFAULT_PIO_USB_VBUSEN_PIN
@@ -912,6 +913,7 @@ namespace Frens
         pio_cfg.pio_tx_num = PIO_USB_USE_PIO;
         pio_cfg.pin_dp = PICO_DEFAULT_PIO_USB_DP_PIN;
         tuh_configure(BOARD_TUH_RHPORT, TUH_CFGID_RPI_PIO_USB_CONFIGURATION, &pio_cfg);
+#endif
 #endif
     }
     void initDVandAudio(int marginTop, int marginBottom, size_t audioBufferSize)
@@ -1008,7 +1010,7 @@ namespace Frens
         // USB driver is initalized after display driver to prevent the display driver
         // from using the PIO state machines already claimed by the USB driver.
         // This is only needed for the PIO USB driver.
-#if CFG_TUH_RPI_PIO_USB
+#if CFG_TUH_RPI_PIO_USB && PICO_RP2350
         printf("Using PIO USB.\n");
         pio_usb_board_init();
         tusb_rhport_init_t host_init = {
