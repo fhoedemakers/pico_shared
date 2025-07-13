@@ -575,7 +575,7 @@ static char *selectedRomOrFolder;
 static bool errorInSavingRom = false;
 static char *globalErrorMessage;
 
-void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, const char *allowedExtensions)
+void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, const char *allowedExtensions, char *rompath)
 {
     int margintop = dvi_->getBlankSettings().top;
     int marginbottom = dvi_->getBlankSettings().bottom;
@@ -845,7 +845,9 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
                             Frens::freePsram((void *)ROM_FILE_ADDR);
                             // and load the new rom to PSRAM
                             printf("Loading rom to PSRAM: %s\n", fullPath);
+                            strcpy(rompath, fullPath);
                             ROM_FILE_ADDR = (uintptr_t) Frens::flashromtoPsram(fullPath, false);
+                           
                         }   
                         
                     }
