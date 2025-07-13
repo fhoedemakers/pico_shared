@@ -29,7 +29,7 @@ struct charCell
 };
 extern charCell *screenBuffer;
 
-void menu(const char *title, char *errorMessage, bool isFatalError, bool showSplash, const char *allowedExtensions);
+void menu(const char *title, char *errorMessage, bool isFatalError, bool showSplash, const char *allowedExtensions, char *rompath);
 void ClearScreen(int color);
 void putText(int x, int y, const char *text, int fgcolor, int bgcolor);
 void splash();  // is emulator specific
