@@ -77,12 +77,12 @@ int normalize_path(const char *input, char *output, size_t output_size)
 
     for (int i = 0; i < top; i++)
     {
-        printf("Remaining: %d\n", remaining);
+        //printf("Remaining: %d\n", remaining);
         if (remaining < 2)
             return -1; // Need at least '/' + '\0'
         *out++ = '/';
         remaining--;
-        printf("Length[i]=%d, remaining=%d\n", lengths[i], remaining);
+        //printf("Length[i]=%d, remaining=%d\n", lengths[i], remaining);
         if ((size_t)lengths[i] >= remaining)
             return -1; // Not enough space
         memcpy(out, segments[i], lengths[i]);
@@ -95,34 +95,36 @@ int normalize_path(const char *input, char *output, size_t output_size)
 }
 
 static TCHAR current_dir[FF_MAX_LFN] = "/"; // Static variable to store the current directory
+#define BUFFERSIZE (FF_MAX_LFN * sizeof(TCHAR))
+
 // Wrapper function for f_chdir that tracks the current directory
 FRESULT my_chdir(const TCHAR *path)
 {
 #if 1
-    TCHAR temp[FF_MAX_LFN];
-    TCHAR normalized[FF_MAX_LFN];
+    TCHAR *temp = malloc(BUFFERSIZE);
+    TCHAR *normalized = malloc(BUFFERSIZE);
     FRESULT fr;
     // Check if path is absolute
     if (path[0] == '/')
     {
-        strncpy(temp, path, sizeof(temp) - 1);
-        temp[sizeof(temp) - 1] = '\0'; // Ensure null termination
+        strncpy(temp, path, BUFFERSIZE - 1);
+        temp[BUFFERSIZE- 1] = '\0'; // Ensure null termination
     }
     else
     {
         // If the path is relative, append it to the current directory
-        snprintf(temp, sizeof(temp), "%s/%s", current_dir, path);
+        snprintf(temp, BUFFERSIZE, "%s/%s", current_dir, path);
     }
     // Normalize the resulting path (resolve "..", ".", and duplicate slashes)
-    if (normalize_path(temp, normalized, sizeof(normalized)) == 0)
+    if (normalize_path(temp, normalized, BUFFERSIZE) == 0)
     {
         // Normalization successful, proceed with changing directory
         // Call the actual f_chdir function
         if ((fr = f_chdir(normalized)) == FR_OK)
         {
             // Update the static variable if f_chdir succeeds
-            strncpy(current_dir, normalized, sizeof(current_dir) - 1);
-            current_dir[sizeof(current_dir) - 1] = '\0'; // Ensure null termination
+            strncpy(current_dir, normalized, BUFFERSIZE - 1);
+            current_dir[BUFFERSIZE- 1] = '\0'; // Ensure null termination
         }
         printf("Changed directory to: %s\n", current_dir);
     }
@@ -131,6 +133,8 @@ FRESULT my_chdir(const TCHAR *path)
         printf("Error normalizing path: %s\n", temp);
         fr = FR_INVALID_PARAMETER; // Return error if normalization fails
     }
+    free(normalized);
+    free(temp);
     return fr;
 #else
     return f_chdir(path); // Call the actual f_chdir function
