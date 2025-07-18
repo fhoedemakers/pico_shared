@@ -1,4 +1,8 @@
 # Release notes
+
+## 18/7/2025
+- Fix crash in my_chdir that on RP2040 boards. 
+
 ## 12/7/2025
 
 - Make PIO USB only available for RP2350, because of memory limitations on RP2040.
