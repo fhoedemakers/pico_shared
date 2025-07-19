@@ -15,6 +15,7 @@
 #include "pico/stdlib.h"
 #include "hardware/clocks.h"
 #include <string.h>
+// This code is based on https://forums.raspberrypi.com/viewtopic.php?t=375277
 
 #define ALIGNED __attribute__((aligned(4)))
 // ----------------------------------------------------------------------------
@@ -350,6 +351,6 @@ void hstx_init(void)
 
     multicore_launch_core1_with_stack(HDMICore,core1stack,512);
     core1stack[0]=0x12345678;
-    
+
   
 }
