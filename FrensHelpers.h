@@ -1,17 +1,26 @@
+
 #ifndef FRENSHELPERS
 #define FRENSHELPERS
+#ifndef HSTX
+#define HSTX 1
+#endif
 #include <string>
 #include <algorithm>
 #include <memory>
 #include <pico/mutex.h>
-
+#if !HSTX
 #include "dvi/dvi.h"
 #include "dvi_configs.h"
+#include "util/exclusive_proc.h"
+#else
+#include "hstx.h"
+#endif
 #include "external_audio.h"
 
 #ifndef PSRAM_CS_PIN
 #define PSRAM_CS_PIN 0 // 0 is no PSRAM
 #endif
+
 enum class ScreenMode
     {
         SCANLINE_8_7,
@@ -20,6 +29,7 @@ enum class ScreenMode
         NOSCANLINE_1_1,
         MAX,
     };
+
 #define CBLACK 15
 #define CWHITE 48
 #define CRED 6
@@ -38,15 +48,17 @@ enum class ScreenMode
 extern uintptr_t ROM_FILE_ADDR ; //0x10090000
 extern int maxRomSize;
 extern char ErrorMessage[];
+#if !HSTX
 extern std::unique_ptr<dvi::DVI> dvi_;
 extern bool scaleMode8_7_;
-
+#endif
 extern char __flash_binary_start;  // defined in linker script
 extern char __flash_binary_end; 
 extern int abSwapped;      // defined in hid_app.cpp
 extern int isManta;        // defined in hid_app.cpp
 namespace Frens
 {
+#if !HSTX
     extern uint8_t *framebuffer1;  // [320 * 240];
     extern uint8_t *framebuffer2;  // [320 * 240];
     extern uint8_t *framebufferCore0;
@@ -57,7 +69,7 @@ namespace Frens
     extern volatile bool framebuffer2_rendering;
     // Mutex for synchronization
     extern mutex_t framebuffer_mutex;
-
+#endif  
     bool endsWith(std::string const &str, std::string const &suffix);
     std::string str_tolower(std::string s);
 
@@ -80,10 +92,12 @@ namespace Frens
     void printbin16(int16_t v);
     uint64_t time_us();
     uint32_t time_ms();
+#if !HSTX
     bool isFrameBufferUsed();
     void markFrameReadyForReendering(bool waitForFrameReady = false);
     typedef void (*ProcessScanLineFunction)(int line, uint8_t *framebuffer, uint16_t *dvibuffer);
     void SetFrameBufferProcessScanLineFunction(ProcessScanLineFunction processScanLineFunction);
+#endif
     bool isPsramEnabled();
     void *flashromtoPsram(char *selectdRom, bool swapbytes);
     void freePsram(void *pMem);

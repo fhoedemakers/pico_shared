@@ -7,11 +7,8 @@
 #include "hardware/watchdog.h"
 #include "hardware/divider.h"
 #include "tusb.h"
-
-#include "dvi/dvi.h"
-#include "util/exclusive_proc.h"
-#include "FrensFonts.h"
 #include "FrensHelpers.h"
+#include "FrensFonts.h"
 #include "gamepad.h"
 #include "RomLister.h"
 #include "menu.h"
@@ -22,6 +19,7 @@
 #include "settings.h"
 #include "ffwrappers.h"
 #define CC(x) (((x >> 1) & 15) | (((x >> 6) & 15) << 4) | (((x >> 11) & 15) << 8))
+#if !HSTX
 const __UINT16_TYPE__ NesMenuPalette[64] = {
     CC(0x39ce), CC(0x1071), CC(0x0015), CC(0x2013), CC(0x440e), CC(0x5402), CC(0x5000), CC(0x3c20),
     CC(0x20a0), CC(0x0100), CC(0x0140), CC(0x00e2), CC(0x0ceb), CC(0x0000), CC(0x0000), CC(0x0000),
@@ -31,8 +29,32 @@ const __UINT16_TYPE__ NesMenuPalette[64] = {
     CC(0x7ae7), CC(0x4342), CC(0x2769), CC(0x2ff3), CC(0x03bb), CC(0x0000), CC(0x0000), CC(0x0000),
     CC(0x7fff), CC(0x579f), CC(0x635f), CC(0x6b3f), CC(0x7f1f), CC(0x7f1b), CC(0x7ef6), CC(0x7f75),
     CC(0x7f94), CC(0x73f4), CC(0x57d7), CC(0x5bf9), CC(0x4ffe), CC(0x0000), CC(0x0000), CC(0x0000)};
-int NesMenuPaletteItems = sizeof(NesMenuPalette) / sizeof(NesMenuPalette[0]);
 
+#else // TODO
+#define RGB565(c) ((((c >> 19) & 0x1F) << 11) | (((c >> 10) & 0x3F) << 5) | ((c >> 3) & 0x1F))
+const __UINT16_TYPE__ NesMenuPalette[64] = {
+    RGB565(0x626262), RGB565(0x001C95), RGB565(0x1904AC), RGB565(0x42009D),
+    RGB565(0x61006B), RGB565(0x6E0025), RGB565(0x650500), RGB565(0x491E00),
+    RGB565(0x223700), RGB565(0x004900), RGB565(0x004F00), RGB565(0x004816),
+    RGB565(0x00355E), RGB565(0x000000), RGB565(0x000000), RGB565(0x000000),
+
+    RGB565(0xABABAB), RGB565(0x0C4EDB), RGB565(0x3D2EFF), RGB565(0x7115F3),
+    RGB565(0x9B0BB9), RGB565(0xB01262), RGB565(0xA92704), RGB565(0x894600),
+    RGB565(0x576600), RGB565(0x237F00), RGB565(0x008900), RGB565(0x008332),
+    RGB565(0x006D90), RGB565(0x000000), RGB565(0x000000), RGB565(0x000000),
+
+    RGB565(0xFFFFFF), RGB565(0x57A5FF), RGB565(0x8287FF), RGB565(0xB46DFF),
+    RGB565(0xDF60FF), RGB565(0xF863C6), RGB565(0xF8746D), RGB565(0xDE9020),
+    RGB565(0xB3AE00), RGB565(0x81C800), RGB565(0x56D522), RGB565(0x3DD36F),
+    RGB565(0x3EC1C8), RGB565(0x4E4E4E), RGB565(0x000000), RGB565(0x000000),
+
+    RGB565(0xFFFFFF), RGB565(0xBEE0FF), RGB565(0xCDD4FF), RGB565(0xE0CAFF),
+    RGB565(0xF1C4FF), RGB565(0xFCC4EF), RGB565(0xFDCACE), RGB565(0xF5D4AF),
+    RGB565(0xE6DF9C), RGB565(0xD3E99A), RGB565(0xC2EFA8), RGB565(0xB7EFC4),
+    RGB565(0xB6EAE5), RGB565(0xB8B8B8), RGB565(0x000000), RGB565(0x000000)
+};
+#endif
+int NesMenuPaletteItems = sizeof(NesMenuPalette) / sizeof(NesMenuPalette[0]);
 static char connectedGamePadName[sizeof(io::GamePadState::GamePadName)];
 static bool useFrameBuffer = false;
 #define SCREENBUFCELLS SCREEN_ROWS *SCREEN_COLS
@@ -41,6 +63,7 @@ charCell *screenBuffer;
 #define LONG_PRESS_TRESHOLD (500)
 #define REPEAT_DELAY (40)
 
+#if !HSTX
 static WORD *WorkLineRom = nullptr;
 static BYTE *WorkLineRom8 = nullptr;
 
@@ -48,6 +71,7 @@ void RomSelect_SetLineBuffer(WORD *p, WORD size)
 {
     WorkLineRom = p;
 }
+#endif
 
 static constexpr int LEFT = 1 << 6;
 static constexpr int RIGHT = 1 << 7;
@@ -80,17 +104,25 @@ int Menu_LoadFrame()
 #if NES_PIN_CLK != -1
     nespad_read_start();
 #endif
-    auto count = dvi_->getFrameCounter();
+
+    auto count =
+#if !HSTX
+     dvi_->getFrameCounter();
+#else
+     0; // TODO: Implement frame counter for non-DVI mode
+#endif
     auto onOff = hw_divider_s32_quotient_inlined(count, 60) & 1;
     Frens::blinkLed(onOff);
 #if NES_PIN_CLK != -1
     nespad_read_finish(); // Sets global nespad_state var
 #endif
     tuh_task();
+#if !HSTX
     if (Frens::isFrameBufferUsed())
     {
         Frens::markFrameReadyForReendering(true);
     }
+#endif
     return count;
 }
 
@@ -233,7 +265,9 @@ void RomSelect_PadState(DWORD *pdwPad1, bool ignorepushed = false)
 void RomSelect_DrawLine(int line, int selectedRow)
 {
     WORD fgcolor, bgcolor;
+#if !HSTX
     bool useFrameBuffer = Frens::isFrameBufferUsed();
+
     if (useFrameBuffer)
     {
         memset(WorkLineRom8, 0, SCREENWIDTH);
@@ -242,7 +276,7 @@ void RomSelect_DrawLine(int line, int selectedRow)
     {
         memset(WorkLineRom, 0, SCREENWIDTH * sizeof(WORD));
     }
-
+#endif
     for (auto i = 0; i < SCREEN_COLS; ++i)
     {
         int charIndex = i + line / FONT_CHAR_HEIGHT * SCREEN_COLS;
@@ -281,6 +315,7 @@ void RomSelect_DrawLine(int line, int selectedRow)
         {
             if (fontSlice & 1)
             {
+#if !HSTX
                 if (useFrameBuffer)
                 {
                     *WorkLineRom8 = fgcolor;
@@ -289,9 +324,11 @@ void RomSelect_DrawLine(int line, int selectedRow)
                 {
                     *WorkLineRom = fgcolor;
                 }
+#endif
             }
             else
             {
+#if !HSTX
                 if (useFrameBuffer)
                 {
                     *WorkLineRom8 = bgcolor;
@@ -300,8 +337,10 @@ void RomSelect_DrawLine(int line, int selectedRow)
                 {
                     *WorkLineRom = bgcolor;
                 }
+#endif
             }
             fontSlice >>= 1;
+#if !HSTX
             if (useFrameBuffer)
             {
                 WorkLineRom8++;
@@ -310,6 +349,7 @@ void RomSelect_DrawLine(int line, int selectedRow)
             {
                 WorkLineRom++;
             }
+#endif
         }
     }
     return;
@@ -317,6 +357,7 @@ void RomSelect_DrawLine(int line, int selectedRow)
 
 void drawline(int scanline, int selectedRow)
 {
+#if !HSTX
     if (Frens::isFrameBufferUsed())
     {
         WorkLineRom8 = &Frens::framebufferCore0[scanline * SCREENWIDTH];
@@ -329,6 +370,7 @@ void drawline(int scanline, int selectedRow)
         RomSelect_DrawLine(scanline, selectedRow);
         dvi_->setLineBuffer(scanline, b);
     }
+#endif
 }
 
 void putText(int x, int y, const char *text, int fgcolor, int bgcolor)
@@ -544,7 +586,7 @@ void screenSaver()
         }
     }
 }
-
+#if !HSTX
 void __not_in_flash_func(processMenuScanLine)(int line, uint8_t *framebuffer, uint16_t *dvibuffer)
 {
     auto current_line = &framebuffer[line * SCREENWIDTH];
@@ -556,9 +598,10 @@ void __not_in_flash_func(processMenuScanLine)(int line, uint8_t *framebuffer, ui
         dvibuffer[kol + 3] = NesMenuPalette[current_line[kol + 3]];
     }
 }
-
+#endif
 static void showLoadingScreen()
 {
+#if !HSTX
     if (Frens::isFrameBufferUsed())
     {
         ClearScreen(settings.bgcolor);
@@ -568,6 +611,7 @@ static void showLoadingScreen()
         DrawScreen(-1);
         Menu_LoadFrame();
     }
+#endif
 }
 
 // Global instances of local vars in romselect() some used in Lambda expression later on
@@ -577,6 +621,7 @@ static char *globalErrorMessage;
 
 void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, const char *allowedExtensions, char *rompath)
 {
+#if !HSTX
     int margintop = dvi_->getBlankSettings().top;
     int marginbottom = dvi_->getBlankSettings().bottom;
     // Use the entire screen resolution of 320x240 pixels. This makes a 40x30 screen with 8x8 font possible.
@@ -585,7 +630,7 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
     dvi_->getBlankSettings().bottom = 0;
 
     Frens::SetFrameBufferProcessScanLineFunction(processMenuScanLine);
-
+#endif
     abSwapped = 1; // Swap A and B buttons, so menu is consistent accrross different emilators
 
     //
@@ -952,11 +997,12 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
 
    
     Frens::savesettings();
-
+#if !HSTX
     // Reset the screen mode to the original settings
     scaleMode8_7_ = Frens::applyScreenMode(settings.screenMode);
     dvi_->getBlankSettings().top = margintop;
     dvi_->getBlankSettings().bottom = marginbottom;
+#endif
     // When PSRAM is not enabled, we need to reboot the system to start the emulator with the selected rom. In this case
     // a reboot is neccessary to avoid lockups.
     // If PSRAM is enabled, the rom is already loaded in PSRAM and the emulator will start the rom directly and we don't need to reboot.

@@ -7,14 +7,15 @@
 #include "hardware/flash.h"
 #include "hardware/watchdog.h"
 #include "util/exclusive_proc.h"
+#include "FrensHelpers.h"
 #if CFG_TUH_RPI_PIO_USB && PICO_RP2350
 #include "bsp/board_api.h"
 #include "board.h"
 #include "pio_usb.h"
 #endif
 #include "tusb.h"
-#include "tusb.h"
-#include "dvi/dvi.h"
+#include "hardware/dma.h"
+
 #include "ff.h"
 #include "ffwrappers.h"
 #include "tf_card.h"
@@ -22,7 +23,7 @@
 #include "nespad.h"
 #include "wiipad.h"
 #include "settings.h"
-#include "FrensHelpers.h"
+
 #include "PicoPlusPsram.h"
 // Pico W devices use a GPIO on the WIFI chip for the LED,
 // so when building for Pico W, CYW43_WL_GPIO_LED_PIN will be defined
@@ -34,8 +35,10 @@
 #ifndef DVIAUDIOFREQ
 #define DVIAUDIOFREQ 44100
 #endif
+#if !HSTX
 std::unique_ptr<dvi::DVI> dvi_;
 util::ExclusiveProc exclProc_;
+#endif
 char ErrorMessage[ERRORMESSAGESIZE];
 bool scaleMode8_7_ = true;
 uintptr_t ROM_FILE_ADDR = 0;
@@ -44,7 +47,7 @@ int maxRomSize = 0;
 namespace Frens
 {
     static FATFS fs;
-
+#if !HSTX
     uint8_t *framebuffer1; // [320 * 240];
     uint8_t *framebuffer2; // [320 * 240];
     uint8_t *framebufferCore0;
@@ -59,7 +62,7 @@ namespace Frens
     // Mutex for synchronization
     mutex_t framebuffer_mutex;
     static bool usingFramebuffer = false;
-
+#endif
     bool psRamEnabled = false;
     size_t psramMemorySize = 0;
     bool isPsramEnabled()
@@ -105,11 +108,12 @@ namespace Frens
 #endif
         return psRamEnabled;
     }
-
+#if !HSTX
     bool isFrameBufferUsed()
     {
         return usingFramebuffer;
     }
+#endif
     //
     //
     // test if string ends with suffix
@@ -384,7 +388,7 @@ namespace Frens
         }
         return true;
     }
-
+#if !HSTX
     bool applyScreenMode(ScreenMode screenMode_)
     {
         bool scanLine = false;
@@ -433,7 +437,7 @@ namespace Frens
         savesettings();
         return scaleMode8_7_;
     }
-
+#endif
     void *flashromtoPsram(char *selectdRom, bool swapbytes)
     {
 #if PICO_RP2350 && PSRAM_CS_PIN
@@ -672,7 +676,7 @@ namespace Frens
             }
         }
     }
-
+#if !HSTX
     /// @brief Render function in core1 to render line by line
     /// @param
     /// @return
@@ -808,7 +812,7 @@ namespace Frens
             mutex_exit(&framebuffer_mutex);
         }
     }
-
+#endif // DVI
     void blinkLed(bool on)
     {
 #if LED_GPIO_PIN > -1
@@ -918,6 +922,7 @@ namespace Frens
     }
     void initDVandAudio(int marginTop, int marginBottom, size_t audioBufferSize)
     {
+#if !HSTX
         //
         dvi_ = std::make_unique<dvi::DVI>(pio0, &DVICONFIG,
                                           dvi::getTiming640x480p60Hz());
@@ -933,6 +938,7 @@ namespace Frens
         // dvi_->setScanLine(true);
         // 空サンプル詰めとく
         dvi_->getAudioRingBuffer().advanceWritePointer(255);
+#endif
     }
 
     /// @brief Init dv and audio with default audio buffer size of 256
@@ -992,6 +998,7 @@ namespace Frens
                 flashrom(selectedRom, swapbytes);
             }
         }
+#if !HSTX
         usingFramebuffer = useFrameBuffer;
         if (usingFramebuffer)
         {
@@ -1005,6 +1012,7 @@ namespace Frens
             }
             mutex_init(&framebuffer_mutex);
         }
+#endif // DVI
         initDVandAudio(marginTop, marginBottom, audiobufferSize);
         // init USB driver
         // USB driver is initalized after display driver to prevent the display driver
@@ -1026,6 +1034,7 @@ namespace Frens
         printf("Using internal USB.\n");
         tusb_init();
 #endif
+#if !HSTX
         if (usingFramebuffer)
         {
             multicore_launch_core1(coreFB_main);
@@ -1034,11 +1043,12 @@ namespace Frens
         {
             multicore_launch_core1(core1_main);
         }
+#endif // DVI
         initVintageControllers(CPUFreqKHz);
         EXT_AUDIO_SETUP(DVIAUDIOFREQ); // Initialize external audio if needed
         return ok;
     }
-
+#if !HSTX
     void markFrameReadyForReendering(bool waitForFrameReady)
     {
         // switch framebuffers
@@ -1074,7 +1084,7 @@ namespace Frens
 #endif
         // continue processing next frame while the other core renders the framebuffer
     }
-
+#endif // DVI
     void resetWifi()
     {
 #if defined(CYW43_WL_GPIO_LED_PIN)

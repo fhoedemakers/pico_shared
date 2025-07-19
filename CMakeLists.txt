@@ -18,9 +18,10 @@ PicoPlusPsram.cpp
 add_subdirectory(drivers/pico_fatfs)     
 add_subdirectory(drivers/pico_audio_i2s)
 add_subdirectory(drivers/lwmem)
+add_subdirectory(drivers/pico_hstx)
 
 target_include_directories(pico_shared INTERFACE
         .
 )
-target_link_libraries(pico_shared INTERFACE pico_fatfs pico_audio_i2s lwmem)
+target_link_libraries(pico_shared INTERFACE pico_fatfs pico_audio_i2s lwmem pico_hstx)
 
