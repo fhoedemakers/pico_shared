@@ -18,8 +18,9 @@
 #include "font_8x8.h"
 #include "settings.h"
 #include "ffwrappers.h"
-#define CC(x) (((x >> 1) & 15) | (((x >> 6) & 15) << 4) | (((x >> 11) & 15) << 8))
+
 #if !HSTX
+#define CC(x) (((x >> 1) & 15) | (((x >> 6) & 15) << 4) | (((x >> 11) & 15) << 8))
 const __UINT16_TYPE__ NesMenuPalette[64] = {
     CC(0x39ce), CC(0x1071), CC(0x0015), CC(0x2013), CC(0x440e), CC(0x5402), CC(0x5000), CC(0x3c20),
     CC(0x20a0), CC(0x0100), CC(0x0140), CC(0x00e2), CC(0x0ceb), CC(0x0000), CC(0x0000), CC(0x0000),
@@ -31,27 +32,27 @@ const __UINT16_TYPE__ NesMenuPalette[64] = {
     CC(0x7f94), CC(0x73f4), CC(0x57d7), CC(0x5bf9), CC(0x4ffe), CC(0x0000), CC(0x0000), CC(0x0000)};
 
 #else // TODO
-#define RGB565(c) ((((c >> 19) & 0x1F) << 11) | (((c >> 10) & 0x3F) << 5) | ((c >> 3) & 0x1F))
+#define CC(c) (((c & 0xf8) >> 3) | ((c & 0xf800) >> 6) | ((c & 0xf80000) >> 9))
 const __UINT16_TYPE__ NesMenuPalette[64] = {
-    RGB565(0x626262), RGB565(0x001C95), RGB565(0x1904AC), RGB565(0x42009D),
-    RGB565(0x61006B), RGB565(0x6E0025), RGB565(0x650500), RGB565(0x491E00),
-    RGB565(0x223700), RGB565(0x004900), RGB565(0x004F00), RGB565(0x004816),
-    RGB565(0x00355E), RGB565(0x000000), RGB565(0x000000), RGB565(0x000000),
+    CC(0x626262), CC(0x001C95), CC(0x1904AC), CC(0x42009D),
+    CC(0x61006B), CC(0x6E0025), CC(0x650500), CC(0x491E00),
+    CC(0x223700), CC(0x004900), CC(0x004F00), CC(0x004816),
+    CC(0x00355E), CC(0x000000), CC(0x000000), CC(0x000000),
 
-    RGB565(0xABABAB), RGB565(0x0C4EDB), RGB565(0x3D2EFF), RGB565(0x7115F3),
-    RGB565(0x9B0BB9), RGB565(0xB01262), RGB565(0xA92704), RGB565(0x894600),
-    RGB565(0x576600), RGB565(0x237F00), RGB565(0x008900), RGB565(0x008332),
-    RGB565(0x006D90), RGB565(0x000000), RGB565(0x000000), RGB565(0x000000),
+    CC(0xABABAB), CC(0x0C4EDB), CC(0x3D2EFF), CC(0x7115F3),
+    CC(0x9B0BB9), CC(0xB01262), CC(0xA92704), CC(0x894600),
+    CC(0x576600), CC(0x237F00), CC(0x008900), CC(0x008332),
+    CC(0x006D90), CC(0x000000), CC(0x000000), CC(0x000000),
 
-    RGB565(0xFFFFFF), RGB565(0x57A5FF), RGB565(0x8287FF), RGB565(0xB46DFF),
-    RGB565(0xDF60FF), RGB565(0xF863C6), RGB565(0xF8746D), RGB565(0xDE9020),
-    RGB565(0xB3AE00), RGB565(0x81C800), RGB565(0x56D522), RGB565(0x3DD36F),
-    RGB565(0x3EC1C8), RGB565(0x4E4E4E), RGB565(0x000000), RGB565(0x000000),
+    CC(0xFFFFFF), CC(0x57A5FF), CC(0x8287FF), CC(0xB46DFF),
+    CC(0xDF60FF), CC(0xF863C6), CC(0xF8746D), CC(0xDE9020),
+    CC(0xB3AE00), CC(0x81C800), CC(0x56D522), CC(0x3DD36F),
+    CC(0x3EC1C8), CC(0x4E4E4E), CC(0x000000), CC(0x000000),
 
-    RGB565(0xFFFFFF), RGB565(0xBEE0FF), RGB565(0xCDD4FF), RGB565(0xE0CAFF),
-    RGB565(0xF1C4FF), RGB565(0xFCC4EF), RGB565(0xFDCACE), RGB565(0xF5D4AF),
-    RGB565(0xE6DF9C), RGB565(0xD3E99A), RGB565(0xC2EFA8), RGB565(0xB7EFC4),
-    RGB565(0xB6EAE5), RGB565(0xB8B8B8), RGB565(0x000000), RGB565(0x000000)
+    CC(0xFFFFFF), CC(0xBEE0FF), CC(0xCDD4FF), CC(0xE0CAFF),
+    CC(0xF1C4FF), CC(0xFCC4EF), CC(0xFDCACE), CC(0xF5D4AF),
+    CC(0xE6DF9C), CC(0xD3E99A), CC(0xC2EFA8), CC(0xB7EFC4),
+    CC(0xB6EAE5), CC(0xB8B8B8), CC(0x000000), CC(0x000000)
 };
 #endif
 int NesMenuPaletteItems = sizeof(NesMenuPalette) / sizeof(NesMenuPalette[0]);
@@ -63,8 +64,9 @@ charCell *screenBuffer;
 #define LONG_PRESS_TRESHOLD (500)
 #define REPEAT_DELAY (40)
 
-#if !HSTX
+
 static WORD *WorkLineRom = nullptr;
+#if !HSTX
 static BYTE *WorkLineRom8 = nullptr;
 
 void RomSelect_SetLineBuffer(WORD *p, WORD size)
@@ -109,7 +111,7 @@ int Menu_LoadFrame()
 #if !HSTX
      dvi_->getFrameCounter();
 #else
-     0; // TODO: Implement frame counter for non-DVI mode
+     hstx_getframecounter();
 #endif
     auto onOff = hw_divider_s32_quotient_inlined(count, 60) & 1;
     Frens::blinkLed(onOff);
@@ -324,6 +326,8 @@ void RomSelect_DrawLine(int line, int selectedRow)
                 {
                     *WorkLineRom = fgcolor;
                 }
+#else
+                *WorkLineRom = fgcolor;
 #endif
             }
             else
@@ -337,6 +341,8 @@ void RomSelect_DrawLine(int line, int selectedRow)
                 {
                     *WorkLineRom = bgcolor;
                 }
+#else
+                *WorkLineRom = bgcolor;
 #endif
             }
             fontSlice >>= 1;
@@ -349,6 +355,8 @@ void RomSelect_DrawLine(int line, int selectedRow)
             {
                 WorkLineRom++;
             }
+#else
+            WorkLineRom++;
 #endif
         }
     }
@@ -370,6 +378,9 @@ void drawline(int scanline, int selectedRow)
         RomSelect_DrawLine(scanline, selectedRow);
         dvi_->setLineBuffer(scanline, b);
     }
+#else
+    WorkLineRom = hstx_getlineFromFramebuffer(scanline);
+    RomSelect_DrawLine(scanline, selectedRow);
 #endif
 }
 

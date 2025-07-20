@@ -53,8 +53,11 @@ uint8_t *DisplayBuf = FRAMEBUFFER;
 uint8_t *LayerBuf = FRAMEBUFFER;
 uint16_t *tilefcols;
 uint16_t *tilebcols;
-volatile int HRes;
-volatile int VRes;
+//volatile int HRes;      // 320
+//volatile int VRes;       // 240
+// Fix to 320x240
+#define HRes (MODE_H_ACTIVE_PIXELS/2) // 320
+#define VRes (MODE_V_ACTIVE_LINES/2)  // 240
 #define MODE_H_TOTAL_PIXELS (                \
     MODE_H_FRONT_PORCH + MODE_H_SYNC_WIDTH + \
     MODE_H_BACK_PORCH + MODE_H_ACTIVE_PIXELS)
@@ -62,6 +65,7 @@ volatile int VRes;
     MODE_V_FRONT_PORCH + MODE_V_SYNC_WIDTH + \
     MODE_V_BACK_PORCH + MODE_V_ACTIVE_LINES)
 volatile int HDMImode = 0;
+volatile uint32_t frame_counter = 0; // Frame counter
 #define HSTX_CMD_RAW (0x0u << 12)
 #define HSTX_CMD_RAW_REPEAT (0x1u << 12)
 #define HSTX_CMD_TMDS (0x2u << 12)
@@ -166,13 +170,16 @@ void __not_in_flash_func(dma_irq_handler)()
     if (!vactive_cmdlist_posted)
     {
         v_scanline = (v_scanline + 1) % MODE_V_TOTAL_LINES;
+        if (v_scanline == 0) {
+            frame_counter++; // Increment frame counter at end of frame
+        }
     }
 }
 // ----------------------------------------------------------------------------
 // Main program
 
 uint32_t core1stack[128];
-void __not_in_flash_func(HDMICore)(void)
+void __not_in_flash_func(HSTXCore)(void)
 {
     int last_line = 2, load_line, line_to_load, Line_dup;
 
@@ -247,6 +254,7 @@ void __not_in_flash_func(HDMICore)(void)
         // D1 (Index 1) is assigned to HSTX output bit 4 → GPIO16 (D1+) and GPIO17 (D1-).
         // D2 (Index 2) is assigned to HSTX output bit 0 → GPIO12 (D2+) and GPIO13 (D2-).
         // https://learn.adafruit.com/adafruit-metro-rp2350/pinouts#hstx-connector-3193107
+        // TODO make configurable
         static const int lane_to_output_bit[3] = {6, 4, 0}; // {0, 6, 4};
         int bit = lane_to_output_bit[lane];
         // Output even bits during first half of each HSTX cycle, and odd bits
@@ -310,20 +318,14 @@ void __not_in_flash_func(HDMICore)(void)
             if (load_line >= 0 && load_line < MODE_V_ACTIVE_LINES)
             {
                 __dmb();
-                switch (HDMImode)
-                {
 
-                case SCREENMODE6: // 320x240xRGB555 colour
-                    for (int i = 0; i < MODE_H_ACTIVE_PIXELS / 2; i++)
-                    {
-                        uint8_t *d = &DisplayBuf[(Line_dup)*MODE_H_ACTIVE_PIXELS + i * 2];
-                        int c = *d++;
-                        c |= ((*d++) << 8);
-                        *p++ = c;
-                        *p++ = c;
-                    }
-                    break;
-                default:
+                for (int i = 0; i < MODE_H_ACTIVE_PIXELS / 2; i++)
+                {
+                    uint8_t *d = &DisplayBuf[(Line_dup)*MODE_H_ACTIVE_PIXELS + i * 2];
+                    int c = *d++;
+                    c |= ((*d++) << 8);
+                    *p++ = c;
+                    *p++ = c;
                 }
             }
         }
@@ -331,9 +333,10 @@ void __not_in_flash_func(HDMICore)(void)
 }
 void hstx_init(void)
 {
+#if 0
     clockspeed = clock_get_hz(clk_sys) / 1000; // Get current clock speed in kHz
-
-    set_sys_clock_khz(clockspeed, false);
+    printf("HSTX init clockspeed: %d kHz\n", clockspeed);
+    // set_sys_clock_khz(clockspeed, false);
     clock_configure(
         clk_peri,
         0,                                                // No glitchless mux
@@ -348,9 +351,16 @@ void hstx_init(void)
         clockspeed * 1000,                                // Input frequency
         clockspeed / clockdivisor * 1000                  // Output (must be same as no divider)
     );
+#endif
+    multicore_launch_core1_with_stack(HSTXCore, core1stack, 512);
+    core1stack[0] = 0x12345678;
+}
+uint16_t *hstx_getlineFromFramebuffer(int scanline){
+     // was return (uint16_t *)((uint8_t *)(WriteBuf+((scanline*HRes)*2)));
+    return (uint16_t *)(WriteBuf + (scanline * HRes * 2));
+}
 
-    multicore_launch_core1_with_stack(HDMICore,core1stack,512);
-    core1stack[0]=0x12345678;
-
-  
+uint32_t hstx_getframecounter(void){
+    // Return the current frame counter
+    return frame_counter;
 }

@@ -865,7 +865,8 @@ namespace Frens
         // Get an unused DMA channel
         int dma_chan = -1;
         printf("Searching for unused DMA channel...");
-        for (int i = 0; i < 12; i++)
+        // for (int i = 0; i < 12; i++)
+        for (int i = 2; i < 12; i++)
         {
             if (!dma_channel_is_claimed(i))
             {
@@ -938,6 +939,9 @@ namespace Frens
         // dvi_->setScanLine(true);
         // 空サンプル詰めとく
         dvi_->getAudioRingBuffer().advanceWritePointer(255);
+#else
+        hstx_init();
+        // TOD audio
 #endif
     }
 
@@ -1013,7 +1017,9 @@ namespace Frens
             mutex_init(&framebuffer_mutex);
         }
 #endif // DVI
+        printf("HSTX init\n");
         initDVandAudio(marginTop, marginBottom, audiobufferSize);
+        printf("HSTX init done\n");
         // init USB driver
         // USB driver is initalized after display driver to prevent the display driver
         // from using the PIO state machines already claimed by the USB driver.
