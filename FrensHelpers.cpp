@@ -865,8 +865,11 @@ namespace Frens
         // Get an unused DMA channel
         int dma_chan = -1;
         printf("Searching for unused DMA channel...");
-        // for (int i = 0; i < 12; i++)
-        for (int i = 2; i < 12; i++)
+#if !HSTX
+        for (int i = 0; i < 12; i++)
+#else
+        for (int i = 2; i < 12; i++)    // HSTX uses DMA channel 0 (DMACHPING) and 1 (DMACHPONG) on core1, avoid this core claiming them 
+#endif
         {
             if (!dma_channel_is_claimed(i))
             {
