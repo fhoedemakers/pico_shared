@@ -14,6 +14,7 @@
 #include "util/exclusive_proc.h"
 #else
 #include "hstx.h"
+#include "mcp4822.h"
 #endif
 #include "external_audio.h"
 
