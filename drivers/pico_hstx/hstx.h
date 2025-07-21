@@ -13,6 +13,8 @@ extern uint8_t FRAMEBUFFER[(MODE_H_ACTIVE_PIXELS/2)*(MODE_V_ACTIVE_LINES/2)*2];
 void hstx_init(void);
 uint16_t *hstx_getlineFromFramebuffer(int scanline);
 uint32_t hstx_getframecounter(void);
+void hstx_waitForVSync(void);
+void hstx_clearScreen(uint16_t color);
 #ifdef __cplusplus
 }
 #endif

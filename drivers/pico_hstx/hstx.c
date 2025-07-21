@@ -131,6 +131,17 @@ volatile uint v_scanline = 2;
 // post the command list, and another to post the pixels.
 static bool vactive_cmdlist_posted = false;
 volatile uint vblank = 0;
+
+/// @brief DMA IRQ handler for HSTX
+/// This function is called when a DMA transfer completes.
+/// It handles the ping-pong mechanism for the DMA channels and updates the
+/// read address and transfer count for the next transfer.
+/// It also handles the vertical blanking and active periods by switching
+/// between the vblank and vactive command lists.
+/// It updates the scanline counter and frame counter as needed.
+/// It is called from the DMA IRQ handler.
+/// @param  
+/// @return 
 void __not_in_flash_func(dma_irq_handler)()
 {
     // dma_pong indicates the channel that just finished, which is the one
@@ -175,10 +186,16 @@ void __not_in_flash_func(dma_irq_handler)()
         }
     }
 }
-// ----------------------------------------------------------------------------
-// Main program
+
 
 uint32_t core1stack[128];
+
+/// @brief HSTX  function that runs on core1
+/// This function initializes the HSTX controller, sets up the DMA channels,
+/// and starts the DMA transfers for the HSTX output.
+/// It also sets up the IRQ handler for the DMA transfers.
+/// @param  
+/// @return 
 void __not_in_flash_func(HSTXCore)(void)
 {
     int last_line = 2, load_line, line_to_load, Line_dup;
@@ -331,8 +348,14 @@ void __not_in_flash_func(HSTXCore)(void)
         }
     }
 }
+
+/// @brief Initialize the HSTX driver
+/// This function sets up the HSTX controller, configures the DMA channels,
+/// and launches the HSTX core on the second core of the RP2350.
+/// It also initializes the GPIO pins used for HSTX output.
 void hstx_init(void)
 {
+    // not sure the code below is needed.
 #if 0
     clockspeed = clock_get_hz(clk_sys) / 1000; // Get current clock speed in kHz
     printf("HSTX init clockspeed: %d kHz\n", clockspeed);
@@ -355,12 +378,38 @@ void hstx_init(void)
     multicore_launch_core1_with_stack(HSTXCore, core1stack, 512);
     core1stack[0] = 0x12345678;
 }
+
+/// @brief Get a pointer to the framebuffer line for a specific scanline
+/// @param scanline The scanline number (0-based)
+/// @return Pointer to the framebuffer line data
 uint16_t *hstx_getlineFromFramebuffer(int scanline){
      // was return (uint16_t *)((uint8_t *)(WriteBuf+((scanline*HRes)*2)));
     return (uint16_t *)(WriteBuf + (scanline * HRes * 2));
 }
 
+/// @brief Get the current frame counter
+/// @return the current frame counter
 uint32_t hstx_getframecounter(void){
     // Return the current frame counter
     return frame_counter;
+}
+
+/// @brief Wait for the vertical sync signal
+/// @param  
+void hstx_waitForVSync(void) {
+    while(vblank) {
+        tight_loop_contents(); 
+    }
+    while(!vblank) {
+        tight_loop_contents(); 
+    }
+}
+
+/// @brief Clear the screen with a specific color
+/// @param color The color to fill the screen with
+void hstx_clearScreen(uint16_t color) {
+    // Clear the framebuffer with a specific color
+    for (int i = 0; i < (HRes * VRes); i++) {
+        ((uint16_t *)WriteBuf)[i] = color;
+    }
 }
