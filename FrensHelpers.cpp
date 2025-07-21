@@ -943,7 +943,9 @@ namespace Frens
         // 空サンプル詰めとく
         dvi_->getAudioRingBuffer().advanceWritePointer(255);
 #else
+        printf("HSTX init\n");
         hstx_init();
+        printf("HSTX initialized\n");
         // TOD audio
 #endif
     }
@@ -1020,9 +1022,7 @@ namespace Frens
             mutex_init(&framebuffer_mutex);
         }
 #endif // DVI
-        printf("HSTX init\n");
         initDVandAudio(marginTop, marginBottom, audiobufferSize);
-        printf("HSTX init done\n");
         // init USB driver
         // USB driver is initalized after display driver to prevent the display driver
         // from using the PIO state machines already claimed by the USB driver.
