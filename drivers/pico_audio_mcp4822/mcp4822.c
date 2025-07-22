@@ -109,6 +109,7 @@ static void __not_in_flash_func(alarm_irq)(void)
 /// @return
 void mcp4822_init()
 {
+    printf("MCP4822 audio DAC init\n");
     spi_init(SPI_PORT, 20000000);
     // Format (channel, data bits per transfer, polarity, phase, order)
 
@@ -132,6 +133,7 @@ void mcp4822_init()
     irq_set_enabled(ALARM_IRQ, true);
     // Write the lower 32 bits of the target time to the alarm register, arming it.
     timer_hw->alarm[ALARM_NUM] = timer_hw->timerawl + DELAY;
+    printf("MCP4822 audio DAC initialized\n");
 }
 
 
