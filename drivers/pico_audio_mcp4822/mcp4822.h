@@ -1,5 +1,9 @@
+
+
 #ifndef _MCP4822_H
 #define _MCP4822_H
+#include <stdint.h>
+#include <stdbool.h>
 
 #ifdef __cplusplus
 extern "C" {
