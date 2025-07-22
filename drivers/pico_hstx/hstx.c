@@ -356,7 +356,7 @@ void __not_in_flash_func(HSTXCore)(void)
 void hstx_init()
 {
     // not sure the code below is needed.
-#if 0
+#if 1
     clockspeed = clock_get_hz(clk_sys) / 1000; // Get current clock speed in kHz
     printf("HSTX init clockspeed: %d kHz\n", clockspeed);
     // set_sys_clock_khz(clockspeed, false);
@@ -374,9 +374,15 @@ void hstx_init()
         clockspeed * 1000,                                // Input frequency
         clockspeed / clockdivisor * 1000                  // Output (must be same as no divider)
     );
+    // The above settings mess up the stdio, so we need to reinitialize it
+    // This is a workaround to avoid stdio issues after changing the clock
+    // settings.
+    stdio_deinit_all();
+    stdio_init_all();
 #endif
     multicore_launch_core1_with_stack(HSTXCore, core1stack, 512);
     core1stack[0] = 0x12345678;
+    printf("HSTX initialized\n");
 }
 
 /// @brief Get a pointer to the framebuffer line for a specific scanline
