@@ -10,7 +10,7 @@ extern "C" {
 
 extern uint8_t FRAMEBUFFER[(MODE_H_ACTIVE_PIXELS/2)*(MODE_V_ACTIVE_LINES/2)*2];
 
-void hstx_init(uint8_t *buf1, uint8_t *buf2);
+void hstx_init();
 uint16_t *hstx_getlineFromFramebuffer(int scanline);
 uint32_t hstx_getframecounter(void);
 void hstx_waitForVSync(void);
