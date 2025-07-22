@@ -947,7 +947,7 @@ namespace Frens
         hstx_init();
         printf("HSTX initialized\n");
         printf("Init Audio\n");
-        init_mcp4822();
+        mcp4822_init();
         printf("Audio initialized\n");
 #endif
     }

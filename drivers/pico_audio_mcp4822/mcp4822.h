@@ -1,11 +1,13 @@
 #ifndef _MCP4822_H
 #define _MCP4822_H
-#include "myringbuffer.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-void init_mcp4822();
+void     mcp4822_init();
+uint32_t mcp4822_get_free_buffer_space();
+bool     mcp4822_push_sample(uint16_t sample);
+
 #ifdef __cplusplus
 }
 #endif

@@ -4,7 +4,7 @@ if (NOT TARGET pico_audio_mcp4822)
 
     target_sources(pico_audio_mcp4822 INTERFACE
         ${CMAKE_CURRENT_LIST_DIR}/mcp4822.c
-        ${CMAKE_CURRENT_LIST_DIR}/myringbuffer.c
+        #${CMAKE_CURRENT_LIST_DIR}/myringbuffer.c
     )
 
     target_include_directories(pico_audio_mcp4822 INTERFACE
