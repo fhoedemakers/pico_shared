@@ -353,7 +353,7 @@ void __not_in_flash_func(HSTXCore)(void)
 /// This function sets up the HSTX controller, configures the DMA channels,
 /// and launches the HSTX core on the second core of the RP2350.
 /// It also initializes the GPIO pins used for HSTX output.
-void hstx_init(void)
+void hstx_init(uint8_t *buf1, uint8_t *buf2)
 {
     // not sure the code below is needed.
 #if 0

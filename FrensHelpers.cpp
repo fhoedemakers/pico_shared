@@ -944,7 +944,7 @@ namespace Frens
         dvi_->getAudioRingBuffer().advanceWritePointer(255);
 #else
         printf("HSTX init\n");
-        hstx_init();
+        hstx_init(NULL, NULL);
         printf("HSTX initialized\n");
         printf("Init Audio\n");
         mcp4822_init();
