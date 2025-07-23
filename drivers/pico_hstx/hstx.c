@@ -389,6 +389,11 @@ void hstx_init()
 /// @param scanline The scanline number (0-based)
 /// @return Pointer to the framebuffer line data
 uint16_t *hstx_getlineFromFramebuffer(int scanline){
+    int scanline2 = v_scanline >> 1;
+    while(scanline == scanline2) {
+        tight_loop_contents(); // Wait until the scanline is read
+    }
+
      // was return (uint16_t *)((uint8_t *)(WriteBuf+((scanline*HRes)*2)));
     return (uint16_t *)(WriteBuf + (scanline * HRes * 2));
 }
