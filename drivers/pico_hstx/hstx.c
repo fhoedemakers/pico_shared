@@ -54,6 +54,7 @@ uint8_t *DisplayBuf = FRAMEBUFFER;
 uint8_t *LayerBuf = FRAMEBUFFER;
 uint16_t *tilefcols;
 uint16_t *tilebcols;
+volatile int enableScanLines = 0; // Enable scanlines
 //volatile int HRes;      // 320
 //volatile int VRes;       // 240
 // Fix to 320x240
@@ -359,6 +360,16 @@ void __not_in_flash_func(HSTXCore)(void)
                     uint8_t *d = &DisplayBuf[(Line_dup)*MODE_H_ACTIVE_PIXELS + i * 2];
                     int c = *d++;
                     c |= ((*d++) << 8);
+                    // Apply CRT scanline effect for RGB555: darken every other line
+                    if (load_line & 1  && enableScanLines) { // Odd lines = scanlines
+                        int r = (c >> 10) & 0x1F;
+                        int g = (c >> 5) & 0x1F;
+                        int b = c & 0x1F;
+                        r = r >> 1;
+                        g = g >> 1;
+                        b = b >> 1;
+                        c = (r << 10) | (g << 5) | b;
+                    }
                     *p++ = c;
                     *p++ = c;
                 }
@@ -446,4 +457,10 @@ void hstx_clearScreen(uint16_t color) {
     }
 }
 #endif // PICO_RP2350
+/// @brief Enable or disable scanlines effect
+/// @param enable 1 to enable scanlines, 0 to disable
+void hstx_setScanLines(int enable) {
+    // Set the scanlines effect flag        
+    enableScanLines = enable ? 1 : 0;
+}
 // End of hstx.c
