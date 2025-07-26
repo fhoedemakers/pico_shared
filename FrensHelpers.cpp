@@ -967,6 +967,12 @@ namespace Frens
         dvi_->getAudioRingBuffer().advanceWritePointer(255);
 #else
         hstx_init();
+        // For now use an MCP4822 DAC for audio output
+        // https://ww1.microchip.com/downloads/aemDocuments/documents/OTH/ProductDocuments/DataSheets/20002249B.pdf
+        // This is only used for HSTX, not for DVI.
+        // The MCP4822 is a dual channel 12-bit DAC.
+        // The DAC must be connected to the correct GPIO pins and must have an audio Jack connected.
+        // see drivers/pico_audio_mcp4822/mcp4822.h for the pin definitions.
         mcp4822_init();
 #endif
     }
