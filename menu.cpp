@@ -103,6 +103,7 @@ void resetColors(int prevfgColor, int prevbgColor)
 
 int Menu_LoadFrame()
 {
+    Frens::PaceFrames60fps(false);
 #if NES_PIN_CLK != -1
     nespad_read_start();
 #endif
@@ -615,12 +616,14 @@ static void showLoadingScreen()
 #if !HSTX
     if (Frens::isFrameBufferUsed())
     {
+#endif
         ClearScreen(settings.bgcolor);
         putText(SCREEN_COLS / 2 - 5, SCREEN_ROWS / 2, "Loading...", settings.fgcolor, settings.bgcolor);
         DrawScreen(-1);
         Menu_LoadFrame();
         DrawScreen(-1);
         Menu_LoadFrame();
+#if !HSTX
     }
 #endif
 }
@@ -643,7 +646,7 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
     Frens::SetFrameBufferProcessScanLineFunction(processMenuScanLine);
 #endif
     abSwapped = 1; // Swap A and B buttons, so menu is consistent accrross different emilators
-
+    Frens::PaceFrames60fps(true);
     //
     menutitle = (char *)title;
     int totalFrames = -1;
