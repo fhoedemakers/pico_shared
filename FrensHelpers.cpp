@@ -81,7 +81,7 @@ namespace Frens
             psram_.Free(pMem);
         }
 #endif
-    } 
+    }
 
     bool initPsram()
     {
@@ -114,6 +114,29 @@ namespace Frens
         return usingFramebuffer;
     }
 #endif
+
+
+    /// @brief Poor way to pace frames to 60fps
+    /// @param init 
+    void PaceFrames60fps(bool init)
+    {
+#if !HSTX
+#else
+        static absolute_time_t next_frame_time = {0};
+        if (init)
+        {
+            next_frame_time = make_timeout_time_us(0); // Reset frame time to 0
+        }
+        // Adjust to about 60fps
+        if (to_us_since_boot(next_frame_time) == 0)
+        {
+            next_frame_time = make_timeout_time_us(0);
+        }
+        // Pace to 60fps
+        sleep_until(next_frame_time);
+        next_frame_time = delayed_by_us(next_frame_time, 16666); // 1/60s = 16666us
+#endif
+    }
     //
     //
     // test if string ends with suffix
@@ -519,7 +542,7 @@ namespace Frens
             // return nullptr if error
             return nullptr;
         }
-#else 
+#else
         // PSRAM not enabled, return nullptr
         printf("PSRAM not enabled, cannot flash rom to PSRAM\n");
         selectdRom[0] = 0;
@@ -868,7 +891,7 @@ namespace Frens
 #if !HSTX
         for (int i = 0; i < 12; i++)
 #else
-        for (int i = 2; i < 12; i++)    // HSTX uses DMA channel 0 (DMACHPING) and 1 (DMACHPONG) on core1, avoid this core claiming them 
+        for (int i = 2; i < 12; i++) // HSTX uses DMA channel 0 (DMACHPING) and 1 (DMACHPONG) on core1, avoid this core claiming them
 #endif
         {
             if (!dma_channel_is_claimed(i))
@@ -965,7 +988,7 @@ namespace Frens
             printf("Error initializing LED: %d\n", rc);
         }
         // Init PSRAM if available, otherwise use flash memory to store roms.
-        if (  initPsram() == false)
+        if (initPsram() == false)
         {
             // Calculate the address in flash where roms will be stored
             printf("Flash binary start    : 0x%08x\n", &__flash_binary_start);
@@ -981,7 +1004,9 @@ namespace Frens
             maxRomSize = flash_end - (uint8_t *)ROM_FILE_ADDR;
             printf("ROM_FILE_ADDR         : 0x%08x\n", ROM_FILE_ADDR);
             printf("Max ROM size          :   %8d bytes (%d) KBytes\n", maxRomSize, maxRomSize / 1024);
-        } else {
+        }
+        else
+        {
             maxRomSize = psramMemorySize;
             printf("  PSRAM size            :   %8zu bytes (%zu) KBytes\n", psramMemorySize, psramMemorySize / 1024);
             printf("  Max ROM size          :   %8zu bytes (%zu) KBytes\n", maxRomSize, maxRomSize / 1024);
