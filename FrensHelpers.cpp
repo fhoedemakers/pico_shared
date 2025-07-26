@@ -114,7 +114,16 @@ namespace Frens
         return usingFramebuffer;
     }
 #endif
+#define STORAGE_CMD_DUMMY_BYTES 1
+#define STORAGE_CMD_DATA_BYTES 3
+#define STORAGE_CMD_TOTAL_BYTES (STORAGE_CMD_DUMMY_BYTES + STORAGE_CMD_DATA_BYTES)
+uint storage_get_flash_capacity() {
+    uint8_t txbuf[STORAGE_CMD_TOTAL_BYTES] = {0x9f};
+    uint8_t rxbuf[STORAGE_CMD_TOTAL_BYTES] = {0};
+    flash_do_cmd(txbuf, rxbuf, STORAGE_CMD_TOTAL_BYTES);
 
+    return 1 << rxbuf[3];
+}
 
     /// @brief Poor way to pace frames to 60fps
     /// @param init 
@@ -993,9 +1002,11 @@ namespace Frens
         {
             printf("Error initializing LED: %d\n", rc);
         }
+     
         // Init PSRAM if available, otherwise use flash memory to store roms.
         if (initPsram() == false)
         {
+           
             // Calculate the address in flash where roms will be stored
             printf("Flash binary start    : 0x%08x\n", &__flash_binary_start);
             printf("Flash binary end      : 0x%08x\n", &__flash_binary_end);
@@ -1017,6 +1028,8 @@ namespace Frens
             printf("  PSRAM size            :   %8zu bytes (%zu) KBytes\n", psramMemorySize, psramMemorySize / 1024);
             printf("  Max ROM size          :   %8zu bytes (%zu) KBytes\n", maxRomSize, maxRomSize / 1024);
         }
+        // auto cap = storage_get_flash_capacity();
+        // printf("Total flash size: %d bytes (%d Kbytes)\n", cap,cap/ 1024);
         // reset settings to default in case SD card could not be mounted
         resetsettings();
         if (initSDCard())
