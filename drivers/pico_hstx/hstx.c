@@ -446,3 +446,4 @@ void hstx_clearScreen(uint16_t color) {
     }
 }
 #endif // PICO_RP2350
+// End of hstx.c
