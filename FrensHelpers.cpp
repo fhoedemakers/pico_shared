@@ -469,6 +469,25 @@ uint storage_get_flash_capacity() {
         return scaleMode8_7_;
     }
 #endif
+    void toggleScanLines()
+    {
+#if !HSTX
+#else
+        settings.scanlineOn = settings.scanlineOn != 0 ? 0 : 1; // toggle scanlineOn
+        savesettings();
+        hstx_setScanLines(settings.scanlineOn);
+        printf("Scanlines %s\n", settings.scanlineOn ? "enabled" : "disabled");
+#endif
+    }
+    void restoreScanlines()
+    {
+#if !HSTX
+#else 
+        hstx_setScanLines(settings.scanlineOn > 0); 
+#endif
+        printf("Restoring scanlines: %s\n", settings.scanlineOn ? "enabled" : "disabled");
+    }
+
     void *flashromtoPsram(char *selectdRom, bool swapbytes)
     {
 #if PICO_RP2350 && PSRAM_CS_PIN

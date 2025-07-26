@@ -105,7 +105,8 @@ namespace Frens
     void *flashromtoPsram(char *selectdRom, bool swapbytes);
     void freePsram(void *pMem);
     void PaceFrames60fps(bool init);
-
+    void toggleScanLines();
+    void restoreScanlines();
     //extern volatile ProcessScanLineFunction processScanLineFunction;
    
 } // namespace Frens

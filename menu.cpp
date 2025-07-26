@@ -646,6 +646,8 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
     dvi_->getBlankSettings().bottom = 0;
 
     Frens::SetFrameBufferProcessScanLineFunction(processMenuScanLine);
+#else 
+    hstx_setScanLines(false);
 #endif
     abSwapped = 1; // Swap A and B buttons, so menu is consistent accrross different emilators
     Frens::PaceFrames60fps(true);
