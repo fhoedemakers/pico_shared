@@ -78,6 +78,19 @@ volatile uint32_t frame_counter = 0; // Frame counter
 #define SCREENMODE5 30
 #define SCREENMODE6 31
 
+// --- TMDS lane to GPIO mapping (configurable) ---
+#ifndef GPIOHSTXD0
+#define GPIOHSTXD0 18 // D0+ (default: GPIO18)
+#endif
+#ifndef GPIOHSTXD1
+#define GPIOHSTXD1 16 // D1+ (default: GPIO16)
+#endif
+#ifndef GPIOHSTXD2
+#define GPIOHSTXD2 12 // D2+ (default: GPIO12)
+#endif
+// Calculate HSTX output bit from GPIO number (GPIO12-19 => bit 0-7)
+#define HSTX_BIT_FROM_GPIO(gpio) ((gpio) - 12)
+
 // ----------------------------------------------------------------------------
 // HSTX command lists
 
@@ -272,7 +285,11 @@ void __not_in_flash_func(HSTXCore)(void)
         // D2 (Index 2) is assigned to HSTX output bit 0 → GPIO12 (D2+) and GPIO13 (D2-).
         // https://learn.adafruit.com/adafruit-metro-rp2350/pinouts#hstx-connector-3193107
         // TODO make configurable
-        static const int lane_to_output_bit[3] = {6, 4, 0}; // {0, 6, 4};
+        static const int lane_to_output_bit[3] = {
+            HSTX_BIT_FROM_GPIO(GPIOHSTXD0),
+            HSTX_BIT_FROM_GPIO(GPIOHSTXD1),
+            HSTX_BIT_FROM_GPIO(GPIOHSTXD2)
+        };
         int bit = lane_to_output_bit[lane];
         // Output even bits during first half of each HSTX cycle, and odd bits
         // during second half. The shifter advances by two bits each cycle.
