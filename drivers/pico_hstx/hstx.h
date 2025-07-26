@@ -1,3 +1,4 @@
+#if PICO_RP2350
 #ifndef PICO_HSTX_H
 #define PICO_HSTX_H
 #ifdef __cplusplus
@@ -19,3 +20,4 @@ void hstx_clearScreen(uint16_t color);
 }
 #endif
 #endif // PICO_HSTX_H
+#endif

@@ -1,3 +1,4 @@
+#if PICO_RP2350
 #include "hstx.h"
 #include "hardware/dma.h"
 #include "hardware/gpio.h"
@@ -444,3 +445,4 @@ void hstx_clearScreen(uint16_t color) {
         ((uint16_t *)WriteBuf)[i] = color;
     }
 }
+#endif // PICO_RP2350
