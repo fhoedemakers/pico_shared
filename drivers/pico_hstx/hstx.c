@@ -456,7 +456,6 @@ void hstx_clearScreen(uint16_t color) {
         ((uint16_t *)WriteBuf)[i] = color;
     }
 }
-#endif // PICO_RP2350
 /// @brief Enable or disable scanlines effect
 /// @param enable 1 to enable scanlines, 0 to disable
 void hstx_setScanLines(int enable) {
@@ -467,4 +466,6 @@ uint8_t* hstx_getframebuffer(void) {
     // Return the pointer to the framebuffer
     return WriteBuf;
 }
+#endif // PICO_RP2350
+
 // End of hstx.c
