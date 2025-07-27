@@ -612,35 +612,92 @@ void __not_in_flash_func(processMenuScanLine)(int line, uint8_t *framebuffer, ui
 }
 #endif
 #define ARTFILE "/ART/output_RGB555.raw"
+#define ARTFILERGB "/ART/output_RGB555.rgb"
+
 static void showLoadingScreen()
 {
 #if !HSTX
     if (Frens::isFrameBufferUsed())
     {
 #else
-        FIL fil;
-        FRESULT fr;
-        fr = f_open(&fil, ARTFILE, FA_READ);
-        if (fr == FR_OK)
+    // try to read .rgb file first
+    // RGB colors are stored in 32 bit ARGB format, little endian.
+    // If ARGB = 0xFF112233 (fully opaque 0xFF, red=0x11, green=0x22, blue=0x33):
+    // Little endian storage (in memory): 33 22 11 FF
+    // Note the A-byte is unused, so it is always 0xFF.
+    // Resolution must be 320x240 pixels,
+    // so the total size of the file must be 307200 bytes (320 * 240 * 4 bytes per pixel).
+    FIL fil;
+    FRESULT fr;
+    int LINES2READ = Frens::isPsramEnabled() ? 240 : 4; // read the entire framebuffer in one go if PSRAM is enabled, otherwise read 4 lines at a time
+    int bufferSize = 320 * LINES2READ * sizeof(uint32_t);
+    fr = f_open(&fil, ARTFILERGB, FA_READ);
+    if (fr == FR_OK)
+    {
+        if (f_size(&fil) == 307200)
+        {
+            printf("Reading %s, size: %d bytes\n", ARTFILERGB, f_size(&fil));
+            uint32_t *buffer = (uint32_t *)Frens::f_malloc(bufferSize);
+            uint16_t *line = hstx_getlineFromFramebuffer(0);
+            size_t r;
+            for (int j = 0; j < (240 / LINES2READ); j++)
+            {
+                fr = f_read(&fil, buffer, bufferSize, &r);
+                for (int i = 0; i < (int)(bufferSize / sizeof(buffer[0])); i++)
+                {
+                    *line++ = CC(buffer[i]);
+                }
+            }
+            Frens::f_free(buffer);
+            f_close(&fil);
+            // sleep_ms(1500);
+            return;
+        }
+        else
+        {
+            printf("Error: %s is not 320x240 pixels, size: %d bytes\n", ARTFILERGB, f_size(&fil));
+            f_close(&fil);
+        }
+    }
+    else
+    {
+        printf("Error opening %s: %d\n", ARTFILERGB, fr);
+    }
+    // try to read .raw file which uses 16 bit RGB555 colors. Colrs are stored in little endian.
+    // Resolution must be 320x240 pixels,
+    // so the total size of the file must be 153600 bytes (320 * 240 * 2 bytes per pixel).
+    // If the file is not found, it will  display a text - loading screen.
+    fr = f_open(&fil, ARTFILE, FA_READ);
+    if (fr == FR_OK)
+    {
+        if (f_size(&fil) == 153600)
         {
             size_t r;
             fr = f_read(&fil, hstx_getframebuffer(), 153600, &r);
             f_close(&fil);
             printf("Read %d bytes from %s\n", r, ARTFILE);
-            sleep_ms(1000);
-            return;
-        } else {   
-            printf("Error opening %s: %d\n",ARTFILE, fr);
+            // sleep_ms(1000);
         }
-#endif
-            ClearScreen(settings.bgcolor);
-            putText(SCREEN_COLS / 2 - 5, SCREEN_ROWS / 2, "Loading...", settings.fgcolor, settings.bgcolor);
-            DrawScreen(-1);
-            Menu_LoadFrame();
-            DrawScreen(-1);
-            Menu_LoadFrame();
-#if !HSTX
+        else
+        {
+            printf("Error: %s is not 320x240 pixels, size: %d bytes\n", ARTFILE, f_size(&fil));
+            f_close(&fil);
+        }
+        return;
     }
+    else
+    {
+        printf("Error opening %s: %d\n", ARTFILE, fr);
+    }
+#endif
+        ClearScreen(settings.bgcolor);
+        putText(SCREEN_COLS / 2 - 5, SCREEN_ROWS / 2, "Loading...", settings.fgcolor, settings.bgcolor);
+        DrawScreen(-1);
+        Menu_LoadFrame();
+        DrawScreen(-1);
+        Menu_LoadFrame();
+#if !HSTX
+    } // Frens::isFrameBufferUsed()
 #endif
 }
 
