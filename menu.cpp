@@ -52,8 +52,7 @@ const __UINT16_TYPE__ NesMenuPalette[64] = {
     CC(0xFFFFFF), CC(0xBEE0FF), CC(0xCDD4FF), CC(0xE0CAFF),
     CC(0xF1C4FF), CC(0xFCC4EF), CC(0xFDCACE), CC(0xF5D4AF),
     CC(0xE6DF9C), CC(0xD3E99A), CC(0xC2EFA8), CC(0xB7EFC4),
-    CC(0xB6EAE5), CC(0xB8B8B8), CC(0x000000), CC(0x000000)
-};
+    CC(0xB6EAE5), CC(0xB8B8B8), CC(0x000000), CC(0x000000)};
 #endif
 int NesMenuPaletteItems = sizeof(NesMenuPalette) / sizeof(NesMenuPalette[0]);
 static char connectedGamePadName[sizeof(io::GamePadState::GamePadName)];
@@ -63,7 +62,6 @@ charCell *screenBuffer;
 
 #define LONG_PRESS_TRESHOLD (500)
 #define REPEAT_DELAY (40)
-
 
 static WORD *WorkLineRom = nullptr;
 #if !HSTX
@@ -110,9 +108,9 @@ int Menu_LoadFrame()
 
     auto count =
 #if !HSTX
-     dvi_->getFrameCounter();
+        dvi_->getFrameCounter();
 #else
-     hstx_getframecounter();
+        hstx_getframecounter();
 #endif
     auto onOff = hw_divider_s32_quotient_inlined(count, 60) & 1;
     Frens::blinkLed(onOff);
@@ -417,7 +415,7 @@ void DrawScreen(int selectedRow)
         putText(SCREEN_COLS / 2 - strlen(spaces) / 2, SCREEN_ROWS - 1, spaces, settings.bgcolor, settings.bgcolor);
         snprintf(tmpstr, sizeof(tmpstr), "- %s -", connectedGamePadName[0] != 0 ? connectedGamePadName : "No USB GamePad");
         putText(SCREEN_COLS / 2 - strlen(tmpstr) / 2, SCREEN_ROWS - 1, tmpstr, CBLUE, CWHITE);
-        snprintf(s, sizeof(s), "%c%dK", Frens::isPsramEnabled() ? 'P' : 'F', maxRomSize/1024);
+        snprintf(s, sizeof(s), "%c%dK", Frens::isPsramEnabled() ? 'P' : 'F', maxRomSize / 1024);
         putText(1, SCREEN_ROWS - 1, s, CBLACK, settings.bgcolor);
         if (strcmp(connectedGamePadName, "Dual Shock 4") == 0 || strcmp(connectedGamePadName, "Dual Sense") == 0 || strcmp(connectedGamePadName, "PSClassic") == 0)
         {
@@ -613,18 +611,34 @@ void __not_in_flash_func(processMenuScanLine)(int line, uint8_t *framebuffer, ui
     }
 }
 #endif
+#define ARTFILE "/ART/output_RGB555.raw"
 static void showLoadingScreen()
 {
 #if !HSTX
     if (Frens::isFrameBufferUsed())
     {
+#else
+        FIL fil;
+        FRESULT fr;
+        fr = f_open(&fil, ARTFILE, FA_READ);
+        if (fr == FR_OK)
+        {
+            size_t r;
+            fr = f_read(&fil, hstx_getframebuffer(), 153600, &r);
+            f_close(&fil);
+            printf("Read %d bytes from %s\n", r, ARTFILE);
+            sleep_ms(1000);
+            return;
+        } else {   
+            printf("Error opening %s: %d\n",ARTFILE, fr);
+        }
 #endif
-        ClearScreen(settings.bgcolor);
-        putText(SCREEN_COLS / 2 - 5, SCREEN_ROWS / 2, "Loading...", settings.fgcolor, settings.bgcolor);
-        DrawScreen(-1);
-        Menu_LoadFrame();
-        DrawScreen(-1);
-        Menu_LoadFrame();
+            ClearScreen(settings.bgcolor);
+            putText(SCREEN_COLS / 2 - 5, SCREEN_ROWS / 2, "Loading...", settings.fgcolor, settings.bgcolor);
+            DrawScreen(-1);
+            Menu_LoadFrame();
+            DrawScreen(-1);
+            Menu_LoadFrame();
 #if !HSTX
     }
 #endif
@@ -646,7 +660,7 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
     dvi_->getBlankSettings().bottom = 0;
 
     Frens::SetFrameBufferProcessScanLineFunction(processMenuScanLine);
-#else 
+#else
     hstx_setScanLines(false);
 #endif
     abSwapped = 1; // Swap A and B buttons, so menu is consistent accrross different emilators
@@ -909,10 +923,8 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
                             // and load the new rom to PSRAM
                             printf("Loading rom to PSRAM: %s\n", fullPath);
                             strcpy(rompath, fullPath);
-                            ROM_FILE_ADDR = (uintptr_t) Frens::flashromtoPsram(fullPath, false);
-                           
-                        }   
-                        
+                            ROM_FILE_ADDR = (uintptr_t)Frens::flashromtoPsram(fullPath, false);
+                        }
                     }
                     else
                     {
@@ -960,10 +972,10 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
                             errorInSavingRom = true;
                         }
                         f_close(&fil);
-                       
                     }
-                    if (!errorInSavingRom) {                          
-                        break;  // from while(1) loop, so we can reboot or return to main.cpp
+                    if (!errorInSavingRom)
+                    {
+                        break; // from while(1) loop, so we can reboot or return to main.cpp
                     }
                 }
             }
@@ -997,9 +1009,9 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
             displayRoms(romlister, settings.firstVisibleRowINDEX);
         }
     } // while 1
-   
+
     ClearScreen(CBLACK); // Removes artifacts from previous screen
-     // Wait until user has released all buttons
+                         // Wait until user has released all buttons
     while (1)
     {
         Menu_LoadFrame();
@@ -1013,7 +1025,6 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
     free(screenBuffer);
     free(buffer);
 
-   
     Frens::savesettings();
 #if !HSTX
     // Reset the screen mode to the original settings
