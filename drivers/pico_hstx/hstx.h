@@ -17,6 +17,7 @@ uint32_t hstx_getframecounter(void);
 void hstx_waitForVSync(void);
 void hstx_clearScreen(uint16_t color);
 void hstx_setScanLines(int enable);
+uint8_t *hstx_getframebuffer(void);
 #ifdef __cplusplus
 }
 #endif

@@ -463,4 +463,8 @@ void hstx_setScanLines(int enable) {
     // Set the scanlines effect flag        
     enableScanLines = enable ? 1 : 0;
 }
+uint8_t* hstx_getframebuffer(void) {
+    // Return the pointer to the framebuffer
+    return WriteBuf;
+}
 // End of hstx.c
