@@ -107,6 +107,8 @@ namespace Frens
     void PaceFrames60fps(bool init);
     void toggleScanLines();
     void restoreScanlines();
+    void *f_malloc(size_t size);
+    void f_free(void *pMem);
     //extern volatile ProcessScanLineFunction processScanLineFunction;
    
 } // namespace Frens

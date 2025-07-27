@@ -116,16 +116,17 @@ namespace Frens
 #define STORAGE_CMD_DUMMY_BYTES 1
 #define STORAGE_CMD_DATA_BYTES 3
 #define STORAGE_CMD_TOTAL_BYTES (STORAGE_CMD_DUMMY_BYTES + STORAGE_CMD_DATA_BYTES)
-uint storage_get_flash_capacity() {
-    uint8_t txbuf[STORAGE_CMD_TOTAL_BYTES] = {0x9f};
-    uint8_t rxbuf[STORAGE_CMD_TOTAL_BYTES] = {0};
-    flash_do_cmd(txbuf, rxbuf, STORAGE_CMD_TOTAL_BYTES);
+    uint storage_get_flash_capacity()
+    {
+        uint8_t txbuf[STORAGE_CMD_TOTAL_BYTES] = {0x9f};
+        uint8_t rxbuf[STORAGE_CMD_TOTAL_BYTES] = {0};
+        flash_do_cmd(txbuf, rxbuf, STORAGE_CMD_TOTAL_BYTES);
 
-    return 1 << rxbuf[3];
-}
+        return 1 << rxbuf[3];
+    }
 
     /// @brief Poor way to pace frames to 60fps
-    /// @param init 
+    /// @param init
     void PaceFrames60fps(bool init)
     {
 #if !HSTX
@@ -482,10 +483,63 @@ uint storage_get_flash_capacity() {
     void restoreScanlines()
     {
 #if !HSTX
-#else 
-        hstx_setScanLines(settings.scanlineOn > 0); 
+#else
+        hstx_setScanLines(settings.scanlineOn > 0);
 #endif
         printf("Restoring scanlines: %s\n", settings.scanlineOn ? "enabled" : "disabled");
+    }
+
+    /// @brief Allocates memory from PSRAM if available, otherwise uses malloc
+    /// @param size 
+    /// @return 
+    void *f_malloc(size_t size)
+    {
+        if (size == 0)
+        {
+            return nullptr;
+        }   
+#if PICO_RP2350 && PSRAM_CS_PIN
+        if (isPsramEnabled())
+        {
+            PicoPlusPsram &psram_ = PicoPlusPsram::getInstance();
+            void *pMem = psram_.Malloc(size);
+            if (!pMem)
+            {
+                panic("Cannot allocate %zu bytes in PSRAM\n", size);
+            }
+            printf("Allocated %zu bytes in PSRAM at %p\n", size, pMem);
+            return pMem;
+        }
+#endif
+        // PSRAM not enabled, use malloc
+        void *pMem = malloc(size);  // panics if unavailable
+        printf("Allocated %zu bytes in RAM at %p\n", size, pMem);
+        return pMem;
+    }
+
+    /// @brief frees memory allocated by f_malloc
+    /// @param pMem 
+    void f_free(void *pMem)
+    {
+        if (!pMem){
+            return;
+        }
+#if PICO_RP2350 && PSRAM_CS_PIN
+        if (isPsramEnabled())
+        {
+            PicoPlusPsram &psram_ = PicoPlusPsram::getInstance();
+            size_t uFreeing = psram_.GetSize(pMem);
+            printf("Freeing %zu bytes from PSRAM\n", uFreeing);
+            psram_.Free(pMem);
+            return;
+        }
+#endif
+        // PSRAM not enabled, use free
+        if (pMem)
+        {
+            printf("Freeing memory at %p\n", pMem);
+            free(pMem);
+        }
     }
 
     void *flashromtoPsram(char *selectdRom, bool swapbytes)
@@ -1020,7 +1074,7 @@ uint storage_get_flash_capacity() {
         {
             printf("Error initializing LED: %d\n", rc);
         }
-     
+
         // Init PSRAM if available, otherwise use flash memory to store roms.
         if (initPsram() == false)
         {
@@ -1028,7 +1082,7 @@ uint storage_get_flash_capacity() {
             // Calculate the address in flash where roms will be stored
             printf("Flash binary start    : 0x%08x\n", &__flash_binary_start);
             printf("Flash binary end      : 0x%08x\n", &__flash_binary_end);
-            //printf("Flash size in bytes   :   %8d (%d)Kbytes\n", PICO_FLASH_SIZE_BYTES, PICO_FLASH_SIZE_BYTES / 1024);
+            // printf("Flash size in bytes   :   %8d (%d)Kbytes\n", PICO_FLASH_SIZE_BYTES, PICO_FLASH_SIZE_BYTES / 1024);
             printf("Flash size in bytes   :   %8d (%d Kbytes)\n", flashcap, flashcap / 1024);
             // uint8_t *flash_end = (uint8_t *)&__flash_binary_start + PICO_FLASH_SIZE_BYTES - 1;
             uint8_t *flash_end = (uint8_t *)&__flash_binary_start + flashcap - 1;
