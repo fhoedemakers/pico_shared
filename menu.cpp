@@ -737,10 +737,10 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
     // allocate buffers
     size_t screenbufferSize = sizeof(charCell) * SCREEN_COLS * SCREEN_ROWS;
     printf("Allocating %d bytes for screenbuffer\n", screenbufferSize);
-    screenBuffer = (charCell *)malloc(screenbufferSize); // (charCell *)InfoNes_GetRAM(&ramsize);
+    screenBuffer = (charCell *)Frens::f_malloc(screenbufferSize); // (charCell *)InfoNes_GetRAM(&ramsize);
     size_t directoryContentsBufferSize = 32768;
     printf("Allocating %d bytes for directory contents.\n", directoryContentsBufferSize);
-    void *buffer = (void *)malloc(directoryContentsBufferSize); // InfoNes_GetChrBuf(&chr_size);
+    void *buffer = (void *)Frens::f_malloc(directoryContentsBufferSize); // InfoNes_GetChrBuf(&chr_size);
     Frens::RomLister romlister(buffer, directoryContentsBufferSize, allowedExtensions);
 
     if (strlen(errorMessage) > 0)
@@ -1079,8 +1079,8 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
             break;
         }
     }
-    free(screenBuffer);
-    free(buffer);
+    Frens::f_free(screenBuffer);
+    Frens::f_free(buffer);
 
     Frens::savesettings();
 #if !HSTX
