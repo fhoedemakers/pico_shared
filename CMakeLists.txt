@@ -13,16 +13,17 @@ nespad.cpp
 wiipad.cpp
 FrensFonts.cpp
 ffwrappers.c
-PicoPlusPsram.cpp
+#PicoPlusPsram.cpp
 )
 add_subdirectory(drivers/pico_fatfs)     
 add_subdirectory(drivers/pico_audio_i2s)
 add_subdirectory(drivers/lwmem)
 add_subdirectory(drivers/pico_hstx)
 add_subdirectory(drivers/pico_audio_mcp4822)
+add_subdirectory(drivers/pico_psram)
 
 target_include_directories(pico_shared INTERFACE
         .
 )
-target_link_libraries(pico_shared INTERFACE pico_fatfs pico_audio_i2s lwmem pico_hstx pico_audio_mcp4822)
+target_link_libraries(pico_shared INTERFACE pico_fatfs pico_audio_i2s lwmem pico_hstx pico_audio_mcp4822 pico_psram)
 
