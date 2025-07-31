@@ -31,6 +31,7 @@
 #ifdef CYW43_WL_GPIO_LED_PIN
 #include "pico/cyw43_arch.h"
 #endif
+#include "crc32.h"
 
 #ifndef DVIAUDIOFREQ
 #define DVIAUDIOFREQ 44100
@@ -490,14 +491,14 @@ namespace Frens
     }
 
     /// @brief Allocates memory from PSRAM if available, otherwise uses malloc
-    /// @param size 
-    /// @return 
+    /// @param size
+    /// @return
     void *f_malloc(size_t size)
     {
         if (size == 0)
         {
             return nullptr;
-        }   
+        }
 #if PICO_RP2350 && PSRAM_CS_PIN
         if (isPsramEnabled())
         {
@@ -512,16 +513,17 @@ namespace Frens
         }
 #endif
         // PSRAM not enabled, use malloc
-        void *pMem = malloc(size);  // panics if unavailable
+        void *pMem = malloc(size); // panics if unavailable
         printf("Allocated %zu bytes in RAM at %p\n", size, pMem);
         return pMem;
     }
 
     /// @brief frees memory allocated by f_malloc
-    /// @param pMem 
+    /// @param pMem
     void f_free(void *pMem)
     {
-        if (!pMem){
+        if (!pMem)
+        {
             return;
         }
 #if PICO_RP2350 && PSRAM_CS_PIN
@@ -556,6 +558,12 @@ namespace Frens
         {
             printf("Rom will be byteswapped.\n");
         }
+        // calculate the CRC32 checksum of the rom
+        // uint32_t crc;
+        // if (compute_crc32(selectdRom, &crc) == 0)
+        // {
+        //     printf("CRC32 checksum of %s: %08X\n", selectdRom, crc);
+        // }
         fr = f_open(&fil, selectdRom, FA_READ);
         if (fr != FR_OK)
         {
@@ -608,12 +616,23 @@ namespace Frens
                 }
                 ok = true;
                 printf("Read %d bytes from %s into PSRAM at %p\n", r, selectdRom, pMem);
+                uint32_t crc;
+                if ((crc = compute_crc32_buffer(pMem, filesize)) > 0)
+                {
+                    printf("CRC32 checksum of %s in PSRAM: %08X\n", selectdRom, crc);
+                }
+                else
+                {
+                    printf("Error calculating CRC32 checksum of %s in PSRAM\n", selectdRom);
+                }
                 selectdRom[0] = 0; //
             }
             f_close(&fil);
         }
         if (ok)
         {
+
+            // Start emulator with rom in PSRAM
             printf("Starting emulator with rom in PSRAM at %p\n", pMem);
             // return pointer to pMem
             return pMem;
