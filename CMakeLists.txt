@@ -12,7 +12,7 @@ hid_app.cpp
 nespad.cpp
 wiipad.cpp
 FrensFonts.cpp
-ffwrappers.c
+ffwrappers.cpp
 #PicoPlusPsram.cpp
 )
 add_subdirectory(drivers/pico_fatfs)     

@@ -2,7 +2,7 @@
 #include <string.h>
 #include <stdio.h>
 #include "ffwrappers.h"
-
+#include "FrensHelpers.h"
 // This file contains some wrapper functions for the FatFs library:
 // - my_chdir for f_chdir: Change and keep track of the current working directory.
 // - my_getcwd for f_getcwd: Get the current tracked  working directory.
@@ -101,8 +101,8 @@ static TCHAR current_dir[FF_MAX_LFN] = "/"; // Static variable to store the curr
 FRESULT my_chdir(const TCHAR *path)
 {
 #if 1
-    TCHAR *temp = malloc(BUFFERSIZE);
-    TCHAR *normalized = malloc(BUFFERSIZE);
+    TCHAR *temp = (TCHAR *)Frens::f_malloc(BUFFERSIZE);
+    TCHAR *normalized = (TCHAR *)Frens::f_malloc(BUFFERSIZE);
     FRESULT fr;
     // Check if path is absolute
     if (path[0] == '/')
@@ -133,8 +133,8 @@ FRESULT my_chdir(const TCHAR *path)
         printf("Error normalizing path: %s\n", temp);
         fr = FR_INVALID_PARAMETER; // Return error if normalization fails
     }
-    free(normalized);
-    free(temp);
+    Frens::f_free(normalized);
+    Frens::f_free(temp);
     return fr;
 #else
     return f_chdir(path); // Call the actual f_chdir function
@@ -148,7 +148,7 @@ FRESULT my_chdir(const TCHAR *path)
 // The function uses a static variable (current_dir) to keep track of the current directory as changed by my_chdir.
 // It copies the tracked directory to the provided buffer, ensuring null termination and checking for buffer size.
 // Returns FR_OK on success, or FR_INVALID_PARAMETER if the buffer is too small.
-const FRESULT my_getcwd(TCHAR *buffer, UINT len)
+FRESULT my_getcwd(TCHAR *buffer, UINT len)
 {
 #if 1
     // char tempdir[FF_MAX_LFN];
