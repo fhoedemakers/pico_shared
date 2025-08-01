@@ -27,6 +27,7 @@
 #include "audio_i2s.pio.h"
 #include "string.h"
 #include "stdio.h"
+#include "hardware/i2c.h"
 
 #define AUDIO_PIO __CONCAT(pio, PICO_AUDIO_I2S_PIO)
 #define GPIO_FUNC_PIOx __CONCAT(GPIO_FUNC_PIO, PICO_AUDIO_I2S_PIO)
@@ -45,7 +46,87 @@ static audio_i2s_hw_t audio_i2s = {
 
 // Sample frequency for the audio I2S interface, initialized to the default PICO_AUDIO_I2S_FREQ.
 static int samplefreq = PICO_AUDIO_I2S_FREQ;
+#define TLV320_ADDR 0x18 // I2C address for the TLV320AIC3204 codec
+#define TLV_RESET_PIN 7  // <- Connect RESET pin here
+#define I2C_PORT i2c0
+#define I2C_ADDR 0x18
 
+static void write_tlv320(uint8_t *data, size_t len) {
+    int ret = i2c_write_blocking(I2C_PORT, I2C_ADDR, data, len, false);
+    if (ret < 0) {
+        printf("I2C write failed: error %d\n", ret);
+    } else if (ret != (int)len) {
+        printf("I2C write incomplete: wrote %d of %d bytes\n", ret, len);
+    }
+	printf("I2C write %d bytes: ", len);
+	for (size_t i = 0; i < len; i++) {	
+		printf("%02x ", data[i]);
+	}
+	printf("\n");
+}
+
+static void tlv320_hardware_reset() {
+    gpio_put(TLV_RESET_PIN, 0);
+	gpio_set_dir(TLV_RESET_PIN, GPIO_OUT);
+	gpio_set_function(TLV_RESET_PIN, GPIO_FUNC_SIO);
+    sleep_us(20); // Hold low for >10us
+	gpio_put(TLV_RESET_PIN, 1);
+    gpio_set_dir(TLV_RESET_PIN, GPIO_OUT);
+    gpio_set_function(TLV_RESET_PIN, GPIO_FUNC_SIO);
+	sleep_ms(10); // Wait for the chip to reset
+	printf("TLV320 hardware reset complete\n");
+}
+
+static void tlv320_init() {
+
+	
+	// I2C writes
+    write_tlv320((uint8_t[]){0x00, 0x00}, 2);
+    write_tlv320((uint8_t[]){0x01, 0x01}, 2);
+    write_tlv320((uint8_t[]){0x04, 0x03}, 2);
+    write_tlv320((uint8_t[]){0x06, 0x08}, 2);
+    write_tlv320((uint8_t[]){0x07, 0x00, 0x00}, 3);
+    write_tlv320((uint8_t[]){0x05, 0x91}, 2);
+    write_tlv320((uint8_t[]){0x0B, 0x88}, 2);
+    write_tlv320((uint8_t[]){0x0C, 0x82}, 2);
+    write_tlv320((uint8_t[]){0x0D, 0x00, 0x80}, 3);
+    write_tlv320((uint8_t[]){0x1B, 0x00}, 2);
+    write_tlv320((uint8_t[]){0x3C, 0x0B}, 2);
+    write_tlv320((uint8_t[]){0x00, 0x08}, 2);
+    write_tlv320((uint8_t[]){0x01, 0x04}, 2);
+    write_tlv320((uint8_t[]){0x00, 0x00}, 2);
+    write_tlv320((uint8_t[]){0x74, 0x00}, 2);
+    write_tlv320((uint8_t[]){0x00, 0x01}, 2);
+    write_tlv320((uint8_t[]){0x1F, 0x04}, 2);
+    write_tlv320((uint8_t[]){0x21, 0x4E}, 2);
+    write_tlv320((uint8_t[]){0x23, 0x44}, 2);
+    write_tlv320((uint8_t[]){0x28, 0x06}, 2);
+    write_tlv320((uint8_t[]){0x29, 0x06}, 2);
+    write_tlv320((uint8_t[]){0x2A, 0x1C}, 2);
+
+	// Set HP gain to +24 dB
+    write_tlv320((uint8_t[]){0x1F, 0xF2}, 2);  // 0xC2
+    //
+	write_tlv320((uint8_t[]){0x20, 0x86}, 2);
+    write_tlv320((uint8_t[]){0x24, 0x92}, 2);  // 0x92
+    write_tlv320((uint8_t[]){0x25, 0x92}, 2);  // 0x92
+    write_tlv320((uint8_t[]){0x26, 0x92}, 2);  // 0x92
+    write_tlv320((uint8_t[]){0x00, 0x00}, 2);
+    write_tlv320((uint8_t[]){0x3F, 0xD4}, 2);  // 0xD4
+	// Set DAC volume to 0 dB (maximum)
+    write_tlv320((uint8_t[]){0x41, 0x00}, 2);  // 0xD4
+    write_tlv320((uint8_t[]){0x42, 0x00}, 2);  // 0xD4
+
+	//
+	write_tlv320((uint8_t[]){0x16, 0x10}, 2); // Enable ramping
+    //
+	//
+    write_tlv320((uint8_t[]){0x40, 0x00}, 2);
+
+    printf("All I2C writes complete.\n");
+
+    sleep_ms(100);
+}
 /**
  * @brief Updates the PIO frequency for the audio I2S interface.
  *
@@ -93,7 +174,7 @@ void __isr dma_handler()
 	size_t available = (write_index >= read_index)
 						   ? (write_index - read_index)
 						   : (AUDIO_RING_SIZE - read_index + write_index);
-
+	//printf("DMA handler: read_index=%zu, write_index=%zu, available=%zu\n", read_index, write_index, available);
 	if (available >= DMA_BLOCK_SIZE)
 	{
 		dma_channel_set_read_addr(audio_i2s.dma_chan, &audio_ring[read_index], false);
@@ -110,8 +191,11 @@ void __isr dma_handler()
  * @param freqHZ The desired audio sample frequency in Hertz.
  * @return Pointer to an initialized audio_i2s_hw_t structure.
  */
-audio_i2s_hw_t *audio_i2s_setup(int freqHZ)
+audio_i2s_hw_t *audio_i2s_setup(int freqHZ, int dmachan)
 {
+	 tlv320_hardware_reset(); // Reset the TLV320 codec hardware
+	 tlv320_init(); // Initialize the TLV320 codec with default settings
+	audio_i2s.dma_chan = dmachan;
 	if (freqHZ > 0)
 	{
 		samplefreq = freqHZ;

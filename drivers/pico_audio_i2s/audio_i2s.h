@@ -43,7 +43,7 @@ typedef struct {
     int dma_chan; // DMA channel for audio transfer
 } audio_i2s_hw_t;
 
-audio_i2s_hw_t *audio_i2s_setup(int freqHZ);
+audio_i2s_hw_t *audio_i2s_setup(int freqHZ, int dmachan);
 void audio_i2s_update_pio_frequency(uint32_t sample_freq);
 void audio_i2s_out_32(uint32_t sample32);
 void audio_i2s_enqueue_sample(uint32_t sample32);

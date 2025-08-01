@@ -1067,6 +1067,7 @@ namespace Frens
         dvi_->getAudioRingBuffer().advanceWritePointer(255);
 #else
         hstx_init();
+#if 0
         // For now use an MCP4822 DAC for audio output
         // https://ww1.microchip.com/downloads/aemDocuments/documents/OTH/ProductDocuments/DataSheets/20002249B.pdf
         // This is only used for HSTX, not for DVI.
@@ -1074,6 +1075,7 @@ namespace Frens
         // The DAC must be connected to the correct GPIO pins and must have an audio Jack connected.
         // see drivers/pico_audio_mcp4822/mcp4822.h for the pin definitions.
         mcp4822_init();
+#endif  
 #endif
     }
 
@@ -1189,7 +1191,7 @@ namespace Frens
         }
 #endif // DVI
         initVintageControllers(CPUFreqKHz);
-        EXT_AUDIO_SETUP(DVIAUDIOFREQ); // Initialize external audio if needed
+        EXT_AUDIO_SETUP(DVIAUDIOFREQ, 4); // Initialize external audio if needed
         return ok;
     }
 #if !HSTX

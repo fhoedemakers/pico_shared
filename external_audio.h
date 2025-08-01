@@ -18,7 +18,7 @@
 #if USE_I2S_AUDIO
 #include "audio_i2s.h"
 #define EXT_AUDIO_ENQUEUE_SAMPLE(l, r) audio_i2s_enqueue_sample((uint32_t) ((l << 16) | (r & 0xFFFF)))
-#define EXT_AUDIO_SETUP(freq) audio_i2s_setup(freq)
+#define EXT_AUDIO_SETUP(freq, dmachan) audio_i2s_setup(freq, dmachan)
 #endif
 
 // SPI audio is not supported in the current version of the code, but we keep the definition for future use.
@@ -26,7 +26,7 @@
 #include "audio_spi.h"
 extern audio_spi_hw_t *spi_audio_hw;
 #define EXT_AUDIO_ENQUEUE_SAMPLE(l, r) audio_spi_enqueue_sample(l, r)   
-#define EXT_AUDIO_SETUP(freq) audio_spi_setup(freq)
+#define EXT_AUDIO_SETUP(freq, dmachan) audio_spi_setup(freq, dmachan)
 #endif
 // If neither I2S nor SPI audio is enabled, define the functions as no-ops
 #if !EXT_AUDIO_IS_ENABLED
