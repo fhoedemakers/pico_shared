@@ -372,6 +372,8 @@ void __not_in_flash_func(HSTXCore)(void)
                         b = b >> 1;
                         c = (r << 10) | (g << 5) | b;
                     }
+                    // tried vertical and pixel-grid scanlines
+                    // but this is probably too much for the RP2350:
 #else
                     // Horizontal scanlines: darken every other line
                     if (scanlineMode == 1 && (load_line & 1))
