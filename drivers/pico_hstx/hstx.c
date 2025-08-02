@@ -55,11 +55,12 @@ uint8_t *LayerBuf = FRAMEBUFFER;
 uint16_t *tilefcols;
 uint16_t *tilebcols;
 volatile int enableScanLines = 0; // Enable scanlines
-//volatile int HRes;      // 320
-//volatile int VRes;       // 240
-// Fix to 320x240
-#define HRes (MODE_H_ACTIVE_PIXELS/2) // 320
-#define VRes (MODE_V_ACTIVE_LINES/2)  // 240
+volatile int scanlineMode = 0; 
+// volatile int HRes;      // 320
+// volatile int VRes;       // 240
+//  Fix to 320x240
+#define HRes (MODE_H_ACTIVE_PIXELS / 2) // 320
+#define VRes (MODE_V_ACTIVE_LINES / 2)  // 240
 #define MODE_H_TOTAL_PIXELS (                \
     MODE_H_FRONT_PORCH + MODE_H_SYNC_WIDTH + \
     MODE_H_BACK_PORCH + MODE_H_ACTIVE_PIXELS)
@@ -155,8 +156,8 @@ volatile uint vblank = 0;
 /// between the vblank and vactive command lists.
 /// It updates the scanline counter and frame counter as needed.
 /// It is called from the DMA IRQ handler.
-/// @param  
-/// @return 
+/// @param
+/// @return
 void __not_in_flash_func(dma_irq_handler)()
 {
     // dma_pong indicates the channel that just finished, which is the one
@@ -196,12 +197,12 @@ void __not_in_flash_func(dma_irq_handler)()
     if (!vactive_cmdlist_posted)
     {
         v_scanline = (v_scanline + 1) % MODE_V_TOTAL_LINES;
-        if (v_scanline == 0) {
+        if (v_scanline == 0)
+        {
             frame_counter++; // Increment frame counter at end of frame
         }
     }
 }
-
 
 uint32_t core1stack[128];
 
@@ -209,8 +210,8 @@ uint32_t core1stack[128];
 /// This function initializes the HSTX controller, sets up the DMA channels,
 /// and starts the DMA transfers for the HSTX output.
 /// It also sets up the IRQ handler for the DMA transfers.
-/// @param  
-/// @return 
+/// @param
+/// @return
 void __not_in_flash_func(HSTXCore)(void)
 {
     int last_line = 2, load_line, line_to_load, Line_dup;
@@ -290,8 +291,7 @@ void __not_in_flash_func(HSTXCore)(void)
         static const int lane_to_output_bit[3] = {
             HSTX_BIT_FROM_GPIO(GPIOHSTXD0),
             HSTX_BIT_FROM_GPIO(GPIOHSTXD1),
-            HSTX_BIT_FROM_GPIO(GPIOHSTXD2)
-        };
+            HSTX_BIT_FROM_GPIO(GPIOHSTXD2)};
         int bit = lane_to_output_bit[lane];
         // Output even bits during first half of each HSTX cycle, and odd bits
         // during second half. The shifter advances by two bits each cycle.
@@ -360,8 +360,10 @@ void __not_in_flash_func(HSTXCore)(void)
                     uint8_t *d = &DisplayBuf[(Line_dup)*MODE_H_ACTIVE_PIXELS + i * 2];
                     int c = *d++;
                     c |= ((*d++) << 8);
+#if 1
                     // Apply CRT scanline effect for RGB555: darken every other line
-                    if (load_line & 1  && enableScanLines) { // Odd lines = scanlines
+                    if (load_line & 1 && enableScanLines)
+                    { // Odd lines = scanlines
                         int r = (c >> 10) & 0x1F;
                         int g = (c >> 5) & 0x1F;
                         int b = c & 0x1F;
@@ -370,6 +372,42 @@ void __not_in_flash_func(HSTXCore)(void)
                         b = b >> 1;
                         c = (r << 10) | (g << 5) | b;
                     }
+#else
+                    // Horizontal scanlines: darken every other line
+                    if (scanlineMode == 1 && (load_line & 1))
+                    {
+                        int r = (c >> 10) & 0x1F;
+                        int g = (c >> 5) & 0x1F;
+                        int b = c & 0x1F;
+                        r = r >> 1;
+                        g = g >> 1;
+                        b = b >> 1;
+                        c = (r << 10) | (g << 5) | b;
+                    }
+                    // Vertical scanlines: darken every other pixel column
+                    else if (scanlineMode == 2 && (i & 1))
+                    {
+                        int r = (c >> 10) & 0x1F;
+                        int g = (c >> 5) & 0x1F;
+                        int b = c & 0x1F;
+                        r = r >> 1;
+                        g = g >> 1;
+                        b = b >> 1;
+                        c = (r << 10) | (g << 5) | b;
+                    }
+                    // Pixel-grid: darken every other line and every other pixel column
+                    else if (scanlineMode == 3 && ((load_line & 1) || (i & 1)))
+                    {
+                        int r = (c >> 10) & 0x1F;
+                        int g = (c >> 5) & 0x1F;
+                        int b = c & 0x1F;
+                        r = r >> 1;
+                        g = g >> 1;
+                        b = b >> 1;
+                        c = (r << 10) | (g << 5) | b;
+                    }
+
+#endif
                     *p++ = c;
                     *p++ = c;
                 }
@@ -405,8 +443,8 @@ void hstx_init()
         clk_hstx,
         0,                                                // No glitchless mux
         CLOCKS_CLK_PERI_CTRL_AUXSRC_VALUE_CLKSRC_PLL_SYS, // System PLL on AUX mux
-        150000 * 1000,                                // Input frequency
-        150000 / clockdivisor * 1000                  // Output (must be same as no divider)
+        150000 * 1000,                                    // Input frequency
+        150000 / clockdivisor * 1000                      // Output (must be same as no divider)
     );
     multicore_launch_core1_with_stack(HSTXCore, core1stack, 512);
     core1stack[0] = 0x12345678;
@@ -416,7 +454,8 @@ void hstx_init()
 /// @brief Get a pointer to the framebuffer line for a specific scanline
 /// @param scanline The scanline number (0-based)
 /// @return Pointer to the framebuffer line data
-uint16_t *__not_in_flash_func(hstx_getlineFromFramebuffer)(int scanline){
+uint16_t *__not_in_flash_func(hstx_getlineFromFramebuffer)(int scanline)
+{
 #if 0
     if ( v_scanline & 1 ) {
         // Wait until the scanline is ready
@@ -426,43 +465,51 @@ uint16_t *__not_in_flash_func(hstx_getlineFromFramebuffer)(int scanline){
     }
 #endif
 
-     // was return (uint16_t *)((uint8_t *)(WriteBuf+((scanline*HRes)*2)));
+    // was return (uint16_t *)((uint8_t *)(WriteBuf+((scanline*HRes)*2)));
     return (uint16_t *)(WriteBuf + (scanline * HRes * 2));
 }
 
 /// @brief Get the current frame counter
 /// @return the current frame counter
-uint32_t hstx_getframecounter(void){
+uint32_t hstx_getframecounter(void)
+{
     // Return the current frame counter
     return frame_counter;
 }
 
 /// @brief Wait for the vertical sync signal
-/// @param  
-void hstx_waitForVSync(void) {
-    while(vblank) {
-        tight_loop_contents(); 
+/// @param
+void hstx_waitForVSync(void)
+{
+    while (vblank)
+    {
+        tight_loop_contents();
     }
-    while(!vblank) {
-        tight_loop_contents(); 
+    while (!vblank)
+    {
+        tight_loop_contents();
     }
 }
 
 /// @brief Clear the screen with a specific color
 /// @param color The color to fill the screen with
-void hstx_clearScreen(uint16_t color) {
+void hstx_clearScreen(uint16_t color)
+{
     // Clear the framebuffer with a specific color
-    for (int i = 0; i < (HRes * VRes); i++) {
+    for (int i = 0; i < (HRes * VRes); i++)
+    {
         ((uint16_t *)WriteBuf)[i] = color;
     }
 }
 /// @brief Enable or disable scanlines effect
 /// @param enable 1 to enable scanlines, 0 to disable
-void hstx_setScanLines(int enable) {
-    // Set the scanlines effect flag        
+void hstx_setScanLines(int enable)
+{
+    // Set the scanlines effect flag
     enableScanLines = enable ? 1 : 0;
 }
-uint8_t* hstx_getframebuffer(void) {
+uint8_t *hstx_getframebuffer(void)
+{
     // Return the pointer to the framebuffer
     return WriteBuf;
 }
