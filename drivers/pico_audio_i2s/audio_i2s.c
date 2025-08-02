@@ -47,85 +47,159 @@ static audio_i2s_hw_t audio_i2s = {
 // Sample frequency for the audio I2S interface, initialized to the default PICO_AUDIO_I2S_FREQ.
 static int samplefreq = PICO_AUDIO_I2S_FREQ;
 #define TLV320_ADDR 0x18 // I2C address for the TLV320AIC3204 codec
-#define TLV_RESET_PIN 7  // <- Connect RESET pin here
+#define TLV_RESET_PIN 7	 // <- Connect RESET pin here
 #define I2C_PORT i2c0
 #define I2C_ADDR 0x18
 
-static void write_tlv320(uint8_t *data, size_t len) {
-    int ret = i2c_write_blocking(I2C_PORT, I2C_ADDR, data, len, false);
-    if (ret < 0) {
-        printf("I2C write failed: error %d\n", ret);
-    } else if (ret != (int)len) {
-        printf("I2C write incomplete: wrote %d of %d bytes\n", ret, len);
-    }
+/// @brief Write data to the TLV320AIC3204 over I2C
+/// @param data Pointer to the data buffer
+/// @param len Length of the data buffer
+static void write_tlv320(uint8_t *data, size_t len)
+{
+	int ret = i2c_write_blocking(I2C_PORT, I2C_ADDR, data, len, false);
+	if (ret < 0)
+	{
+		printf("I2C write failed: error %d\n", ret);
+	}
+	else if (ret != (int)len)
+	{
+		printf("I2C write incomplete: wrote %d of %d bytes\n", ret, len);
+	}
+#if 0
 	printf("I2C write %d bytes: ", len);
-	for (size_t i = 0; i < len; i++) {	
+	for (size_t i = 0; i < len; i++)
+	{
 		printf("%02x ", data[i]);
 	}
 	printf("\n");
+#endif
 }
 
-static void tlv320_hardware_reset() {
-    gpio_put(TLV_RESET_PIN, 0);
+/// @brief Perform a hardware reset of the TLV320AIC3204
+/// This function toggles the reset pin to reset the codec hardware.
+static void tlv320_hardware_reset()
+{
+	printf("Performing TLV320 hardware reset...\n");
+	gpio_put(TLV_RESET_PIN, 0);
 	gpio_set_dir(TLV_RESET_PIN, GPIO_OUT);
 	gpio_set_function(TLV_RESET_PIN, GPIO_FUNC_SIO);
-    sleep_us(20); // Hold low for >10us
+	sleep_us(20); // Hold low for >10us
 	gpio_put(TLV_RESET_PIN, 1);
-    gpio_set_dir(TLV_RESET_PIN, GPIO_OUT);
-    gpio_set_function(TLV_RESET_PIN, GPIO_FUNC_SIO);
+	gpio_set_dir(TLV_RESET_PIN, GPIO_OUT);
+	gpio_set_function(TLV_RESET_PIN, GPIO_FUNC_SIO);
 	sleep_ms(10); // Wait for the chip to reset
 	printf("TLV320 hardware reset complete\n");
 }
 
-static void tlv320_init() {
-
-	
-	// I2C writes
-    write_tlv320((uint8_t[]){0x00, 0x00}, 2);
-    write_tlv320((uint8_t[]){0x01, 0x01}, 2);
-    write_tlv320((uint8_t[]){0x04, 0x03}, 2);
-    write_tlv320((uint8_t[]){0x06, 0x08}, 2);
-    write_tlv320((uint8_t[]){0x07, 0x00, 0x00}, 3);
-    write_tlv320((uint8_t[]){0x05, 0x91}, 2);
-    write_tlv320((uint8_t[]){0x0B, 0x88}, 2);
-    write_tlv320((uint8_t[]){0x0C, 0x82}, 2);
-    write_tlv320((uint8_t[]){0x0D, 0x00, 0x80}, 3);
-    write_tlv320((uint8_t[]){0x1B, 0x00}, 2);
-    write_tlv320((uint8_t[]){0x3C, 0x0B}, 2);
-    write_tlv320((uint8_t[]){0x00, 0x08}, 2);
-    write_tlv320((uint8_t[]){0x01, 0x04}, 2);
-    write_tlv320((uint8_t[]){0x00, 0x00}, 2);
-    write_tlv320((uint8_t[]){0x74, 0x00}, 2);
-    write_tlv320((uint8_t[]){0x00, 0x01}, 2);
-    write_tlv320((uint8_t[]){0x1F, 0x04}, 2);
-    write_tlv320((uint8_t[]){0x21, 0x4E}, 2);
-    write_tlv320((uint8_t[]){0x23, 0x44}, 2);
-    write_tlv320((uint8_t[]){0x28, 0x06}, 2);
-    write_tlv320((uint8_t[]){0x29, 0x06}, 2);
-    write_tlv320((uint8_t[]){0x2A, 0x1C}, 2);
-
-	// Set HP gain to +24 dB
-    write_tlv320((uint8_t[]){0x1F, 0xF2}, 2);  // 0xC2
-    //
+/// @brief Initialize the TLV320AIC3204 codec
+/// This function sets up the codec with default settings for audio playback.
+/// From tlv320dac3100 datasheet, section 6.3.10.15 
+/// "Typical EVM I2C register control script"
+/// https://www.ti.com/lit/ds/symlink/tlv320dac3100.pdf?ts=1754043773385
+/// A typical EVM I2C register control script follows to show how to set up the TLV320DAC3100 in playback
+/// mode with fS = 44.1 kHz and MCLK = 11.2896 MHz.
+static void tlv320_init()
+{
+	// Initialize the DAC over I2C
+	printf("Initializing TLV320AIC3204 codec...\n");
+	// 1. Define starting point:
+    // 		(a) Power up applicable external hardware power supplies
+	//     	(b) Set register to Page 0
+	// ### SET REGISTER PAGE 0 ###
+	write_tlv320((uint8_t[]){0x00, 0x00}, 2);
+	// 		(c) Initiate SW reset (PLL is powered off as part of reset)
+	write_tlv320((uint8_t[]){0x01, 0x01}, 2);  
+	// 2. Program clock settings
+	// 		(a) Program PLL clock dividers P, J, D, R (if PLL is used)
+	//     		PLL_clkin = MCLK,codec_clkin = PLL_CLK
+	write_tlv320((uint8_t[]){0x04, 0x03}, 2);  
+	//     		J = 8
+	write_tlv320((uint8_t[]){0x06, 0x08}, 2);  
+	//    		D = 0000, D(13:8) = 0, D(7:0) = 0
+	write_tlv320((uint8_t[]){0x07, 0x00, 0x00}, 3); 
+	// 		(b) Power up PLL (if PLL is used)
+	//     		PLL Power up, P = 1, R = 1
+	write_tlv320((uint8_t[]){0x05, 0x91}, 2);
+	// 		(c) Program and power up NDAC
+	//     		NDAC is powered up and set to 8
+	write_tlv320((uint8_t[]){0x0B, 0x88}, 2);
+	// 		(d) Program and power up MDAC
+	//     		MDAC is powered up and set to 2
+	write_tlv320((uint8_t[]){0x0C, 0x82}, 2);
+	// 		(e) Program OSR value
+	//	   		DOSR = 128, DOSR(9:8) = 0, DOSR(7:0) = 128
+	write_tlv320((uint8_t[]){0x0D, 0x00, 0x80}, 3);
+	// 		(f) Program I2S word length if required (16, 20, 24, 32 bits)
+	//     		and master mode (BCLK and WCLK are outputs)
+	//      	mode is i2s, wordlength is 16, slave mode
+	write_tlv320((uint8_t[]){0x1B, 0x00}, 2);
+	// 		(g) Program the processing block to be used
+	//     		Select Processing Block PRB_P11
+	write_tlv320((uint8_t[]){0x3C, 0x0B}, 2);
+	// ### SET REGISTER PAGE 8 ###
+	write_tlv320((uint8_t[]){0x00, 0x08}, 2);
+	write_tlv320((uint8_t[]){0x01, 0x04}, 2);
+	// ### SET REGISTER PAGE 0 ###
+	write_tlv320((uint8_t[]){0x00, 0x00}, 2);
+	// 		(h) Miscellaneous page 0 controls
+	// 			DAC => volume control thru pin disable
+	write_tlv320((uint8_t[]){0x74, 0x00}, 2);
+	// 3. Program analog blocks
+	// ### SET REGISTER PAGE 1 ###
+	//  	(a) Set register to Page 1
+	write_tlv320((uint8_t[]){0x00, 0x01}, 2);
+	// 		(b) Program common-mode voltage (defalut = 1.35 V)
+	write_tlv320((uint8_t[]){0x1F, 0x04}, 2);
+	//      (c) Program headphone-specific depop settings (in case headphone driver is used)
+	//          De-pop, Power on = 800 ms, Step time = 4 ms
+	write_tlv320((uint8_t[]){0x21, 0x4E}, 2);
+	//      (d) Program routing of DAC output to the output amplifier (headphone/lineout or speaker)
+	//          LDAC routed to HPL out, RDAC routed to HPR out
+	write_tlv320((uint8_t[]){0x23, 0x44}, 2);
+	// 	    (e) Unmute and set gain of output driver
+	//          Unmute HPL, set gain = 0 db
+	write_tlv320((uint8_t[]){0x28, 0x06}, 2);
+	//          Unmute HPR, set gain = 0 dB
+	write_tlv320((uint8_t[]){0x29, 0x06}, 2);
+	//          Unmute Class-D, set gain = 18 dB
+	write_tlv320((uint8_t[]){0x2A, 0x1C}, 2);
+	// 		(f) Power up output drivers
+	//			HPL and HPR powered up
+	// NOTE write_tlv320((uint8_t[]){0x1F, 0xF2}, 2); below causes a pop sound on startup. How to solve?
+	printf("POP!\n");
+	write_tlv320((uint8_t[]){0x1F, 0xF2}, 2); // Changed from 0xC2 to 0xF2
+	//  		Power-up Class-D driver
 	write_tlv320((uint8_t[]){0x20, 0x86}, 2);
-    write_tlv320((uint8_t[]){0x24, 0x92}, 2);  // 0x92
-    write_tlv320((uint8_t[]){0x25, 0x92}, 2);  // 0x92
-    write_tlv320((uint8_t[]){0x26, 0x92}, 2);  // 0x92
-    write_tlv320((uint8_t[]){0x00, 0x00}, 2);
-    write_tlv320((uint8_t[]){0x3F, 0xD4}, 2);  // 0xD4
-	// Set DAC volume to 0 dB (maximum)
-    write_tlv320((uint8_t[]){0x41, 0x00}, 2);  // 0xD4
-    write_tlv320((uint8_t[]){0x42, 0x00}, 2);  // 0xD4
+	// 			Enable HPL output analog volume, set = -9dB
+	write_tlv320((uint8_t[]){0x24, 0x92}, 2); 
+	// 			Enable HPR output analog volume, set = -9dB
+	write_tlv320((uint8_t[]){0x25, 0x92}, 2); 
+	// 			Enable Class-D output analog volume, set = -9dB
+	write_tlv320((uint8_t[]){0x26, 0x92}, 2); 
+	// 4. Apply waiting time determined by the de-pop settings and the soft-stepping settings
+	//    of the driver gain or poll page 1 / register 63
+	sleep_ms(800); // Wait for 800 ms as per the de-pop settings
+	//  5. Power up DAC
+ 	//  ### SET REGISTER PAGE 0 ###
+	//  	(a) Set register to Page 0
+	write_tlv320((uint8_t[]){0x00, 0x00}, 2);
+	// 		(b) Power up DAC channels and set digital gain
+    // 			Powerup DAC left and right channels (soft step enabled)
+	write_tlv320((uint8_t[]){0x3F, 0xD4}, 2); 
+	//			DAC Left gain = 0 dB	(was -22 dB)
+	write_tlv320((uint8_t[]){0x41, 0x00}, 2); // Changed 0xD4 to 0x00
+	//			DAC Right gain = 0 dB	(was -22 dB)
+	write_tlv320((uint8_t[]){0x42, 0x00}, 2); // Changed 0xD4 to 0x00
 
-	//
+	// Additional settings
 	write_tlv320((uint8_t[]){0x16, 0x10}, 2); // Enable ramping
-    //
-	//
-    write_tlv320((uint8_t[]){0x40, 0x00}, 2);
+	// 		(c) Unmute digital volume control
+	// 			Unmute DAC left and right channels
+	write_tlv320((uint8_t[]){0x40, 0x00}, 2);
 
-    printf("All I2C writes complete.\n");
+	printf("All I2C writes complete.\n");
 
-    sleep_ms(100);
+	sleep_ms(100);
 }
 /**
  * @brief Updates the PIO frequency for the audio I2S interface.
@@ -174,7 +248,7 @@ void __isr dma_handler()
 	size_t available = (write_index >= read_index)
 						   ? (write_index - read_index)
 						   : (AUDIO_RING_SIZE - read_index + write_index);
-	//printf("DMA handler: read_index=%zu, write_index=%zu, available=%zu\n", read_index, write_index, available);
+	// printf("DMA handler: read_index=%zu, write_index=%zu, available=%zu\n", read_index, write_index, available);
 	if (available >= DMA_BLOCK_SIZE)
 	{
 		dma_channel_set_read_addr(audio_i2s.dma_chan, &audio_ring[read_index], false);
@@ -193,17 +267,17 @@ void __isr dma_handler()
  */
 audio_i2s_hw_t *audio_i2s_setup(int freqHZ, int dmachan)
 {
-	 tlv320_hardware_reset(); // Reset the TLV320 codec hardware
-	 tlv320_init(); // Initialize the TLV320 codec with default settings
+	tlv320_hardware_reset(); // Reset the TLV320 codec hardware
+	tlv320_init();			 // Initialize the TLV320 codec with default settings
 	audio_i2s.dma_chan = dmachan;
 	if (freqHZ > 0)
 	{
 		samplefreq = freqHZ;
 	}
-	audio_ring = malloc(AUDIO_RING_SIZE * sizeof(uint32_t)); // Allocate memory for the audio ring buffer
+	audio_ring = malloc(AUDIO_RING_SIZE * sizeof(uint32_t));   // Allocate memory for the audio ring buffer
 	memset(audio_ring, 0, AUDIO_RING_SIZE * sizeof(uint32_t)); // Initialize the audio ring buffer to zero
-	write_index = DMA_BLOCK_SIZE;			   // Start writing after the first block
-	read_index = 0;							   // Reset read index
+	write_index = DMA_BLOCK_SIZE;							   // Start writing after the first block
+	read_index = 0;											   // Reset read index
 	// Set up the PIO and GPIO pins for I2S audio output
 	gpio_set_function(PICO_AUDIO_I2S_DATA_PIN, GPIO_FUNC_PIOx);
 	gpio_set_function(PICO_AUDIO_I2S_CLOCK_PIN_BASE, GPIO_FUNC_PIOx);
@@ -289,7 +363,7 @@ void __not_in_flash_func(audio_i2s_enqueue_sample)(uint32_t sample32)
 		audio_ring[write_index] = sample32;
 		write_index = next_write;
 		// If the DMA channel is not busy, check if we have enough data to continue the transfer
-	    // If write_index is ahead of read_index, we have data to send.
+		// If write_index is ahead of read_index, we have data to send.
 		if (!dma_channel_is_busy(audio_i2s.dma_chan))
 		{
 			size_t available = (write_index >= read_index)
@@ -313,5 +387,4 @@ void __not_in_flash_func(audio_i2s_enqueue_sample)(uint32_t sample32)
 		}
 	}
 #endif
-	
 }
