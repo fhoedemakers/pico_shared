@@ -451,6 +451,20 @@ void hstx_init()
     multicore_launch_core1_with_stack(HSTXCore, core1stack, 512);
     core1stack[0] = 0x12345678;
     printf("HSTX initialized\n");
+    // is a second framebuffer possible?
+ #if 0
+    uint8_t *fb2 = malloc((MODE_H_ACTIVE_PIXELS / 2) * (MODE_V_ACTIVE_LINES / 2) * 2);
+    printf("Address of fb2: %p\n", fb2);
+    memset(fb2, 0, (MODE_H_ACTIVE_PIXELS / 2) * (MODE_V_ACTIVE_LINES / 2) * 2);
+ 
+    // uint8_t *fb3 = malloc((MODE_H_ACTIVE_PIXELS / 2) * (MODE_V_ACTIVE_LINES / 2) * 2);
+    // printf("Address of fb3: %p\n", fb3);
+    // memset(fb3, 0, (MODE_H_ACTIVE_PIXELS / 2) * (MODE_V_ACTIVE_LINES / 2) * 2);
+    //  uint8_t *fb4 = malloc((MODE_H_ACTIVE_PIXELS / 2) * (MODE_V_ACTIVE_LINES / 2) * 2);
+    // printf("Address of fb4: %p\n", fb4);
+    // memset(fb4, 0, (MODE_H_ACTIVE_PIXELS / 2) * (MODE_V_ACTIVE_LINES / 2) * 2);
+#endif
+
 }
 
 /// @brief Get a pointer to the framebuffer line for a specific scanline
