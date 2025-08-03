@@ -20,11 +20,18 @@ add_subdirectory(drivers/pico_fatfs)
 add_subdirectory(drivers/pico_audio_i2s)
 add_subdirectory(drivers/lwmem)
 add_subdirectory(drivers/pico_hstx)
-add_subdirectory(drivers/pico_audio_mcp4822)
+# add_subdirectory(drivers/pico_audio_mcp4822) # SPI Audio using MCP4822 DAC. Works but not used
 add_subdirectory(drivers/pico_psram)
 
 target_include_directories(pico_shared INTERFACE
         .
 )
-target_link_libraries(pico_shared INTERFACE pico_fatfs pico_audio_i2s lwmem pico_hstx pico_audio_mcp4822 pico_psram)
+target_link_libraries(pico_shared 
+                      INTERFACE 
+                      pico_fatfs 
+                      pico_audio_i2s 
+                      lwmem 
+                      pico_hstx 
+                      #pico_audio_mcp4822 
+                      pico_psram)
 
