@@ -29,6 +29,7 @@
 #include "stdio.h"
 #include "hardware/i2c.h"
 
+
 #define AUDIO_PIO __CONCAT(pio, PICO_AUDIO_I2S_PIO)
 #define GPIO_FUNC_PIOx __CONCAT(GPIO_FUNC_PIO, PICO_AUDIO_I2S_PIO)
 
@@ -47,8 +48,8 @@ static audio_i2s_hw_t audio_i2s = {
 // Sample frequency for the audio I2S interface, initialized to the default PICO_AUDIO_I2S_FREQ.
 static int samplefreq = PICO_AUDIO_I2S_FREQ;
 #define TLV320_ADDR 0x18 // I2C address for the TLV320AIC3204 codec
-#define TLV_RESET_PIN 7	 // <- Connect RESET pin here
-#define I2C_PORT i2c0
+
+#define I2C_PORT i2c0   // hardcoded I2C port for the TLV320 codec, must be configurable in the future
 #define I2C_ADDR 0x18
 
 /// @brief Write data to the TLV320AIC3204 over I2C
@@ -79,14 +80,16 @@ static void write_tlv320(uint8_t *data, size_t len)
 /// This function toggles the reset pin to reset the codec hardware.
 static void tlv320_hardware_reset()
 {
+	// assert that the reset pin is defined
+	assert(PICO_AUDIO_I2S_RESET_PIN >= 0 && PICO_AUDIO_I2S_RESET_PIN < NUM_BANK0_GPIOS);
 	printf("Performing TLV320 hardware reset...\n");
-	gpio_put(TLV_RESET_PIN, 0);
-	gpio_set_dir(TLV_RESET_PIN, GPIO_OUT);
-	gpio_set_function(TLV_RESET_PIN, GPIO_FUNC_SIO);
+	gpio_put(PICO_AUDIO_I2S_RESET_PIN, 0);
+	gpio_set_dir(PICO_AUDIO_I2S_RESET_PIN, GPIO_OUT);
+	gpio_set_function(PICO_AUDIO_I2S_RESET_PIN, GPIO_FUNC_SIO);
 	sleep_us(20); // Hold low for >10us
-	gpio_put(TLV_RESET_PIN, 1);
-	gpio_set_dir(TLV_RESET_PIN, GPIO_OUT);
-	gpio_set_function(TLV_RESET_PIN, GPIO_FUNC_SIO);
+	gpio_put(PICO_AUDIO_I2S_RESET_PIN, 1);
+	gpio_set_dir(PICO_AUDIO_I2S_RESET_PIN, GPIO_OUT);
+	gpio_set_function(PICO_AUDIO_I2S_RESET_PIN, GPIO_FUNC_SIO);
 	sleep_ms(10); // Wait for the chip to reset
 	printf("TLV320 hardware reset complete\n");
 }
@@ -101,7 +104,8 @@ static void tlv320_hardware_reset()
 static void tlv320_init()
 {
 	// Initialize the DAC over I2C
-	printf("Initializing TLV320AIC3204 codec...\n");
+	printf("Initializing TLV320AIC3204 audio DAC...\n");
+	i2c_init(I2C_PORT, 400 * 1000); // Initialize I2C at 400kHz
 	// 1. Define starting point:
     // 		(a) Power up applicable external hardware power supplies
 	//     	(b) Set register to Page 0
@@ -262,13 +266,22 @@ void __isr dma_handler()
  * It allocates and initializes an audio_i2s_hw_t structure, sets up the necessary hardware peripherals,
  * and prepares the system for audio data transmission.
  *
- * @param freqHZ The desired audio sample frequency in Hertz.
- * @return Pointer to an initialized audio_i2s_hw_t structure.
+ * @param driver The I2S driver to use (e.g., PICO_AUDIO_I2S_DRIVER_TLV320).
+ * @param resetPin The GPIO pin used to reset the TLV320 codec hardware (if	 applicable).
+ * @param freqHZ The sample frequency in Hertz. If set to 0, the default PICO_AUDIO_I2S_FREQ is used.
+ * @param dmachan The DMA channel to use for audio transfer. If set to -1, a free DMA channel will be claimed.
  */
-audio_i2s_hw_t *audio_i2s_setup(int freqHZ, int dmachan)
+audio_i2s_hw_t *audio_i2s_setup(int driver, int freqHZ, int dmachan)
 {
-	tlv320_hardware_reset(); // Reset the TLV320 codec hardware
-	tlv320_init();			 // Initialize the TLV320 codec with default settings
+	if ( driver == PICO_AUDIO_I2S_DRIVER_NONE )
+	{
+		printf("No I2S driver selected, skipping audio setup.\n");
+		return NULL; // No I2S driver selected, return NULL
+	}
+	if (driver == PICO_AUDIO_I2S_DRIVER_TLV320) {
+		tlv320_hardware_reset(); // Reset the TLV320 codec hardware
+		tlv320_init();			 // Initialize the TLV320 codec with default settings
+	}
 	audio_i2s.dma_chan = dmachan;
 	if (freqHZ > 0)
 	{
@@ -304,7 +317,9 @@ audio_i2s_hw_t *audio_i2s_setup(int freqHZ, int dmachan)
 	if (audio_i2s.dma_chan == -1)
 	{
 		audio_i2s.dma_chan = dma_claim_unused_channel(true);
+		// 
 	}
+	printf("Using DMA channel %d for audio I2S\n", audio_i2s.dma_chan);
 	dma_channel_config c = dma_channel_get_default_config(audio_i2s.dma_chan);
 	channel_config_set_transfer_data_size(&c, DMA_SIZE_32);					  // 32-bit samples
 	channel_config_set_read_increment(&c, true);							  // Read address will increment
