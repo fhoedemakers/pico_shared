@@ -16,7 +16,7 @@
 #include "util/exclusive_proc.h"
 #else
 #include "hstx.h"
-#include "mcp4822.h"
+// #include "mcp4822.h"     // SPI Audio using MCP4822 DAC. Works but not used
 #endif
 #include "external_audio.h"
 
@@ -109,6 +109,7 @@ namespace Frens
     void restoreScanlines();
     void *f_malloc(size_t size);
     void f_free(void *pMem);
+    int GetUnUsedDMAChan(int startChannel);
     //extern volatile ProcessScanLineFunction processScanLineFunction;
    
 } // namespace Frens

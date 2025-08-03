@@ -982,22 +982,31 @@ namespace Frens
     /// @brief Finds an unused DMA channel.
     /// This function iterates through the available DMA channels (0-11) and returns the first unused channel.
     /// If no unused channel is found, it will panic.
+    /// @param startChannel The channel to start searching from. If -1, it starts from 0.
     /// @return the number of the unused DMA channel (0-11).
-    int GetUnUsedDMAChan()
+    int GetUnUsedDMAChan(int startChannel)
     {
         // Get an unused DMA channel
         int dma_chan = -1;
-        printf("Searching for unused DMA channel...");
+        int startChan;
+      
+        if (startChannel == -1)
+        {
 #if !HSTX
-        for (int i = 0; i < 12; i++)
+            startChan = 0; 
 #else
-        for (int i = 2; i < 12; i++) // HSTX uses DMA channel 0 (DMACHPING) and 1 (DMACHPONG) on core1, avoid this core claiming them
+            startChan = 2; // HSTX uses DMA channel 0 (DMACHPING) and 1 (DMACHPONG) on core1, avoid this core claiming them
 #endif
+        } else {
+            startChan = startChannel; // Use the provided start channel
+        }
+        printf("Searching for unused DMA channel starting from %d...", startChan);
+        for (int i = startChan; i < 12; i++)
         {
             if (!dma_channel_is_claimed(i))
             {
                 dma_chan = i;
-                printf(" found unused DMA channel %d\n", dma_chan);
+                printf(" found DMA channel %d\n", dma_chan);
                 break;
             }
         }
@@ -1038,7 +1047,7 @@ namespace Frens
         // Note: tuh_configure() must be called before tuh_init()
         pio_usb_configuration_t pio_cfg = PIO_USB_DEFAULT_CONFIG;
         // find an unused DMA channel
-        pio_cfg.tx_ch = GetUnUsedDMAChan();
+        pio_cfg.tx_ch = GetUnUsedDMAChan(-1); // -1 find the first unused DMA channel
         //
         pio_cfg.pio_rx_num = PIO_USB_USE_PIO;
         pio_cfg.pio_tx_num = PIO_USB_USE_PIO;
@@ -1075,7 +1084,7 @@ namespace Frens
         // The DAC must be connected to the correct GPIO pins and must have an audio Jack connected.
         // see drivers/pico_audio_mcp4822/mcp4822.h for the pin definitions.
         mcp4822_init();
-#endif  
+#endif
 #endif
     }
 
@@ -1191,7 +1200,8 @@ namespace Frens
         }
 #endif // DVI
         initVintageControllers(CPUFreqKHz);
-        EXT_AUDIO_SETUP(DVIAUDIOFREQ, 4); // Initialize external audio if needed
+        // TODO: DMA chan 1-3 are used for PIO0, chan 4-7 for PIO1, Assuming PIO1 is used for audio.
+        EXT_AUDIO_SETUP(USE_I2S_AUDIO, DVIAUDIOFREQ, GetUnUsedDMAChan(4)); // Initialize external audio if needed
         return ok;
     }
 #if !HSTX
