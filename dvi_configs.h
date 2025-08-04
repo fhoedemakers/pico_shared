@@ -28,7 +28,13 @@ namespace {
         .pinClock = 28,
         .invert = false,
     };
-    // FruitJam
+     // Waveshare RP2350-PiZero DVI
+    constexpr dvi::Config dviConfig_WaveShareRp2350 = {
+        .pinTMDS = {36, 34, 32},
+        .pinClock = 28,
+        .invert = false,
+    };
+    // Adafruit Metro RP2350 PiZero DVI
     constexpr dvi::Config dviConfig_AdafruitMetroRP2350 = {
         .pinTMDS = {18, 16, 12},
         .pinClock = 14,
