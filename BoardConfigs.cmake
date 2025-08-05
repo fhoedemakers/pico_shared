@@ -247,7 +247,7 @@ elseif ( HW_CONFIG EQUAL 6 )
     set(PIO_DP_PLUS_PIN -1 CACHE STRING "PIO USB DP pin.")
 elseif ( HW_CONFIG EQUAL 7 )
     # --------------------------------------------------------------------
-	# WaveShare RP2350-PiZero !!! NOT WORKING YET !!!
+	# WaveShare RP2350-PiZero
 	# --------------------------------------------------------------------
 	set(DVICONFIG "dviConfig_WaveShareRp2350" CACHE STRING
     "Select a default pin configuration from common_dvi_pin_configs.h")
