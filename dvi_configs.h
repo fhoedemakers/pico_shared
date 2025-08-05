@@ -31,7 +31,7 @@ namespace {
      // Waveshare RP2350-PiZero DVI
     constexpr dvi::Config dviConfig_WaveShareRp2350 = {
         .pinTMDS = {36, 34, 32},
-        .pinClock = 28,
+        .pinClock = 38,
         .invert = false,
     };
     // Adafruit Metro RP2350 PiZero DVI
