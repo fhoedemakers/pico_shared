@@ -989,15 +989,17 @@ namespace Frens
         // Get an unused DMA channel
         int dma_chan = -1;
         int startChan;
-      
+
         if (startChannel == -1)
         {
 #if !HSTX
-            startChan = 0; 
+            startChan = 0;
 #else
             startChan = 2; // HSTX uses DMA channel 0 (DMACHPING) and 1 (DMACHPONG) on core1, avoid this core claiming them
 #endif
-        } else {
+        }
+        else
+        {
             startChan = startChannel; // Use the provided start channel
         }
         printf("Searching for unused DMA channel starting from %d...", startChan);
@@ -1060,12 +1062,13 @@ namespace Frens
     {
 #if !HSTX
         //
-        #if PICO_RP2350
-           if (DVICONFIG.pinTMDS[0] > 32 || DVICONFIG.pinTMDS[1] > 32 || DVICONFIG.pinTMDS[2] > 32 ) {
+        // Adjust PIO for gpio pins > 32
+        if (DVICONFIG.pinTMDS[0] > 32 || DVICONFIG.pinTMDS[1] > 32 || DVICONFIG.pinTMDS[2] > 32)
+        {
             printf("DVI PIO gpio pins > 32, setting gpio base to 16\n");
             pio_set_gpio_base(pio0, 16);
-           }
-        #endif
+        }
+
         dvi_ = std::make_unique<dvi::DVI>(pio0, &DVICONFIG,
                                           dvi::getTiming640x480p60Hz());
         //    dvi_->setAudioFreq(48000, 25200, 6144);
