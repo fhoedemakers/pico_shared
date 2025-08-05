@@ -1061,8 +1061,8 @@ namespace Frens
     void initDVandAudio(int marginTop, int marginBottom, size_t audioBufferSize)
     {
 #if !HSTX
-        //
         // Adjust PIO for gpio pins > 32
+        // The Waveshare RP2350-PiZero is a board that is using gpio pins > 32.
         if (DVICONFIG.pinTMDS[0] > 32 || DVICONFIG.pinTMDS[1] > 32 || DVICONFIG.pinTMDS[2] > 32)
         {
             printf("DVI PIO gpio pins > 32, setting gpio base to 16\n");
