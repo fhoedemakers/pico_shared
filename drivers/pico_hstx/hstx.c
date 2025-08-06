@@ -55,7 +55,7 @@ uint8_t *LayerBuf = FRAMEBUFFER;
 uint16_t *tilefcols;
 uint16_t *tilebcols;
 volatile int enableScanLines = 0; // Enable scanlines
-volatile int scanlineMode = 0; 
+volatile int scanlineMode = 0;
 // volatile int HRes;      // 320
 // volatile int VRes;       // 240
 //  Fix to 320x240
@@ -91,6 +91,13 @@ volatile uint32_t frame_counter = 0; // Frame counter
 #ifndef GPIOHSTXD2
 #define GPIOHSTXD2 12 // D2+ (default: GPIO12)
 #endif
+#ifndef GPIOHSTXCK
+#define GPIOHSTXCK 14 // CK+ (default: GPIO14)
+#endif
+#ifndef GPIOHSTXINVERTED
+#define GPIOHSTXINVERTED 0 // Set to 1 if HSTX pins are inverted D- = D+ -1
+#endif
+
 // Calculate HSTX output bit from GPIO number (GPIO12-19 => bit 0-7)
 #define HSTX_BIT_FROM_GPIO(gpio) ((gpio) - 12)
 
@@ -247,52 +254,47 @@ void __not_in_flash_func(HSTXCore)(void)
     // 250 Mbps, which is very close to the bit clock for 480p 60Hz (252 MHz).
     // If we want the exact rate then we'll have to reconfigure PLLs.
 
-    // HSTX outputs 0 through 7 appear on GPIO 12 through 19.
-    // Pinout on Pico DVI sock:
+    // Configure the HSTX controller to use GPIOs 12-19 for the TMDS lanes.
+    // Pinout:
     //
-    //   GP12 D0+  GP13 D0-
-    //   GP14 CK+  GP15 CK-
-    //   GP16 D2+  GP17 D2-
-    //   GP18 D1+  GP19 D1-
-
-    // Assign clock pair to two neighbouring pins:
-    hstx_ctrl_hw->bit[2] = HSTX_CTRL_BIT0_CLK_BITS;
-    hstx_ctrl_hw->bit[3] = HSTX_CTRL_BIT0_CLK_BITS | HSTX_CTRL_BIT0_INV_BITS;
+    //   GPIOHSTXD0 D0+   (GPIOHSTXD0 + GPIOHSTXINVERTED ? -1 : +1) D0-
+    //   GPIOHSTXD1 D1+   (GPIOHSTXD1 + GPIOHSTXINVERTED ? -1 : +1) D1-
+    //   GPIOHSTXD2 D2+   (GPIOHSTXD2 + GPIOHSTXINVERTED ? -1 : +1) D2-
+    //   GPIOHSTXCK CK+   (GPIOHSTXCK + GPIOHSTXINVERTED ? -1 : +1) CK-
+    //
+    // Clock assignment is configurable:
+    //   - GPIOHSTXCK defines the clock positive pin (CK+)
+    //   - If GPIOHSTXINVERTED == 0, clock negative (CK-) is CK+ + 1
+    //   - If GPIOHSTXINVERTED == 1, clock negative (CK-) is CK+ - 1
+    //   - The code will automatically assign the correct output bits for CK+ and CK- based on these defines
+    int clk_bit_p = HSTX_BIT_FROM_GPIO(GPIOHSTXCK);
+    int clk_bit_n = GPIOHSTXINVERTED ? (clk_bit_p - 1) : (clk_bit_p + 1);
+    hstx_ctrl_hw->bit[clk_bit_p] = HSTX_CTRL_BIT0_CLK_BITS;
+    hstx_ctrl_hw->bit[clk_bit_n] = HSTX_CTRL_BIT0_CLK_BITS | HSTX_CTRL_BIT0_INV_BITS;
     for (uint lane = 0; lane < 3; ++lane)
     {
-        // For each TMDS lane, assign it to the correct GPIO pair based on the
-        // desired pinout:
+        // For each TMDS lane, assign it to the correct GPIO pair based on the desired pinout:
 
-        // HSTX Output Bit 0 → GPIO12
-        // HSTX Output Bit 1 → GPIO13
-        // HSTX Output Bit 2 → GPIO14
-        // HSTX Output Bit 3 → GPIO15
-        // HSTX Output Bit 4 → GPIO16
-        // HSTX Output Bit 5 → GPIO17
-        // HSTX Output Bit 6 → GPIO18
-        // HSTX Output Bit 7 → GPIO19
-        // lane_to_output_bit Array
-        // The lane_to_output_bit array specifies which HSTX output bits are used for each TMDS lane:
+        // lane_to_output_bit Array:
+        // The lane_to_output_bit array specifies which HSTX output bits are used for each TMDS lane, based on the GPIOHSTXDx defines:
 
-        // Index 0: TMDS lane D0 (data lane 0)
-        // Index 1: TMDS lane D1 (data lane 1)
-        // Index 2: TMDS lane D2 (data lane 2)
+        // Index 0: TMDS lane D0 (data lane 0) → GPIOHSTXD0 (D0+), (GPIOHSTXD0 + GPIOHSTXINVERTED ? -1 : +1) (D0-)
+        // Index 1: TMDS lane D1 (data lane 1) → GPIOHSTXD1 (D1+), (GPIOHSTXD1 + GPIOHSTXINVERTED ? -1 : +1) (D1-)
+        // Index 2: TMDS lane D2 (data lane 2) → GPIOHSTXD2 (D2+), (GPIOHSTXD2 + GPIOHSTXINVERTED ? -1 : +1) (D2-)
 
-        // Hardcoded mapping for now using Adafruit Metro RP2350
-        // The mapping is fixed as follows:
-        // D0+ = CPIO18, D0-=GPIO19, D1+=GPIO16, D1-=GPIO17, D2+-GPIO12, D2-=GPIO13
-        // For the array {6, 4, 0}:
-
-        // D0 (Index 0) is assigned to HSTX output bit 6 → GPIO18 (D0+) and GPIO19 (D0-).
-        // D1 (Index 1) is assigned to HSTX output bit 4 → GPIO16 (D1+) and GPIO17 (D1-).
-        // D2 (Index 2) is assigned to HSTX output bit 0 → GPIO12 (D2+) and GPIO13 (D2-).
-        // https://learn.adafruit.com/adafruit-metro-rp2350/pinouts#hstx-connector-3193107
-        // TODO make configurable
+        // Example default mapping for Adafruit Metro RP2350:
+        // D0+ = GPIOHSTXD0 (default: GPIO18), D0- = GPIOHSTXD0 + 1 (default: GPIO19)
+        // D1+ = GPIOHSTXD1 (default: GPIO16), D1- = GPIOHSTXD1 + 1 (default: GPIO17)
+        // D2+ = GPIOHSTXD2 (default: GPIO12), D2- = GPIOHSTXD2 + 1 (default: GPIO13)
+        // If GPIOHSTXINVERTED is set, D- is D+ - 1 instead of D+ + 1
+        // See https://learn.adafruit.com/adafruit-metro-rp2350/pinouts#hstx-connector-3193107
+        // TODO: Make fully configurable
         static const int lane_to_output_bit[3] = {
             HSTX_BIT_FROM_GPIO(GPIOHSTXD0),
             HSTX_BIT_FROM_GPIO(GPIOHSTXD1),
             HSTX_BIT_FROM_GPIO(GPIOHSTXD2)};
         int bit = lane_to_output_bit[lane];
+        int bit_dn = GPIOHSTXINVERTED ? (bit - 1) : (bit + 1);
         // Output even bits during first half of each HSTX cycle, and odd bits
         // during second half. The shifter advances by two bits each cycle.
         uint32_t lane_data_sel_bits =
@@ -300,7 +302,7 @@ void __not_in_flash_func(HSTXCore)(void)
             (lane * 10 + 1) << HSTX_CTRL_BIT0_SEL_N_LSB;
         // The two halves of each pair get identical data, but one pin is inverted.
         hstx_ctrl_hw->bit[bit] = lane_data_sel_bits;
-        hstx_ctrl_hw->bit[bit + 1] = lane_data_sel_bits | HSTX_CTRL_BIT0_INV_BITS;
+        hstx_ctrl_hw->bit[bit_dn] = lane_data_sel_bits | HSTX_CTRL_BIT0_INV_BITS;
     }
 
     for (int i = 12; i <= 19; ++i)
@@ -452,7 +454,7 @@ void hstx_init()
     core1stack[0] = 0x12345678;
     printf("HSTX initialized\n");
     // is a second framebuffer possible?
- #if 0
+#if 0
     uint8_t *fb2 = malloc((MODE_H_ACTIVE_PIXELS / 2) * (MODE_V_ACTIVE_LINES / 2) * 2);
     printf("Address of fb2: %p\n", fb2);
     memset(fb2, 0, (MODE_H_ACTIVE_PIXELS / 2) * (MODE_V_ACTIVE_LINES / 2) * 2);
@@ -464,7 +466,6 @@ void hstx_init()
     // printf("Address of fb4: %p\n", fb4);
     // memset(fb4, 0, (MODE_H_ACTIVE_PIXELS / 2) * (MODE_V_ACTIVE_LINES / 2) * 2);
 #endif
-
 }
 
 /// @brief Get a pointer to the framebuffer line for a specific scanline
