@@ -206,7 +206,7 @@ elseif ( HW_CONFIG EQUAL 5 )
     set(PIO_DP_PLUS_PIN -1 CACHE STRING "PIO USB DP pin.")
     set(NEEDS_LATEST_TINYUSB_SDK 1 CACHE BOOL "Set to 1 if the latest TinyUSB SDK is needed for this board")
     # HSTX pins for Adafruit Metro RP2350 
-    if ( USE_HSTX EQUAL 1 AND NOT GPIOHSTXD0 EQUAL 0 )
+    if ( USE_HSTX EQUAL 1 AND NOT DEFINED GPIOHSTXD0)
         set(GPIOHSTXD0 18 CACHE STRING "HSTX D0 pin")
         set(GPIOHSTXD1 16 CACHE STRING "HSTX D1 pin")  
         set(GPIOHSTXD2 12 CACHE STRING "HSTX D2 pin")
