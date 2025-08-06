@@ -175,7 +175,7 @@ elseif ( HW_CONFIG EQUAL 5 )
 	# --------------------------------------------------------------------
 	set(DVICONFIG "dviConfig_AdafruitMetroRP2350" CACHE STRING
     "Select a default pin configuration from common_dvi_pin_configs.h")
-    set(LED_GPIO_PIN "23" CACHE STRING "Select the GPIO pin for LED")   # Adafruit fruitjam onboard LED
+    set(LED_GPIO_PIN "0" CACHE STRING "Select the GPIO pin for LED")   # Adafruit fruitjam onboard LED
     set(SD_CS "39" CACHE STRING "Specify the Chip Select GPIO pin for the SD card")
     set(SD_SCK "34" CACHE STRING "Specify de Clock GPIO pin for the SD card")
     set(SD_MOSI "35" CACHE STRING "Select the Master Out Slave In GPIO pin for the SD card")
@@ -207,9 +207,11 @@ elseif ( HW_CONFIG EQUAL 5 )
     set(NEEDS_LATEST_TINYUSB_SDK 1 CACHE BOOL "Set to 1 if the latest TinyUSB SDK is needed for this board")
     # HSTX pins for Adafruit Metro RP2350 
     if ( USE_HSTX EQUAL 1 AND NOT DEFINED GPIOHSTXD0)
-        set(GPIOHSTXD0 18 CACHE STRING "HSTX D0 pin")
-        set(GPIOHSTXD1 16 CACHE STRING "HSTX D1 pin")  
-        set(GPIOHSTXD2 12 CACHE STRING "HSTX D2 pin")
+        set(GPIOHSTXD0 18 CACHE STRING "HSTX D0+ pin")
+        set(GPIOHSTXD1 16 CACHE STRING "HSTX D1+ pin")  
+        set(GPIOHSTXD2 12 CACHE STRING "HSTX D2+ pin")
+        set(GPIOHSTXCK 14 CACHE STRING "HSTX CK+ pin")
+        set(GPIOHSTXINVERTED 0 CACHE STRING "Set to 1 if HSTX- pins are inverted: D- = D+ -1")
    endif()
     
    
@@ -278,6 +280,50 @@ elseif ( HW_CONFIG EQUAL 7 )
     set(ENABLE_PIO_USB 1 CACHE BOOL "Enable PIO USB support")
     set(PIO_USB_USE_PIO 2 CACHE BOOL "Select the PIO used for PIO-USB")
     set(PIO_DP_PLUS_PIN 28 CACHE STRING "PIO USB DP pin.")
+elseif ( HW_CONFIG EQUAL 8 )
+    # --------------------------------------------------------------------
+	# Adafruit FruitJam
+	# --------------------------------------------------------------------
+	set(DVICONFIG "dviConfig_AdafruitFruitJam" CACHE STRING
+    "Select a default pin configuration from common_dvi_pin_configs.h")
+    set(LED_GPIO_PIN "0" CACHE STRING "Select the GPIO pin for LED")   # Adafruit fruitjam onboard LED
+    set(SD_CS "39" CACHE STRING "Specify the Chip Select GPIO pin for the SD card")
+    set(SD_SCK "34" CACHE STRING "Specify de Clock GPIO pin for the SD card")
+    set(SD_MOSI "35" CACHE STRING "Select the Master Out Slave In GPIO pin for the SD card")
+    set(SD_MISO "36" CACHE STRING "Select the Master In Slave Out GPIO pin for the SD card")
+    set(SD_SPI "spi0" CACHE STRING "Select the SPI bus for SD card")
+    set(NES_CLK "-1" CACHE STRING "Select the Clock GPIO pin for NES controller")
+    set(NES_DATA "3" CACHE STRING "Select the Data GPIO pin for NES controller")
+    set(NES_LAT "4" CACHE STRING "Select the Latch GPIO pin for NES controller")
+    set(NES_PIO "pio0" CACHE STRING "Select the PIO for NES controller")
+    set(NES_CLK_1 "-1" CACHE STRING "Select the Clock GPIO pin for second NES controller")
+	set(NES_DATA_1 "6" CACHE STRING "Select the Data GPIO pin for second NES controller")
+	set(NES_LAT_1 "7" CACHE STRING "Select the Latch GPIO pin for second NES controller")
+    set(NES_PIO_1 "pio1" CACHE STRING "Select the PIO for second NES controller")
+    set(WII_SDA "20" CACHE STRING "Select the SDA GPIO pin for Wii Classic controller")
+    set(WII_SCL "21" CACHE STRING "Select the SCL GPIO pin for Wii Classic controller")
+    set(WIIPAD_I2C "i2c0" CACHE STRING "Select the I2C bus for Wii Classic controller")
+	set(UART_ENABLED 1 CACHE STRING "Enable UART output")
+    set(USE_I2S_AUDIO "PICO_AUDIO_I2S_DRIVER_TLV320" CACHE STRING "Enable external audio output") 
+    set(PICO_AUDIO_I2S_DATA_PIN 24 CACHE STRING "Select the GPIO pin for I2S data")
+    set(PICO_AUDIO_I2S_CLOCK_PIN_BASE 26 CACHE STRING "Select the GPIO pin for I2S clock")
+    set(PICO_AUDIO_I2S_PIO 1 CACHE STRING "Select the PIO for I2S audio output")
+    set(PICO_AUDIO_I2S_CLOCK_PINS_SWAPPED 0 CACHE STRING "Set to 1 if the I2S clock pins are swapped")
+    set(PICO_AUDIO_I2S_RESET_PIN 22 CACHE STRING "Select the GPIO pin for I2S reset")
+    set(BOARD "adafruit_fruit_jam")         # found in $PICO__SDK_PATH/lib/tinyusb/hw/bsp/rp2040/boards/adafruit_metro_rp2350/board.h
+    set(PICO_BOARD "adafruit_fruit_jam")    # found in $PICO__SDK_PATH/lib/tinyusb/hw/bsp/rp2040/boards/adafruit_metro_rp2350/adafruit_metro_rp2350.h
+    set(ENABLE_PIO_USB 1 CACHE BOOL "Enable PIO USB support")
+    set(PIO_USB_USE_PIO 2 CACHE BOOL "Select the PIO used for PIO-USB")
+    set(PIO_DP_PLUS_PIN -1 CACHE STRING "PIO USB DP pin.")
+    set(NEEDS_LATEST_TINYUSB_SDK 1 CACHE BOOL "Set to 1 if the latest TinyUSB SDK is needed for this board")
+    # HSTX pins for Adafruit Fruit Jam
+    if ( USE_HSTX EQUAL 1 AND NOT DEFINED GPIOHSTXD0)
+        set(GPIOHSTXD0 15 CACHE STRING "HSTX D0+ pin")
+        set(GPIOHSTXD1 17 CACHE STRING "HSTX D1+ pin")  
+        set(GPIOHSTXD2 19 CACHE STRING "HSTX D2+ pin")
+        set(GPIOHSTXCK 13 CACHE STRING "HSTX CK+ pin")
+        set(GPIOHSTXINVERTED 1 CACHE STRING "Set to 1 if HSTX- pins are inverted: D- = D+ -1")
+   endif()
 endif ( )
 if (NOT DEFINED GPIOHSTXD0)
     set(GPIOHSTXD0 0 CACHE STRING "HSTX D0 pin")
