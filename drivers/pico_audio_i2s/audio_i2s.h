@@ -31,7 +31,7 @@
 #define PICO_AUDIO_I2S_CLOCK_PINS_SWAPPED 0
 #endif
 // Note:  BCK is also known as BCLK
-//        LRCLK is also known as WS (Word Select), WSEL or WCLK
+//        LRCLK is also known as WS (Word Select), WSEL, WCLK
 // PICO_AUDIO_I2S_CLOCK_PINS_SWAPPED == 0: BASE = BCK, BASE + 1 = LRCLK 
 // PICO_AUDIO_I2S_CLOCK_PINS_SWAPPED == 1: BASE = LRCLK, BASE + 1 = BCK
 #ifndef PICO_AUDIO_I2S_CLOCK_PIN_BASE
