@@ -41,6 +41,10 @@
 #define PICO_AUDIO_I2S_PIO 0
 #endif
 
+// headphone detect pin, when using TLV320 codec
+#ifndef PICO_AUDIO_I2S_HP_DETECT_PIN
+#define PICO_AUDIO_I2S_HP_DETECT_PIN -1
+#endif
 
 
 

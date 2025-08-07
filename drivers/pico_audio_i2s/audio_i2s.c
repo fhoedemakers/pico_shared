@@ -205,6 +205,47 @@ static void tlv320_init()
 
 	sleep_ms(100);
 }
+#if PICO_AUDIO_I2S_HP_DETECT_PIN >= 0
+/// @brief Headphone detect interrupt callback
+/// @param gpio The GPIO pin that triggered the interrupt
+/// @param events The interrupt events
+void tlv320_headphone_irq_callback(uint gpio, uint32_t events) {
+    if (gpio == PICO_AUDIO_I2S_HP_DETECT_PIN) {
+        bool plugged_in = gpio_get(PICO_AUDIO_I2S_HP_DETECT_PIN);
+
+        if (plugged_in) {
+            printf("🎧 Headphone inserted — muting speaker (Class-D)...\n");
+
+            // Mute Class-D speaker output (Page 1 / Register 0x2A)
+            // Bit 7 = 1 → mute, Bits[2:0] = gain (keep as is, e.g., 0x1C → 0x9C)
+            write_tlv320((uint8_t[]){0x00, 0x01}, 2);            // Page 1
+            write_tlv320((uint8_t[]){0x2A, 0x9C}, 2);            // Mute + gain 18 dB
+
+        } else {
+            printf("🔊 Headphone removed — unmuting speaker...\n");
+
+            // Unmute Class-D speaker output, restore gain (e.g., 18 dB = 0x1C)
+            write_tlv320((uint8_t[]){0x00, 0x01}, 2);            // Page 1
+            write_tlv320((uint8_t[]){0x2A, 0x1C}, 2);            // Unmute + gain 18 dB
+        }
+    }
+}
+#endif
+/// @brief Initialize the headphone detect pin and set up the IRQ callback
+/// This function initializes the GPIO pin used for headphone detection and sets up an interrupt callback
+void tlv320_init_headphone_detect_irq() {
+#if PICO_AUDIO_I2S_HP_DETECT_PIN < 0
+	printf("No headphone detect pin defined, skipping IRQ setup.\n");
+#else
+    gpio_init(PICO_AUDIO_I2S_HP_DETECT_PIN);
+    gpio_set_dir(PICO_AUDIO_I2S_HP_DETECT_PIN, GPIO_IN);
+    gpio_pull_down(PICO_AUDIO_I2S_HP_DETECT_PIN); // ensure defined state
+
+    // Enable interrupt on both rising and falling edge
+    gpio_set_irq_enabled_with_callback(PICO_AUDIO_I2S_HP_DETECT_PIN, GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL, true, &tlv320_headphone_irq_callback);
+	printf("Headphone detect IRQ initialized on pin %d\n", PICO_AUDIO_I2S_HP_DETECT_PIN);
+#endif
+}
 /**
  * @brief Updates the PIO frequency for the audio I2S interface.
  *
