@@ -322,8 +322,10 @@ elseif ( HW_CONFIG EQUAL 8 )
         set(GPIOHSTXD1 17 CACHE STRING "HSTX D1+ pin")  
         set(GPIOHSTXD2 19 CACHE STRING "HSTX D2+ pin")
         set(GPIOHSTXCK 13 CACHE STRING "HSTX CK+ pin")
-        set(GPIOHSTXINVERTED 1 CACHE STRING "Set to 1 if HSTX- pins are inverted: D- = D+ -1")
+        set(GPIOHSTXINVERTED 1 CACHE STRING "Set to 1 if HSTX- pins are inverted: D- = D+ - 1, not inverted (default): D- = D+ + 1")
    endif()
+   set (PICO_DEFAULT_UART_TX_PIN 44 CACHE STRING "Select the GPIO pin for UART TX") # Adafruit Fruit Jam uses GPIO 44 for UART TX
+   set (PICO_DEFAULT_UART_RX_PIN 45 CACHE STRING "Select the GPIO pin for UART RX") # Adafruit Fruit Jam uses GPIO 45 for UART RX
 endif ( )
 if (NOT DEFINED GPIOHSTXD0)
     set(GPIOHSTXD0 0 CACHE STRING "HSTX D0 pin")
