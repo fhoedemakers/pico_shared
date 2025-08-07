@@ -29,7 +29,6 @@
 #include "stdio.h"
 #include "hardware/i2c.h"
 
-
 #define AUDIO_PIO __CONCAT(pio, PICO_AUDIO_I2S_PIO)
 #define GPIO_FUNC_PIOx __CONCAT(GPIO_FUNC_PIO, PICO_AUDIO_I2S_PIO)
 
@@ -49,7 +48,7 @@ static audio_i2s_hw_t audio_i2s = {
 static int samplefreq = PICO_AUDIO_I2S_FREQ;
 #define TLV320_ADDR 0x18 // I2C address for the TLV320AIC3204 codec
 
-#define I2C_PORT i2c0   // hardcoded I2C port for the TLV320 codec, must be configurable in the future
+#define I2C_PORT i2c0 // hardcoded I2C port for the TLV320 codec, must be configurable in the future
 #define I2C_ADDR 0x18
 
 /// @brief Write data to the TLV320AIC3204 over I2C
@@ -76,6 +75,27 @@ static void write_tlv320(uint8_t *data, size_t len)
 #endif
 }
 
+bool read_tlv320(uint8_t reg, uint8_t *data, size_t len)
+{
+	// Write register address first
+	int result = i2c_write_blocking(i2c0, I2C_ADDR, &reg, 1, true); // true = no stop
+	if (result < 0)
+	{
+		printf("I2C write failed during read (reg=0x%02X)\n", reg);
+		return false;
+	}
+
+	// Read data from device
+	result = i2c_read_blocking(i2c0, I2C_ADDR, data, len, false); // false = stop
+	if (result < 0)
+	{
+		printf("I2C read failed (reg=0x%02X)\n", reg);
+		return false;
+	}
+
+	return true;
+}
+
 /// @brief Perform a hardware reset of the TLV320AIC3204
 /// This function toggles the reset pin to reset the codec hardware.
 static void tlv320_hardware_reset()
@@ -96,7 +116,7 @@ static void tlv320_hardware_reset()
 
 /// @brief Initialize the TLV320AIC3204 codec
 /// This function sets up the codec with default settings for audio playback.
-/// From tlv320dac3100 datasheet, section 6.3.10.15 
+/// From tlv320dac3100 datasheet, section 6.3.10.15
 /// "Typical EVM I2C register control script"
 /// https://www.ti.com/lit/ds/symlink/tlv320dac3100.pdf?ts=1754043773385
 /// A typical EVM I2C register control script follows to show how to set up the TLV320DAC3100 in playback
@@ -107,20 +127,20 @@ static void tlv320_init()
 	printf("Initializing TLV320AIC3204 audio DAC...\n");
 	i2c_init(I2C_PORT, 400 * 1000); // Initialize I2C at 400kHz
 	// 1. Define starting point:
-    // 		(a) Power up applicable external hardware power supplies
+	// 		(a) Power up applicable external hardware power supplies
 	//     	(b) Set register to Page 0
 	// ### SET REGISTER PAGE 0 ###
 	write_tlv320((uint8_t[]){0x00, 0x00}, 2);
 	// 		(c) Initiate SW reset (PLL is powered off as part of reset)
-	write_tlv320((uint8_t[]){0x01, 0x01}, 2);  
+	write_tlv320((uint8_t[]){0x01, 0x01}, 2);
 	// 2. Program clock settings
 	// 		(a) Program PLL clock dividers P, J, D, R (if PLL is used)
 	//     		PLL_clkin = MCLK,codec_clkin = PLL_CLK
-	write_tlv320((uint8_t[]){0x04, 0x03}, 2);  
+	write_tlv320((uint8_t[]){0x04, 0x03}, 2);
 	//     		J = 8
-	write_tlv320((uint8_t[]){0x06, 0x08}, 2);  
+	write_tlv320((uint8_t[]){0x06, 0x08}, 2);
 	//    		D = 0000, D(13:8) = 0, D(7:0) = 0
-	write_tlv320((uint8_t[]){0x07, 0x00, 0x00}, 3); 
+	write_tlv320((uint8_t[]){0x07, 0x00, 0x00}, 3);
 	// 		(b) Power up PLL (if PLL is used)
 	//     		PLL Power up, P = 1, R = 1
 	write_tlv320((uint8_t[]){0x05, 0x91}, 2);
@@ -175,21 +195,21 @@ static void tlv320_init()
 	//  		Power-up Class-D driver
 	write_tlv320((uint8_t[]){0x20, 0x86}, 2);
 	// 			Enable HPL output analog volume, set = -9dB
-	write_tlv320((uint8_t[]){0x24, 0x92}, 2); 
+	write_tlv320((uint8_t[]){0x24, 0x92}, 2);
 	// 			Enable HPR output analog volume, set = -9dB
-	write_tlv320((uint8_t[]){0x25, 0x92}, 2); 
+	write_tlv320((uint8_t[]){0x25, 0x92}, 2);
 	// 			Enable Class-D output analog volume, set = -9dB
-	write_tlv320((uint8_t[]){0x26, 0x92}, 2); 
+	write_tlv320((uint8_t[]){0x26, 0x92}, 2);
 	// 4. Apply waiting time determined by the de-pop settings and the soft-stepping settings
 	//    of the driver gain or poll page 1 / register 63
 	sleep_ms(800); // Wait for 800 ms as per the de-pop settings
 	//  5. Power up DAC
- 	//  ### SET REGISTER PAGE 0 ###
+	//  ### SET REGISTER PAGE 0 ###
 	//  	(a) Set register to Page 0
 	write_tlv320((uint8_t[]){0x00, 0x00}, 2);
 	// 		(b) Power up DAC channels and set digital gain
-    // 			Powerup DAC left and right channels (soft step enabled)
-	write_tlv320((uint8_t[]){0x3F, 0xD4}, 2); 
+	// 			Powerup DAC left and right channels (soft step enabled)
+	write_tlv320((uint8_t[]){0x3F, 0xD4}, 2);
 	//			DAC Left gain = 0 dB	(was -22 dB)
 	write_tlv320((uint8_t[]){0x41, 0x00}, 2); // Changed 0xD4 to 0x00
 	//			DAC Right gain = 0 dB	(was -22 dB)
@@ -205,44 +225,84 @@ static void tlv320_init()
 
 	sleep_ms(100);
 }
+
 #if PICO_AUDIO_I2S_HP_DETECT_PIN >= 0
 /// @brief Headphone detect interrupt callback
 /// @param gpio The GPIO pin that triggered the interrupt
 /// @param events The interrupt events
-void tlv320_headphone_irq_callback(uint gpio, uint32_t events) {
-    if (gpio == PICO_AUDIO_I2S_HP_DETECT_PIN) {
-        bool plugged_in = gpio_get(PICO_AUDIO_I2S_HP_DETECT_PIN);
+void tlv320_headphone_irq_callback(uint gpio, uint32_t events)
+{
+	if (gpio == PICO_AUDIO_I2S_HP_DETECT_PIN && (events & (GPIO_IRQ_EDGE_RISE)))
+	{
 
-        if (plugged_in) {
-            printf("🎧 Headphone inserted — muting speaker (Class-D)...\n");
-
-            // Mute Class-D speaker output (Page 1 / Register 0x2A)
-            // Bit 7 = 1 → mute, Bits[2:0] = gain (keep as is, e.g., 0x1C → 0x9C)
-            write_tlv320((uint8_t[]){0x00, 0x01}, 2);            // Page 1
-            write_tlv320((uint8_t[]){0x2A, 0x9C}, 2);            // Mute + gain 18 dB
-
-        } else {
-            printf("🔊 Headphone removed — unmuting speaker...\n");
-
-            // Unmute Class-D speaker output, restore gain (e.g., 18 dB = 0x1C)
-            write_tlv320((uint8_t[]){0x00, 0x01}, 2);            // Page 1
-            write_tlv320((uint8_t[]){0x2A, 0x1C}, 2);            // Unmute + gain 18 dB
-        }
-    }
+		write_tlv320((uint8_t[]){0x00, 0x00}, 2); // Page 0
+		// Read the headphone detect flags from register 0x2C
+		uint8_t flags;
+		if (read_tlv320(0x2C, &flags, 1))
+		{
+			if (flags & (1 << 4))
+			{ 
+				// Headset inserted/removed
+				// Get live state from 0x2E
+				uint8_t live_state;
+				if (read_tlv320(0x2E, &live_state, 1))
+				{
+					if (live_state & (1 << 4))
+					{
+						// Headphones detected (with or without mic)
+						// Disable Class-D speaker/enable HPL+HPR
+						write_tlv320((uint8_t[]){0x00, 0x01}, 2); // Page 1
+						write_tlv320((uint8_t[]){0x20, 0x06}, 2); // Power down Class-D speaker amp
+						// Power up HPL and HPR, set common-mode voltage = 1.5V, D2 must be 1
+						write_tlv320((uint8_t[]){0x1F, 0xD4}, 2); // Enable HPL + HPR 0xb11010100
+					}
+					else
+					{
+						// Headphones not detected
+						// Enable Class-D speaker/disable headphones
+						write_tlv320((uint8_t[]){0x00, 0x01}, 2); // Page 1
+						write_tlv320((uint8_t[]){0x20, 0x86}, 2); // Power up Class-D speaker amp
+						write_tlv320((uint8_t[]){0x1F, 0x54}, 2); // Disable HPL+HPR, common-mode = 1.65V
+					}
+				}
+			}
+		}
+	}
 }
+
 #endif
 /// @brief Initialize the headphone detect pin and set up the IRQ callback
 /// This function initializes the GPIO pin used for headphone detection and sets up an interrupt callback
-void tlv320_init_headphone_detect_irq() {
+void tlv320_init_headphone_detect_irq()
+{
 #if PICO_AUDIO_I2S_HP_DETECT_PIN < 0
 	printf("No headphone detect pin defined, skipping IRQ setup.\n");
 #else
-    gpio_init(PICO_AUDIO_I2S_HP_DETECT_PIN);
-    gpio_set_dir(PICO_AUDIO_I2S_HP_DETECT_PIN, GPIO_IN);
-    gpio_pull_down(PICO_AUDIO_I2S_HP_DETECT_PIN); // ensure defined state
+	// Page 0
+	write_tlv320((uint8_t[]){0x00, 0x00}, 2);
 
-    // Enable interrupt on both rising and falling edge
-    gpio_set_irq_enabled_with_callback(PICO_AUDIO_I2S_HP_DETECT_PIN, GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL, true, &tlv320_headphone_irq_callback);
+	// Enable headset detection + debounce (say, 128ms debounce)
+	write_tlv320((uint8_t[]){0x43, 0x8C}, 2); // Enable detection, 128 ms debounce
+	// Bit 7: Headset detection enabled
+	// Bits 4–2: 128 ms debounce for jack insert/removal
+	// Bits 1–0: 0 ms debounce for button presses (ignored in your case)
+
+	// Enable interrupt for headset insert/removal events → INT1
+	write_tlv320((uint8_t[]){0x30, 0x81}, 2); // Enable INT1 for headset detect, continuous pulse
+											  // Bit 7: Headset detect enabled
+	// Bit 0: Continuous pulse mode for INT1
+
+	// Route INT1 to GPIO1
+	write_tlv320((uint8_t[]){0x33, 0x14}, 2); // GPIO1 = INT1 output
+	// D5 - D2: 0101 GPIO1 output is INT1 output
+	// 0x14 = 0b00010100
+
+	gpio_init(PICO_AUDIO_I2S_HP_DETECT_PIN);
+	gpio_set_dir(PICO_AUDIO_I2S_HP_DETECT_PIN, GPIO_IN);
+	gpio_pull_down(PICO_AUDIO_I2S_HP_DETECT_PIN); // ensure defined state
+
+	// Enable interrupt on both rising and falling edge
+	gpio_set_irq_enabled_with_callback(PICO_AUDIO_I2S_HP_DETECT_PIN, GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL, true, &tlv320_headphone_irq_callback);
 	printf("Headphone detect IRQ initialized on pin %d\n", PICO_AUDIO_I2S_HP_DETECT_PIN);
 #endif
 }
@@ -314,12 +374,13 @@ void __isr dma_handler()
  */
 audio_i2s_hw_t *audio_i2s_setup(int driver, int freqHZ, int dmachan)
 {
-	if ( driver == PICO_AUDIO_I2S_DRIVER_NONE )
+	if (driver == PICO_AUDIO_I2S_DRIVER_NONE)
 	{
 		printf("No I2S driver selected, skipping audio setup.\n");
 		return NULL; // No I2S driver selected, return NULL
 	}
-	if (driver == PICO_AUDIO_I2S_DRIVER_TLV320) {
+	if (driver == PICO_AUDIO_I2S_DRIVER_TLV320)
+	{
 		tlv320_hardware_reset(); // Reset the TLV320 codec hardware
 		tlv320_init();			 // Initialize the TLV320 codec with default settings
 	}
@@ -358,7 +419,7 @@ audio_i2s_hw_t *audio_i2s_setup(int driver, int freqHZ, int dmachan)
 	if (audio_i2s.dma_chan == -1)
 	{
 		audio_i2s.dma_chan = dma_claim_unused_channel(true);
-		// 
+		//
 	}
 	printf("Using DMA channel %d for audio I2S\n", audio_i2s.dma_chan);
 	dma_channel_config c = dma_channel_get_default_config(audio_i2s.dma_chan);
