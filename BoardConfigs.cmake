@@ -323,8 +323,18 @@ elseif ( HW_CONFIG EQUAL 8 )
         set(GPIOHSTXD1 17 CACHE STRING "HSTX D1+ pin")  
         set(GPIOHSTXD2 19 CACHE STRING "HSTX D2+ pin")
         set(GPIOHSTXCK 13 CACHE STRING "HSTX CK+ pin")
-        set(GPIOHSTXINVERTED 1 CACHE STRING "Set to 1 if HSTX- pins are inverted: D- = D+ - 1, not inverted (default): D- = D+ + 1")
+        set(GPIOHSTXINVERTED 1 CACHE STRING "Set to 1 if HSTX pins are inverted: D- = D+ - 1, not inverted (default): D- = D+ + 1")
    endif()
+   # Override default UART settings used for printf debugging on the Adafruit Fruit Jam board.
+   # By default, the following UART configuration is set in:
+   #   $PICO_SDK_PATH/lib/tinyusb/hw/bsp/rp2040/boards/adafruit_fruit_jam/adafruit_fruit_jam.h
+   #     PICO_DEFAULT_UART        1
+   #     PICO_DEFAULT_UART_TX_PIN 8
+   #     PICO_DEFAULT_UART_RX_PIN 9
+   # However, the ESP32 WiFi module on the board uses these pins for its own output,
+   # which prevents printf messages from appearing. To fix this, we need to remap the UART
+   # to different, unused GPIOs.
+   set (PICO_DEFAULT_UART 0 CACHE STRING "Select the default UART for this board") # Adafruit Fruit Jam uses UART0
    set (PICO_DEFAULT_UART_TX_PIN 44 CACHE STRING "Select the GPIO pin for UART TX") # Adafruit Fruit Jam uses GPIO 44 for UART TX
    set (PICO_DEFAULT_UART_RX_PIN 45 CACHE STRING "Select the GPIO pin for UART RX") # Adafruit Fruit Jam uses GPIO 45 for UART RX
 endif ( )
