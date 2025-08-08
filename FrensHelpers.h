@@ -1,11 +1,12 @@
 
 #ifndef FRENSHELPERS
 #define FRENSHELPERS
-#if !GPIOHSTXD0 || !GPIOHSTXD1 || !GPIOHSTXD2
+#if GPIOHSTXD0 && GPIOHSTXD1 && GPIOHSTXD2 && GPIOHSTXCK
+#define HSTX 1
+#else
 #define HSTX 0
-#else 
-#define HSTX (GPIOHSTXD0 && GPIOHSTXD1 && GPIOHSTXD2)
 #endif
+
 #include <string>
 #include <algorithm>
 #include <memory>
