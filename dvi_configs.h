@@ -34,11 +34,17 @@ namespace {
         .pinClock = 38,
         .invert = false,
     };
-    // Adafruit Metro RP2350 PiZero DVI
+    // Adafruit Metro RP2350 
     constexpr dvi::Config dviConfig_AdafruitMetroRP2350 = {
         .pinTMDS = {18, 16, 12},
         .pinClock = 14,
         .invert = false,
+    };
+     // Adafruit Fruit Jam 
+    constexpr dvi::Config dviConfig_AdafruitFruitJam = {
+        .pinTMDS = {15, 17, 19},
+        .pinClock = 13,
+        .invert = true,
     };
     constexpr dvi::Config dviConfig_RP2XX0_TinyPCB = {
         .pinTMDS = {8, 10, 12},
