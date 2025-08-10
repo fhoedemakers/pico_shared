@@ -60,6 +60,13 @@ static bool useFrameBuffer = false;
 #define SCREENBUFCELLS SCREEN_ROWS *SCREEN_COLS
 charCell *screenBuffer;
 
+static char *selectedRomOrFolder;
+static bool errorInSavingRom = false;
+static char *globalErrorMessage;
+#if PICO_RP2350
+static char emulator[32]; // preserve memory for RP2040, used for showing artwork
+#endif
+
 #define LONG_PRESS_TRESHOLD (500)
 #define REPEAT_DELAY (40)
 
@@ -263,7 +270,7 @@ void RomSelect_PadState(DWORD *pdwPad1, bool ignorepushed = false)
     }
     prevButtons = p1;
 }
-void RomSelect_DrawLine(int line, int selectedRow)
+void RomSelect_DrawLine(int line, int selectedRow, int pixelsToSkip = 0)
 {
     WORD fgcolor, bgcolor;
 #if !HSTX
@@ -278,9 +285,20 @@ void RomSelect_DrawLine(int line, int selectedRow)
         memset(WorkLineRom, 0, SCREENWIDTH * sizeof(WORD));
     }
 #endif
+    auto pixelRow = WorkLineRom + pixelsToSkip;
+#if !HSTX
+    auto pixelRow8 = WorkLineRom8 + pixelsToSkip;
+#endif
+    // calculate first char column index from pixelstoskip
+    auto firstCharColumnIndex = (pixelsToSkip % SCREENWIDTH) / FONT_CHAR_WIDTH;
     for (auto i = 0; i < SCREEN_COLS; ++i)
     {
+        if (i < firstCharColumnIndex)
+        {
+            continue; // skip out of bounds
+        }
         int charIndex = i + line / FONT_CHAR_HEIGHT * SCREEN_COLS;
+
         int row = charIndex / SCREEN_COLS;
         uint c = screenBuffer[charIndex].charvalue;
         if (row == selectedRow)
@@ -319,14 +337,14 @@ void RomSelect_DrawLine(int line, int selectedRow)
 #if !HSTX
                 if (useFrameBuffer)
                 {
-                    *WorkLineRom8 = fgcolor;
+                    *pixelRow8 = fgcolor;
                 }
                 else
                 {
-                    *WorkLineRom = fgcolor;
+                    *pixelRow = fgcolor;
                 }
 #else
-                *WorkLineRom = fgcolor;
+                *pixelRow = fgcolor;
 #endif
             }
             else
@@ -334,35 +352,35 @@ void RomSelect_DrawLine(int line, int selectedRow)
 #if !HSTX
                 if (useFrameBuffer)
                 {
-                    *WorkLineRom8 = bgcolor;
+                    *pixelRow8 = bgcolor;
                 }
                 else
                 {
-                    *WorkLineRom = bgcolor;
+                    *pixelRow = bgcolor;
                 }
 #else
-                *WorkLineRom = bgcolor;
+                *pixelRow = bgcolor;
 #endif
             }
             fontSlice >>= 1;
 #if !HSTX
             if (useFrameBuffer)
             {
-                WorkLineRom8++;
+                pixelRow8++;
             }
             else
             {
-                WorkLineRom++;
+                pixelRow++;
             }
 #else
-            WorkLineRom++;
+            pixelRow++;
 #endif
         }
     }
     return;
 }
 
-void drawline(int scanline, int selectedRow)
+void drawline(int scanline, int selectedRow, int w = 0, int h = 0, uint16_t *imagebuffer = nullptr)
 {
 #if !HSTX
     if (Frens::isFrameBufferUsed())
@@ -379,37 +397,118 @@ void drawline(int scanline, int selectedRow)
     }
 #else
     WorkLineRom = hstx_getlineFromFramebuffer(scanline);
-    RomSelect_DrawLine(scanline, selectedRow);
+    auto offset = 0;
+    // overlay with image
+    // Image is raw 16 bit RGB555 w width, h height, corresponding row of pixels must be copied into worklinerom
+    bool validImage = (imagebuffer != nullptr) && (w > 0 && w <= 320 && h > 0 && h <= 240);
+    if (validImage && scanline < h)
+    {
+        // copy image row into worklinerom
+        auto rowOffset = scanline * w;
+        memcpy(WorkLineRom, imagebuffer + rowOffset, w * sizeof(uint16_t));
+
+        offset = w;
+    }
+    RomSelect_DrawLine(scanline, selectedRow, offset);
+
 #endif
 }
 
-void putText(int x, int y, const char *text, int fgcolor, int bgcolor)
+void putText(int x, int y, const char *text, int fgcolor, int bgcolor, bool wraplines, int offset)
 {
 
-    if (text != nullptr)
-    {
-        auto index = y * SCREEN_COLS + x;
-        auto maxLen = strlen(text);
-        if (strlen(text) > SCREEN_COLS - x)
+        if (text != nullptr)
         {
-            maxLen = SCREEN_COLS - x;
+            int cur_x = x;
+            int cur_y = y;
+            auto index = cur_y * SCREEN_COLS + cur_x;
+            auto maxLen = strlen(text);
+            bool lastWasSpace = false;
+            while (index < SCREENBUFCELLS && *text && maxLen > 0)
+            {
+                if (wraplines && !isspace(*text)) {
+                    // Word wrapping: find length of next word
+                    const char *word_start = text;
+                    int word_len = 0;
+                    while (word_start[word_len] && !isspace(word_start[word_len])) {
+                        word_len++;
+                    }
+                    // If word doesn't fit, move to next line
+                    if (cur_x + word_len > SCREEN_COLS && cur_x != 0) {
+                        cur_x = offset;
+                        cur_y++;
+                        index = cur_y * SCREEN_COLS + cur_x;
+                        if (index >= SCREENBUFCELLS) break;
+                    }
+                    // Write the word
+                    for (int i = 0; i < word_len && index < SCREENBUFCELLS && maxLen > 0; i++) {
+                        char ch = *text++;
+                        if ((unsigned char)ch < 32 || (unsigned char)ch > 126) ch = ' ';
+                        screenBuffer[index].charvalue = ch;
+                        screenBuffer[index].fgcolor = fgcolor;
+                        screenBuffer[index].bgcolor = bgcolor;
+                        cur_x++;
+                        maxLen--;
+                        lastWasSpace = false;
+                        index = cur_y * SCREEN_COLS + cur_x;
+                    }
+                    // Write any following spaces (collapse consecutive)
+                    while (*text && isspace(*text) && index < SCREENBUFCELLS && maxLen > 0) {
+                        if (!lastWasSpace) {
+                            char ch = *text;
+                            if ((unsigned char)ch < 32 || (unsigned char)ch > 126) ch = ' ';
+                            screenBuffer[index].charvalue = ch;
+                            screenBuffer[index].fgcolor = fgcolor;
+                            screenBuffer[index].bgcolor = bgcolor;
+                            cur_x++;
+                            maxLen--;
+                            lastWasSpace = true;
+                            if (cur_x >= SCREEN_COLS) {
+                                cur_x = offset;
+                                cur_y++;
+                            }
+                            index = cur_y * SCREEN_COLS + cur_x;
+                        }
+                        text++;
+                    }
+                } else {
+                    char ch = *text++;
+                    if ((unsigned char)ch < 32 || (unsigned char)ch > 126) ch = ' ';
+                    if (isspace(ch)) {
+                        if (lastWasSpace) continue;
+                        lastWasSpace = true;
+                    } else {
+                        lastWasSpace = false;
+                    }
+                    screenBuffer[index].charvalue = ch;
+                    screenBuffer[index].fgcolor = fgcolor;
+                    screenBuffer[index].bgcolor = bgcolor;
+                    cur_x++;
+                    maxLen--;
+                    if (cur_x >= SCREEN_COLS)
+                    {
+                        if (wraplines)
+                        {
+                            cur_x = offset;
+                            cur_y++;
+                        }
+                        else
+                        {
+                            break; // Stop writing if wraplines is false
+                        }
+                    }
+                    index = cur_y * SCREEN_COLS + cur_x;
+                }
+            }
         }
-        while (index < SCREENBUFCELLS && *text && maxLen > 0)
-        {
-            screenBuffer[index].charvalue = *text++;
-            screenBuffer[index].fgcolor = fgcolor;
-            screenBuffer[index].bgcolor = bgcolor;
-            index++;
-            maxLen--;
-        }
-    }
 }
 
-void DrawScreen(int selectedRow)
+void DrawScreen(int selectedRow, int w = 0, int h = 0, uint16_t *imagebuffer = nullptr)
 {
     const char *spaces = "                   ";
     char tmpstr[sizeof(connectedGamePadName) + 4];
     char s[SCREEN_COLS + 1];
+
     if (selectedRow != -1)
     {
         putText(SCREEN_COLS / 2 - strlen(spaces) / 2, SCREEN_ROWS - 1, spaces, settings.bgcolor, settings.bgcolor);
@@ -438,7 +537,7 @@ void DrawScreen(int selectedRow)
 
     for (auto line = 0; line < 240; line++)
     {
-        drawline(line, selectedRow);
+        drawline(line, selectedRow, w, h, imagebuffer);
     }
 }
 
@@ -613,7 +712,139 @@ void __not_in_flash_func(processMenuScanLine)(int line, uint8_t *framebuffer, ui
 #endif
 #define ARTFILE "/ART/output_RGB555.raw"
 #define ARTFILERGB "/ART/output_RGB555.rgb"
+#define ARTWORKFILE "/metadata/%s/images/%d/%c/%s.555"
+#define METADDATAFILE "/metadata/%s/descr/%c/%s.txt"
+void showartwork(uint32_t crc)
+{
+    char info[SCREEN_COLS + 1];
+    char PATH[FF_MAX_LFN + 1];
+    char gamename[64];
+    char releaseDate[16]; // 19900212T000000
+    char developer[64];   // Nintendo
+    char genre[64];       // Platform-Platform / Run & Jump
+    //char rating[10]; // E, E10+, T, M, AO
+    char CRC[9];
+    char desc[512]; // 256 characters is enough for a short description
+    FIL fil;
+    FRESULT fr;
+    uint8_t *buffer = nullptr;
+    char *metadatabuffer;
+    snprintf(CRC, sizeof(CRC), "%08X", crc);
+    snprintf(PATH, sizeof(PATH), ARTWORKFILE, emulator, 160, CRC[0], CRC);
+    // sprintf(line, "Showing artwork for CRC: %08X", crc);
+    //printf("%s\n", line);
+    printf("Path: %s\n", PATH);
+    fr = f_open(&fil, PATH, FA_READ);
+    if (fr == FR_OK)
+    {
+        auto fsize = f_size(&fil);
+        printf("Reading %s, size: %d bytes\n", PATH, fsize);
+        buffer = (uint8_t *)Frens::f_malloc(fsize);
+        if (buffer == nullptr)
+        {
+            printf("Error allocating memory for %s\n", PATH);
+        }
+        size_t r;
+        fr = f_read(&fil, buffer, fsize, &r);
+        if (fr != FR_OK || r != fsize)
+        {
+            printf("Error reading %s: %d, read %d bytes\n", PATH, fr, r);
+            Frens::f_free(buffer);
+            buffer = nullptr;
+        }
 
+        f_close(&fil);
+    }
+    else
+    {
+        printf("Error opening %s: %d\n", ARTFILERGB, fr);
+    }
+    // first two bytes of buffer is width
+    int16_t width = buffer ? *((uint16_t *)buffer) : 0;
+    // next two bytes is height
+    int16_t height = buffer ? *((uint16_t *)(buffer + 2)) : 0;
+    uint16_t *imagebuffer = buffer ? (uint16_t *)(buffer + 4) : nullptr;
+    printf("Image size: %d x %d pixels\n", width, height);
+    snprintf(PATH, sizeof(PATH), METADDATAFILE, emulator, CRC[0], CRC);
+    printf("Metadata file: %s\n", PATH);
+    fr = f_open(&fil, PATH, FA_READ);
+    if (fr == FR_OK)
+    {
+        auto fsize = f_size(&fil);
+        printf("Reading %s, size: %d bytes\n", PATH, fsize);
+        metadatabuffer = (char *)Frens::f_malloc(fsize + 1);
+        if (metadatabuffer == nullptr)
+        {
+            printf("Error allocating memory for %s\n", PATH);
+        }
+        size_t r;
+        fr = f_read(&fil, metadatabuffer, fsize, &r);
+        if (fr != FR_OK || r != fsize)
+        {
+            printf("Error reading %s: %d, read %d bytes\n", PATH, fr, r);
+            Frens::f_free(metadatabuffer);
+            metadatabuffer = nullptr;
+        }
+        metadatabuffer[fsize] = '\0';
+        printf("%s\n", metadatabuffer);
+        f_close(&fil);
+    }
+    gamename[0] = desc[0] = releaseDate[0] = developer[0] = genre[0] = '\0';
+    // extract the tags:
+    if (metadatabuffer)
+    {
+        Frens::get_tag_text(metadatabuffer, "name", gamename, sizeof(gamename));
+        Frens::get_tag_text(metadatabuffer, "releasedate", releaseDate, sizeof(releaseDate));
+        Frens::get_tag_text(metadatabuffer, "developer", developer, sizeof(developer));
+        Frens::get_tag_text(metadatabuffer, "genre", genre, sizeof(genre));
+        Frens::get_tag_text(metadatabuffer, "desc", desc, sizeof(desc));
+       // Frens::get_tag_text(metadatabuffer, "rating", rating, sizeof(rating));
+        printf("Game name: %s\n", gamename);
+        printf("Release date: %s\n", releaseDate);
+        printf("Developer: %s\n", developer);
+        printf("Genre: %s\n", genre);
+        printf("Description: %s\n", desc);
+        //printf("Rating: %s\n", rating);
+    }
+    DWORD PAD1_Latch;
+    ClearScreen(settings.bgcolor);
+    DrawScreen(-1);
+    Menu_LoadFrame();
+    // convert releasedate which is in the form of 19851117T000000
+    // to a string MM-YYYY, If firstdigit of month is zero replace with space
+    if (strlen(releaseDate) >= 8)
+    {
+        snprintf(info, sizeof(info), "%c%c-%c%c%c%c", releaseDate[4], releaseDate[5], releaseDate[0], releaseDate[1], releaseDate[2], releaseDate[3]);
+    }
+    printf("Release date: %s\n", releaseDate);
+    //putText(0, 0, line, settings.fgcolor, settings.bgcolor);
+    putText(0, height == 0 ? 9 : 20, desc, settings.fgcolor, settings.bgcolor, true);
+    auto firstCharColumnIndex = ((width % SCREENWIDTH) / FONT_CHAR_WIDTH) + 1;
+    putText(firstCharColumnIndex, 0, gamename, settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex);
+    putText(firstCharColumnIndex, 2, developer, settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex);
+    putText(firstCharColumnIndex, 4, genre, settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex);
+    putText(firstCharColumnIndex, 7, info, settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex);
+    //putText(firstCharColumnIndex, 9, rating, settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex);
+    //putText(firstCharColumnIndex, 8, desc, settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex);
+    while (true)
+    {
+        auto frameCount = Menu_LoadFrame();
+        DrawScreen(-1, width, height, imagebuffer);
+        RomSelect_PadState(&PAD1_Latch);
+        if (PAD1_Latch > 0)
+        {
+            break;
+        }
+    }
+    if (buffer)
+    {
+        Frens::f_free(buffer);
+    }
+    if (metadatabuffer)
+    {
+        Frens::f_free(metadatabuffer);
+    }
+}
 static void showLoadingScreen()
 {
 #if !HSTX
@@ -701,16 +932,44 @@ static void showLoadingScreen()
 #endif
 }
 
-// Global instances of local vars in romselect() some used in Lambda expression later on
-static char *selectedRomOrFolder;
-static bool errorInSavingRom = false;
-static char *globalErrorMessage;
+uint32_t loadRomInPsRam(char *curdir, char *selectedRomOrFolder, char *rompath, bool &errorInSavingRom)
+{
 #if PICO_RP2350
-static char emulator[32];  // preserve memory for RP2040, used for showing artwork
-#endif
+    uint32_t crc = 0;
+    errorInSavingRom = false;
+    // If PSRAM is enabled, we need to copy the rom to PSRAM
+    char fullPath[FF_MAX_LFN];
+    // concatenate the current directory and the selected rom or folder
+    // and save it to the global variable selectedRomOrFolder
+    if (strlen(curdir) + strlen(selectedRomOrFolder) + 2 > FF_MAX_LFN)
+    {
+        snprintf(globalErrorMessage, 40, "Path too long: %s/%s", curdir, selectedRomOrFolder);
+        printf("%s\n", globalErrorMessage);
+        errorInSavingRom = true;
+    }
+    else
+    {
+        snprintf(fullPath, FF_MAX_LFN, "%s/%s", curdir, selectedRomOrFolder);
+        printf("Full path: %s\n", fullPath);
+        // If there is already a rom loaded in PSRAM, free it
+        Frens::freePsram((void *)ROM_FILE_ADDR);
+        // and load the new rom to PSRAM
+        printf("Loading rom to PSRAM: %s\n", fullPath);
+        strcpy(rompath, fullPath);
 
+        ROM_FILE_ADDR = (uintptr_t)Frens::flashromtoPsram(fullPath, false, crc);
+    }
+    return crc;
+#else
+    return 0;
+#endif
+}
 void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, const char *allowedExtensions, char *rompath, const char *emulatorType)
 {
+    FRESULT fr;
+    FIL fil;
+    DWORD PAD1_Latch;
+    char curdir[FF_MAX_LFN];
 #if PICO_RP2350
     strcpy(emulator, emulatorType);
 #endif
@@ -736,8 +995,6 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
         settings.selectedRow = STARTROW;
     }
     globalErrorMessage = errorMessage;
-    FRESULT fr;
-    DWORD PAD1_Latch;
 
     printf("Starting Menu\n");
     // allocate buffers
@@ -915,31 +1172,44 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
                     printf("Cannot get current dir: %d\n", fr);
                 }
             }
-            else if ((PAD1_Latch & START) == START && ((PAD1_Latch & SELECT) != SELECT) && !Frens::isPsramEnabled())
+            else if ((PAD1_Latch & START) == START && ((PAD1_Latch & SELECT) != SELECT))
             {
-                showLoadingScreen();
-                // reboot and start emulator with currently loaded game
-                // Create a file /START indicating not to reflash the already flashed game
-                // The emulator will delete this file after loading the game
-                FRESULT fr;
-                FIL fil;
-                printf("Creating /START\n");
-                fr = f_open(&fil, "/START", FA_CREATE_ALWAYS | FA_WRITE);
-                if (fr == FR_OK)
+                if (!Frens::isPsramEnabled())
                 {
-                    auto bytes = f_puts("START", &fil);
-                    printf("Wrote %d bytes\n", bytes);
-                    fr = f_close(&fil);
-                    if (fr != FR_OK)
+                    showLoadingScreen();
+                    // reboot and start emulator with currently loaded game
+                    // Create a file /START indicating not to reflash the already flashed game
+                    // The emulator will delete this file after loading the game
+                    printf("Creating /START\n");
+                    fr = f_open(&fil, "/START", FA_CREATE_ALWAYS | FA_WRITE);
+                    if (fr == FR_OK)
                     {
-                        printf("Cannot close file /START:%d\n", fr);
+                        auto bytes = f_puts("START", &fil);
+                        printf("Wrote %d bytes\n", bytes);
+                        fr = f_close(&fil);
+                        if (fr != FR_OK)
+                        {
+                            printf("Cannot close file /START:%d\n", fr);
+                        }
                     }
+                    else
+                    {
+                        printf("Cannot create file /START:%d\n", fr);
+                    }
+                    break; // reboot
                 }
                 else
                 {
-                    printf("Cannot create file /START:%d\n", fr);
+                    // show screen with ArtWork
+                    fr = my_getcwd(curdir, sizeof(curdir)); // f_getcwd(curdir, sizeof(curdir));
+                    printf("Current dir: %s\n", curdir);
+                    if (Frens::isPsramEnabled() && !entries[index].IsDirectory && selectedRomOrFolder)
+                    {
+                        uint32_t crc = loadRomInPsRam(curdir, selectedRomOrFolder, rompath, errorInSavingRom);
+                        showartwork(crc);
+                        displayRoms(romlister, settings.firstVisibleRowINDEX);
+                    }
                 }
-                break; // reboot
             }
             else if ((PAD1_Latch & A) == A && selectedRomOrFolder)
             {
@@ -959,14 +1229,13 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
                 }
                 else
                 {
-                    FRESULT fr;
-                    FIL fil;
                     showLoadingScreen();
-                    char curdir[FF_MAX_LFN];
                     fr = my_getcwd(curdir, sizeof(curdir)); // f_getcwd(curdir, sizeof(curdir));
                     printf("Current dir: %s\n", curdir);
                     if (Frens::isPsramEnabled())
                     {
+                        loadRomInPsRam(curdir, selectedRomOrFolder, rompath, errorInSavingRom);
+#if 0
                         // If PSRAM is enabled, we need to copy the rom to PSRAM
                         char fullPath[FF_MAX_LFN];
                         // concatenate the current directory and the selected rom or folder
@@ -986,8 +1255,10 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
                             // and load the new rom to PSRAM
                             printf("Loading rom to PSRAM: %s\n", fullPath);
                             strcpy(rompath, fullPath);
-                            ROM_FILE_ADDR = (uintptr_t)Frens::flashromtoPsram(fullPath, false);
+                            uint32_t crc;
+                            ROM_FILE_ADDR = (uintptr_t)Frens::flashromtoPsram(fullPath, false, crc);
                         }
+#endif
                     }
                     else
                     {
