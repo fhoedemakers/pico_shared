@@ -392,6 +392,15 @@ void drawline(int scanline, int selectedRow, int w = 0, int h = 0, uint16_t *ima
     {
         auto b = dvi_->getLineBuffer();
         WorkLineRom = b->data();
+        bool validImage = (imagebuffer != nullptr) && (w > 0 && w <= 320 && h > 0 && h <= 240);
+        if (validImage && scanline < h)
+        {
+            // copy image row into worklinerom
+            auto rowOffset = scanline * w;
+            memcpy(WorkLineRom, imagebuffer + rowOffset, w * sizeof(uint16_t));
+
+            offset = w;
+        }
         RomSelect_DrawLine(scanline, selectedRow);
         dvi_->setLineBuffer(scanline, b);
     }
@@ -417,90 +426,107 @@ void drawline(int scanline, int selectedRow, int w = 0, int h = 0, uint16_t *ima
 void putText(int x, int y, const char *text, int fgcolor, int bgcolor, bool wraplines, int offset)
 {
 
-        if (text != nullptr)
+    if (text != nullptr)
+    {
+        int cur_x = x;
+        int cur_y = y;
+        auto index = cur_y * SCREEN_COLS + cur_x;
+        auto maxLen = strlen(text);
+        bool lastWasSpace = false;
+        while (index < SCREENBUFCELLS && *text && maxLen > 0)
         {
-            int cur_x = x;
-            int cur_y = y;
-            auto index = cur_y * SCREEN_COLS + cur_x;
-            auto maxLen = strlen(text);
-            bool lastWasSpace = false;
-            while (index < SCREENBUFCELLS && *text && maxLen > 0)
+            if (wraplines && !isspace(*text))
             {
-                if (wraplines && !isspace(*text)) {
-                    // Word wrapping: find length of next word
-                    const char *word_start = text;
-                    int word_len = 0;
-                    while (word_start[word_len] && !isspace(word_start[word_len])) {
-                        word_len++;
-                    }
-                    // If word doesn't fit, move to next line
-                    if (cur_x + word_len > SCREEN_COLS && cur_x != 0) {
-                        cur_x = offset;
-                        cur_y++;
-                        index = cur_y * SCREEN_COLS + cur_x;
-                        if (index >= SCREENBUFCELLS) break;
-                    }
-                    // Write the word
-                    for (int i = 0; i < word_len && index < SCREENBUFCELLS && maxLen > 0; i++) {
-                        char ch = *text++;
-                        if ((unsigned char)ch < 32 || (unsigned char)ch > 126) ch = ' ';
-                        screenBuffer[index].charvalue = ch;
-                        screenBuffer[index].fgcolor = fgcolor;
-                        screenBuffer[index].bgcolor = bgcolor;
-                        cur_x++;
-                        maxLen--;
-                        lastWasSpace = false;
-                        index = cur_y * SCREEN_COLS + cur_x;
-                    }
-                    // Write any following spaces (collapse consecutive)
-                    while (*text && isspace(*text) && index < SCREENBUFCELLS && maxLen > 0) {
-                        if (!lastWasSpace) {
-                            char ch = *text;
-                            if ((unsigned char)ch < 32 || (unsigned char)ch > 126) ch = ' ';
-                            screenBuffer[index].charvalue = ch;
-                            screenBuffer[index].fgcolor = fgcolor;
-                            screenBuffer[index].bgcolor = bgcolor;
-                            cur_x++;
-                            maxLen--;
-                            lastWasSpace = true;
-                            if (cur_x >= SCREEN_COLS) {
-                                cur_x = offset;
-                                cur_y++;
-                            }
-                            index = cur_y * SCREEN_COLS + cur_x;
-                        }
-                        text++;
-                    }
-                } else {
+                // Word wrapping: find length of next word
+                const char *word_start = text;
+                int word_len = 0;
+                while (word_start[word_len] && !isspace(word_start[word_len]))
+                {
+                    word_len++;
+                }
+                // If word doesn't fit, move to next line
+                if (cur_x + word_len > SCREEN_COLS && cur_x != 0)
+                {
+                    cur_x = offset;
+                    cur_y++;
+                    index = cur_y * SCREEN_COLS + cur_x;
+                    if (index >= SCREENBUFCELLS)
+                        break;
+                }
+                // Write the word
+                for (int i = 0; i < word_len && index < SCREENBUFCELLS && maxLen > 0; i++)
+                {
                     char ch = *text++;
-                    if ((unsigned char)ch < 32 || (unsigned char)ch > 126) ch = ' ';
-                    if (isspace(ch)) {
-                        if (lastWasSpace) continue;
-                        lastWasSpace = true;
-                    } else {
-                        lastWasSpace = false;
-                    }
+                    if ((unsigned char)ch < 32 || (unsigned char)ch > 126)
+                        ch = ' ';
                     screenBuffer[index].charvalue = ch;
                     screenBuffer[index].fgcolor = fgcolor;
                     screenBuffer[index].bgcolor = bgcolor;
                     cur_x++;
                     maxLen--;
-                    if (cur_x >= SCREEN_COLS)
+                    lastWasSpace = false;
+                    index = cur_y * SCREEN_COLS + cur_x;
+                }
+                // Write any following spaces (collapse consecutive)
+                while (*text && isspace(*text) && index < SCREENBUFCELLS && maxLen > 0)
+                {
+                    if (!lastWasSpace)
                     {
-                        if (wraplines)
+                        char ch = *text;
+                        if ((unsigned char)ch < 32 || (unsigned char)ch > 126)
+                            ch = ' ';
+                        screenBuffer[index].charvalue = ch;
+                        screenBuffer[index].fgcolor = fgcolor;
+                        screenBuffer[index].bgcolor = bgcolor;
+                        cur_x++;
+                        maxLen--;
+                        lastWasSpace = true;
+                        if (cur_x >= SCREEN_COLS)
                         {
                             cur_x = offset;
                             cur_y++;
                         }
-                        else
-                        {
-                            break; // Stop writing if wraplines is false
-                        }
+                        index = cur_y * SCREEN_COLS + cur_x;
                     }
-                    index = cur_y * SCREEN_COLS + cur_x;
+                    text++;
                 }
             }
+            else
+            {
+                char ch = *text++;
+                if ((unsigned char)ch < 32 || (unsigned char)ch > 126)
+                    ch = ' ';
+                if (isspace(ch))
+                {
+                    if (lastWasSpace)
+                        continue;
+                    lastWasSpace = true;
+                }
+                else
+                {
+                    lastWasSpace = false;
+                }
+                screenBuffer[index].charvalue = ch;
+                screenBuffer[index].fgcolor = fgcolor;
+                screenBuffer[index].bgcolor = bgcolor;
+                cur_x++;
+                maxLen--;
+                if (cur_x >= SCREEN_COLS)
+                {
+                    if (wraplines)
+                    {
+                        cur_x = offset;
+                        cur_y++;
+                    }
+                    else
+                    {
+                        break; // Stop writing if wraplines is false
+                    }
+                }
+                index = cur_y * SCREEN_COLS + cur_x;
+            }
         }
+    }
 }
 
 void DrawScreen(int selectedRow, int w = 0, int h = 0, uint16_t *imagebuffer = nullptr)
@@ -716,13 +742,14 @@ void __not_in_flash_func(processMenuScanLine)(int line, uint8_t *framebuffer, ui
 #define METADDATAFILE "/metadata/%s/descr/%c/%s.txt"
 void showartwork(uint32_t crc)
 {
+#if PICO_RP2350
     char info[SCREEN_COLS + 1];
     char PATH[FF_MAX_LFN + 1];
     char gamename[64];
     char releaseDate[16]; // 19900212T000000
     char developer[64];   // Nintendo
     char genre[64];       // Platform-Platform / Run & Jump
-    //char rating[10]; // E, E10+, T, M, AO
+    // char rating[10]; // E, E10+, T, M, AO
     char CRC[9];
     char desc[512]; // 256 characters is enough for a short description
     FIL fil;
@@ -732,7 +759,7 @@ void showartwork(uint32_t crc)
     snprintf(CRC, sizeof(CRC), "%08X", crc);
     snprintf(PATH, sizeof(PATH), ARTWORKFILE, emulator, 160, CRC[0], CRC);
     // sprintf(line, "Showing artwork for CRC: %08X", crc);
-    //printf("%s\n", line);
+    // printf("%s\n", line);
     printf("Path: %s\n", PATH);
     fr = f_open(&fil, PATH, FA_READ);
     if (fr == FR_OK)
@@ -798,13 +825,13 @@ void showartwork(uint32_t crc)
         Frens::get_tag_text(metadatabuffer, "developer", developer, sizeof(developer));
         Frens::get_tag_text(metadatabuffer, "genre", genre, sizeof(genre));
         Frens::get_tag_text(metadatabuffer, "desc", desc, sizeof(desc));
-       // Frens::get_tag_text(metadatabuffer, "rating", rating, sizeof(rating));
+        // Frens::get_tag_text(metadatabuffer, "rating", rating, sizeof(rating));
         printf("Game name: %s\n", gamename);
         printf("Release date: %s\n", releaseDate);
         printf("Developer: %s\n", developer);
         printf("Genre: %s\n", genre);
         printf("Description: %s\n", desc);
-        //printf("Rating: %s\n", rating);
+        // printf("Rating: %s\n", rating);
     }
     DWORD PAD1_Latch;
     ClearScreen(settings.bgcolor);
@@ -817,15 +844,15 @@ void showartwork(uint32_t crc)
         snprintf(info, sizeof(info), "%c%c-%c%c%c%c", releaseDate[4], releaseDate[5], releaseDate[0], releaseDate[1], releaseDate[2], releaseDate[3]);
     }
     printf("Release date: %s\n", releaseDate);
-    //putText(0, 0, line, settings.fgcolor, settings.bgcolor);
+    // putText(0, 0, line, settings.fgcolor, settings.bgcolor);
     putText(0, height == 0 ? 9 : 20, desc, settings.fgcolor, settings.bgcolor, true);
     auto firstCharColumnIndex = ((width % SCREENWIDTH) / FONT_CHAR_WIDTH) + 1;
     putText(firstCharColumnIndex, 0, gamename, settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex);
     putText(firstCharColumnIndex, 2, developer, settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex);
     putText(firstCharColumnIndex, 4, genre, settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex);
     putText(firstCharColumnIndex, 7, info, settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex);
-    //putText(firstCharColumnIndex, 9, rating, settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex);
-    //putText(firstCharColumnIndex, 8, desc, settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex);
+    // putText(firstCharColumnIndex, 9, rating, settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex);
+    // putText(firstCharColumnIndex, 8, desc, settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex);
     while (true)
     {
         auto frameCount = Menu_LoadFrame();
@@ -844,6 +871,7 @@ void showartwork(uint32_t crc)
     {
         Frens::f_free(metadatabuffer);
     }
+#endif
 }
 static void showLoadingScreen()
 {
