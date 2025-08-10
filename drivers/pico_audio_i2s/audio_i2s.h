@@ -42,9 +42,9 @@
 #endif
 
 // headphone detect pin, when using TLV320 codec
-#ifndef PICO_AUDIO_I2S_HP_DETECT_PIN
-#define PICO_AUDIO_I2S_HP_DETECT_PIN -1
-#endif
+// #ifndef PICO_AUDIO_I2S_HP_DETECT_PIN
+// #define PICO_AUDIO_I2S_HP_DETECT_PIN -1
+// #endif
 
 
 
@@ -56,6 +56,10 @@ extern "C" {
 #define AUDIO_RING_SIZE 1024 // Size of the audio ring buffer (must be a multiple of DMA_BLOCK_SIZE)
 #define DMA_BLOCK_SIZE 256 // Size of each DMA block transfer
 
+#define TLV320_HEADPHONE_NOTCONNECTED 0b00 // Headphone not connected
+#define TLV320_HEADPHONE_CONNECTED 0b01     // Headphone connected
+#define TLV320_HEADPHONE_CONNECTED_WITH_MIC 0b11 // Headphone connected with microphone
+
 typedef struct {
     int sm;      // State machine index
     PIO pio;     // PIO instance (e.g., pio0 or pio1)
@@ -66,6 +70,7 @@ audio_i2s_hw_t *audio_i2s_setup(int driver, int freqHZ, int dmachan);
 void audio_i2s_update_pio_frequency(uint32_t sample_freq);
 void audio_i2s_out_32(uint32_t sample32);
 void audio_i2s_enqueue_sample(uint32_t sample32);
+void audio_i2s_poll_headphone_status();
 #ifdef __cplusplus
 }
 #endif
