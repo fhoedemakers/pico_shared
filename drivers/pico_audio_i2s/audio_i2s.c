@@ -240,6 +240,8 @@ static void tlv320_init()
 uint8_t last_status = -1;
 
 void tlv320_poll_headphone_status() {
+	// not working for now
+#if 0
 	// goto page 0
 	write_tlv320((uint8_t[]){0x00, 0x00}, 2);
 	uint8_t data;
@@ -277,6 +279,7 @@ void tlv320_poll_headphone_status() {
 		printf("\n");
 	}
 		#endif
+#endif
 	return;
 }
 

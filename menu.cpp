@@ -705,9 +705,15 @@ static void showLoadingScreen()
 static char *selectedRomOrFolder;
 static bool errorInSavingRom = false;
 static char *globalErrorMessage;
+#if PICO_RP2350
+static char emulator[32];  // preserve memory for RP2040, used for showing artwork
+#endif
 
-void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, const char *allowedExtensions, char *rompath)
+void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, const char *allowedExtensions, char *rompath, const char *emulatorType)
 {
+#if PICO_RP2350
+    strcpy(emulator, emulatorType);
+#endif
 #if !HSTX
     int margintop = dvi_->getBlankSettings().top;
     int marginbottom = dvi_->getBlankSettings().bottom;

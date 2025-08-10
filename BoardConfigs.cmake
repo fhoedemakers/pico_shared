@@ -175,7 +175,7 @@ elseif ( HW_CONFIG EQUAL 5 )
 	# --------------------------------------------------------------------
 	set(DVICONFIG "dviConfig_AdafruitMetroRP2350" CACHE STRING
     "Select a default pin configuration from common_dvi_pin_configs.h")
-    set(LED_GPIO_PIN "0" CACHE STRING "Select the GPIO pin for LED")   # Adafruit fruitjam onboard LED
+    set(LED_GPIO_PIN "0 " CACHE STRING "Select the GPIO pin for LED")   # Adafruit fruitjam onboard LED
     set(SD_CS "39" CACHE STRING "Specify the Chip Select GPIO pin for the SD card")
     set(SD_SCK "34" CACHE STRING "Specify de Clock GPIO pin for the SD card")
     set(SD_MOSI "35" CACHE STRING "Select the Master Out Slave In GPIO pin for the SD card")
@@ -310,7 +310,6 @@ elseif ( HW_CONFIG EQUAL 8 )
     set(PICO_AUDIO_I2S_PIO 1 CACHE STRING "Select the PIO for I2S audio output")
     set(PICO_AUDIO_I2S_CLOCK_PINS_SWAPPED 0 CACHE STRING "Set to 1 if the I2S clock pins are swapped")
     set(PICO_AUDIO_I2S_RESET_PIN 22 CACHE STRING "Select the GPIO pin for I2S reset")
-    set(PICO_AUDIO_I2S_HP_DETECT_PIN 23 CACHE STRING "Select the GPIO pin for I2S headphone detect")
     set(BOARD "adafruit_fruit_jam")         # found in $PICO__SDK_PATH/lib/tinyusb/hw/bsp/rp2040/boards/adafruit_metro_rp2350/board.h
     set(PICO_BOARD "adafruit_fruit_jam")    # found in $PICO__SDK_PATH/lib/tinyusb/hw/bsp/rp2040/boards/adafruit_metro_rp2350/adafruit_metro_rp2350.h
     set(ENABLE_PIO_USB 1 CACHE BOOL "Enable PIO USB support")
@@ -338,9 +337,7 @@ elseif ( HW_CONFIG EQUAL 8 )
    set (PICO_DEFAULT_UART_TX_PIN 44 CACHE STRING "Select the GPIO pin for UART TX") # Adafruit Fruit Jam uses GPIO 44 for UART TX
    set (PICO_DEFAULT_UART_RX_PIN 45 CACHE STRING "Select the GPIO pin for UART RX") # Adafruit Fruit Jam uses GPIO 45 for UART RX
 endif ( )
-if (NOT DEFINED PICO_AUDIO_I2S_HP_DETECT_PIN)
-    set(PICO_AUDIO_I2S_HP_DETECT_PIN -1 CACHE STRING "Select the GPIO pin for I2S headphone detect")
-endif()
+
 if (NOT DEFINED GPIOHSTXD0)
     set(GPIOHSTXD0 0 CACHE STRING "HSTX D0 pin")
     set(GPIOHSTXD1 0 CACHE STRING "HSTX D1 pin")
@@ -423,11 +420,6 @@ message("I2S audio clock pin   : ${PICO_AUDIO_I2S_CLOCK_PIN_BASE}")
 message("I2S audio PIO         : ${PICO_AUDIO_I2S_PIO}")
 message("I2S audio clock swap  : ${PICO_AUDIO_I2S_CLOCK_PINS_SWAPPED}")
 message("I2S audio reset pin   : ${PICO_AUDIO_I2S_RESET_PIN}")
-if ( NOT PICO_AUDIO_I2S_HP_DETECT_PIN EQUAL -1 )
-    message("I2S audio headphone detect pin : ${PICO_AUDIO_I2S_HP_DETECT_PIN}")
-else()
-    message("I2S audio headphone detect pin : Not used")
-endif()
 message("PSRAM chip select pin : ${PSRAM_CS_PIN}")
 if ( NOT GPIOHSTXD0 EQUAL 0 )
     message("Using HSTX for display output")
