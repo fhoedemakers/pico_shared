@@ -111,6 +111,7 @@ namespace Frens
     void *f_malloc(size_t size);
     void f_free(void *pMem);
     int GetUnUsedDMAChan(int startChannel);
+    void pollHeadphoneStatus();
     //extern volatile ProcessScanLineFunction processScanLineFunction;
    
 } // namespace Frens

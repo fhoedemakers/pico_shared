@@ -90,6 +90,7 @@ namespace Frens
         psramMemorySize = 0;
         // Initialize PSRAM if available
 #if PICO_RP2350 && PSRAM_CS_PIN
+        printf("GetInstance...\n");
         PicoPlusPsram &psram_ = PicoPlusPsram::getInstance();
         if (psram_.GetMemorySize() > 0)
         {
@@ -936,6 +937,11 @@ namespace Frens
         }
     }
 #endif // DVI
+    void pollHeadphoneStatus()
+    {
+        EXT_AUDIO_POLL_HEADPHONE_STATUS();
+    }
+
     void blinkLed(bool on)
     {
 #if LED_GPIO_PIN > -1
@@ -1105,7 +1111,6 @@ namespace Frens
         {
             printf("Error initializing LED: %d\n", rc);
         }
-
         // Init PSRAM if available, otherwise use flash memory to store roms.
         if (initPsram() == false)
         {
