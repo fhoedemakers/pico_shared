@@ -291,7 +291,35 @@ namespace Frens
         }
         return fileName;
     }
+    char *get_tag_text(const char *xml, const char *tag, char *buffer, size_t bufsize)
+    {
+        char openTag[64];
+        snprintf(openTag, sizeof(openTag), "<%s", tag); // match tag start (can have attributes)
 
+        const char *start = strstr(xml, openTag);
+        if (!start)
+            return NULL;
+
+        start = strchr(start, '>'); // find '>' after <tag or <tag attr=...>
+        if (!start)
+            return NULL;
+        start++; // move past '>'
+
+        char closeTag[64];
+        snprintf(closeTag, sizeof(closeTag), "</%s>", tag);
+
+        const char *end = strstr(start, closeTag);
+        if (!end)
+            return NULL;
+
+        size_t len = end - start;
+        if (len >= bufsize)
+            len = bufsize - 1; // truncate if needed
+        memcpy(buffer, start, len);
+        buffer[len] = '\0';
+
+        return buffer;
+    }
     // Strip the extension from a file name
     void stripextensionfromfilename(char *filename)
     {
@@ -545,10 +573,9 @@ namespace Frens
         }
     }
 
-    void *flashromtoPsram(char *selectdRom, bool swapbytes)
+    void *flashromtoPsram(char *selectdRom, bool swapbytes, uint32_t &crc)
     {
 #if PICO_RP2350 && PSRAM_CS_PIN
-        PicoPlusPsram &psram_ = PicoPlusPsram::getInstance();
         // Get filesize of rom
         FIL fil;
         FRESULT fr;
@@ -574,7 +601,7 @@ namespace Frens
             return nullptr;
         }
         FSIZE_t filesize = f_size(&fil);
-        void *pMem = psram_.Malloc(filesize);
+        void *pMem = Frens::f_malloc(filesize);
         if (!pMem)
         {
             snprintf(ErrorMessage, 40, "Cannot allocate %d bytes in PSRAM\n", filesize);
@@ -591,7 +618,7 @@ namespace Frens
             snprintf(ErrorMessage, 40, "Cannot read %s:%d\n", selectdRom, fr);
             selectdRom[0] = 0;
             printf("%s\n", ErrorMessage);
-            psram_.Free(pMem);
+            Frens::f_free(pMem);
         }
         else
         {
@@ -600,7 +627,7 @@ namespace Frens
                 snprintf(ErrorMessage, 40, "Read %d bytes, expected %d bytes\n", r, filesize);
                 printf("%s\n", ErrorMessage);
                 selectdRom[0] = 0;
-                psram_.Free(pMem);
+                Frens::f_free(pMem);
             }
             else
             {
@@ -617,7 +644,6 @@ namespace Frens
                 }
                 ok = true;
                 printf("Read %d bytes from %s into PSRAM at %p\n", r, selectdRom, pMem);
-                uint32_t crc;
                 if ((crc = compute_crc32_buffer(pMem, filesize)) > 0)
                 {
                     printf("CRC32 checksum of %s in PSRAM: %08X\n", selectdRom, crc);
@@ -1066,7 +1092,7 @@ namespace Frens
     }
     void initDVandAudio(int marginTop, int marginBottom, size_t audioBufferSize)
     {
-#if !HSTX    
+#if !HSTX
         dvi_ = std::make_unique<dvi::DVI>(pio0, &DVICONFIG,
                                           dvi::getTiming640x480p60Hz());
         //    dvi_->setAudioFreq(48000, 25200, 6144);

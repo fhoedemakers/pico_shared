@@ -103,7 +103,7 @@ namespace Frens
     void SetFrameBufferProcessScanLineFunction(ProcessScanLineFunction processScanLineFunction);
 #endif
     bool isPsramEnabled();
-    void *flashromtoPsram(char *selectdRom, bool swapbytes);
+    void *flashromtoPsram(char *selectdRom, bool swapbytes, uint32_t &crc);
     void freePsram(void *pMem);
     void PaceFrames60fps(bool init);
     void toggleScanLines();
@@ -112,6 +112,7 @@ namespace Frens
     void f_free(void *pMem);
     int GetUnUsedDMAChan(int startChannel);
     void pollHeadphoneStatus();
+    char *get_tag_text(const char *xml, const char *tag, char *buffer, size_t bufsize);
     //extern volatile ProcessScanLineFunction processScanLineFunction;
    
 } // namespace Frens
