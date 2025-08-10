@@ -6,6 +6,7 @@
 #include "hardware/structs/xip_ctrl.h"
 #include "hardware/clocks.h"
 #include "hardware/sync.h"
+#include <cstdio>
 
 #include "PicoPlusPsram.h"
 
@@ -34,7 +35,7 @@ size_t __no_inline_not_in_flash_func(PicoPlusPsram::Detect)(void)
 {
     int psram_size = 0;
 
-    uint32_t intr_stash = save_and_disable_interrupts();
+    //uint32_t intr_stash = save_and_disable_interrupts();
 
     // Try and read the PSRAM ID via direct_csr.
     qmi_hw->direct_csr = 30 << QMI_DIRECT_CSR_CLKDIV_LSB | QMI_DIRECT_CSR_EN_BITS;
@@ -101,7 +102,7 @@ size_t __no_inline_not_in_flash_func(PicoPlusPsram::Detect)(void)
         }
     }
 
-    restore_interrupts(intr_stash);
+    //restore_interrupts(intr_stash);
     return psram_size;
 }
 
@@ -110,35 +111,45 @@ size_t __no_inline_not_in_flash_func(PicoPlusPsram::Init)(uint cs_pin)
     if (cs_pin == 0) {
         return 0; // Invalid CS pin
     }
-    gpio_set_function(cs_pin, GPIO_FUNC_XIP_CS1);
+    uint32_t intr_stash = save_and_disable_interrupts();
 
+    gpio_set_function(cs_pin, GPIO_FUNC_XIP_CS1);
+    printf("PSRAM CS pin set to GPIO %d\n", cs_pin);
+    printf("Detecting...");
     size_t psram_size = Detect();
 
     if (!psram_size) {
+        printf("PSRAM not detected.\n");
         return 0;
     }
-
+    printf("PSRAM detected: %zu bytes\n", psram_size);  
     // Enable direct mode, PSRAM CS, clkdiv of 10.
+    printf("Enabling direct mode...\n");
+
+    // THIS BLOCK CAUSES A SIGNAL TRAP SOMETIMES, RESETTING RP2350 MAY SOLVE
     qmi_hw->direct_csr = 10 << QMI_DIRECT_CSR_CLKDIV_LSB | \
         QMI_DIRECT_CSR_EN_BITS | \
         QMI_DIRECT_CSR_AUTO_CS1N_BITS;
     while (qmi_hw->direct_csr & QMI_DIRECT_CSR_BUSY_BITS) {
         ;
     }
-
+    //
+    // printf("Direct mode enabled.\n");
     // Enable QPI mode on the PSRAM
+    //printf("Enabling QPI mode...\n");
     const uint CMD_QPI_EN = 0x35;
     qmi_hw->direct_tx = QMI_DIRECT_TX_NOPUSH_BITS | CMD_QPI_EN;
 
     while (qmi_hw->direct_csr & QMI_DIRECT_CSR_BUSY_BITS) {
         ;
     }
-
+    // printf("QPI mode enabled.\n");
     // Set PSRAM timing for APS6404
     //
     // Using an rxdelay equal to the divisor isn't enough when running the APS6404 close to 133MHz.
     // So: don't allow running at divisor 1 above 100MHz (because delay of 2 would be too late),
     // and add an extra 1 to the rxdelay if the divided clock is > 100MHz (i.e. sys clock > 200MHz).
+    //printf("Setting PSRAM timing...\n");
     const int max_psram_freq = 133000000;
     const int clock_hz = clock_get_hz(clk_sys);
     int divisor = (clock_hz + max_psram_freq - 1) / max_psram_freq;
@@ -162,7 +173,7 @@ size_t __no_inline_not_in_flash_func(PicoPlusPsram::Init)(uint cs_pin)
         min_deselect << QMI_M1_TIMING_MIN_DESELECT_LSB |
         rxdelay << QMI_M1_TIMING_RXDELAY_LSB |
         divisor << QMI_M1_TIMING_CLKDIV_LSB;
-
+    //printf("PSRAM timing set: rxdelay=%d, divisor=%d\n", rxdelay, divisor);
     // Set PSRAM commands and formats
     qmi_hw->m[1].rfmt =
         QMI_M0_RFMT_PREFIX_WIDTH_VALUE_Q << QMI_M0_RFMT_PREFIX_WIDTH_LSB | \
@@ -187,10 +198,13 @@ size_t __no_inline_not_in_flash_func(PicoPlusPsram::Init)(uint cs_pin)
 
     // Disable direct mode
     qmi_hw->direct_csr = 0;
-
+   
     // Enable writes to PSRAM
+    //printf("Enabling writes to PSRAM...\n");
     hw_set_bits(&xip_ctrl_hw->ctrl, XIP_CTRL_WRITABLE_M1_BITS);
-
+    //printf("Writes to PSRAM enabled.\n");
+    restore_interrupts(intr_stash);
+    //printf("PSRAM initialization complete.\n");
     return psram_size;
 }
 #endif // PICO_RP2350
