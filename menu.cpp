@@ -390,6 +390,7 @@ void drawline(int scanline, int selectedRow, int w = 0, int h = 0, uint16_t *ima
     }
     else
     {
+        auto offset = 0;
         auto b = dvi_->getLineBuffer();
         WorkLineRom = b->data();
         bool validImage = (imagebuffer != nullptr) && (w > 0 && w <= 320 && h > 0 && h <= 240);
@@ -879,6 +880,7 @@ static void showLoadingScreen()
     if (Frens::isFrameBufferUsed())
     {
 #else
+#if 0
     // try to read .rgb file first
     // RGB colors are stored in 32 bit ARGB format, little endian.
     // If ARGB = 0xFF112233 (fully opaque 0xFF, red=0x11, green=0x22, blue=0x33):
@@ -948,7 +950,8 @@ static void showLoadingScreen()
     {
         printf("Error opening %s: %d\n", ARTFILE, fr);
     }
-#endif
+#endif   // 0
+#endif   // HSTX
         ClearScreen(settings.bgcolor);
         putText(SCREEN_COLS / 2 - 5, SCREEN_ROWS / 2, "Loading...", settings.fgcolor, settings.bgcolor);
         DrawScreen(-1);
@@ -1202,6 +1205,30 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
             }
             else if ((PAD1_Latch & START) == START && ((PAD1_Latch & SELECT) != SELECT))
             {
+#if !PICO_RP2350
+                showLoadingScreen();
+                // reboot and start emulator with currently loaded game
+                // Create a file /START indicating not to reflash the already flashed game
+                // The emulator will delete this file after loading the game
+                printf("Creating /START\n");
+                fr = f_open(&fil, "/START", FA_CREATE_ALWAYS | FA_WRITE);
+                if (fr == FR_OK)
+                {
+                    auto bytes = f_puts("START", &fil);
+                    printf("Wrote %d bytes\n", bytes);
+                    fr = f_close(&fil);
+                    if (fr != FR_OK)
+                    {
+                        printf("Cannot close file /START:%d\n", fr);
+                    }
+                }
+                else
+                {
+                    printf("Cannot create file /START:%d\n", fr);
+                }
+                break; // reboot
+
+#else
                 if (!Frens::isPsramEnabled())
                 {
                     showLoadingScreen();
@@ -1238,6 +1265,7 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
                         displayRoms(romlister, settings.firstVisibleRowINDEX);
                     }
                 }
+#endif
             }
             else if ((PAD1_Latch & A) == A && selectedRomOrFolder)
             {
@@ -1263,30 +1291,6 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
                     if (Frens::isPsramEnabled())
                     {
                         loadRomInPsRam(curdir, selectedRomOrFolder, rompath, errorInSavingRom);
-#if 0
-                        // If PSRAM is enabled, we need to copy the rom to PSRAM
-                        char fullPath[FF_MAX_LFN];
-                        // concatenate the current directory and the selected rom or folder
-                        // and save it to the global variable selectedRomOrFolder
-                        if (strlen(curdir) + strlen(selectedRomOrFolder) + 2 > FF_MAX_LFN)
-                        {
-                            snprintf(globalErrorMessage, 40, "Path too long: %s/%s", curdir, selectedRomOrFolder);
-                            printf("%s\n", globalErrorMessage);
-                            errorInSavingRom = true;
-                        }
-                        else
-                        {
-                            snprintf(fullPath, FF_MAX_LFN, "%s/%s", curdir, selectedRomOrFolder);
-                            printf("Full path: %s\n", fullPath);
-                            // If there is already a rom loaded in PSRAM, free it
-                            Frens::freePsram((void *)ROM_FILE_ADDR);
-                            // and load the new rom to PSRAM
-                            printf("Loading rom to PSRAM: %s\n", fullPath);
-                            strcpy(rompath, fullPath);
-                            uint32_t crc;
-                            ROM_FILE_ADDR = (uintptr_t)Frens::flashromtoPsram(fullPath, false, crc);
-                        }
-#endif
                     }
                     else
                     {
