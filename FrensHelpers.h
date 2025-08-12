@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <memory>
 #include <pico/mutex.h>
+#include "crc32.h"
 #if !HSTX
 #include "dvi/dvi.h"
 #include "dvi_configs.h"

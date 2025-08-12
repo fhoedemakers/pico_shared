@@ -31,7 +31,7 @@
 #ifdef CYW43_WL_GPIO_LED_PIN
 #include "pico/cyw43_arch.h"
 #endif
-#include "crc32.h"
+
 
 #ifndef DVIAUDIOFREQ
 #define DVIAUDIOFREQ 44100
