@@ -856,6 +856,7 @@ void showartwork(uint32_t crc)
     putText(firstCharColumnIndex, 2, developer, settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex);
     putText(firstCharColumnIndex, 4, genre, settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex);
     putText(firstCharColumnIndex, 7, info, settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex);
+    putText(firstCharColumnIndex, 9, CRC, settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex);
     // putText(firstCharColumnIndex, 9, rating, settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex);
     // putText(firstCharColumnIndex, 8, desc, settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex);
     while (true)
