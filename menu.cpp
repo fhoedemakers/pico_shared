@@ -1295,7 +1295,7 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
                 {
                     fr = my_getcwd(curdir, sizeof(curdir)); // f_getcwd(curdir, sizeof(curdir));
                     printf("Current dir: %s\n", curdir);
-                    uint32_t crc = Frens::isPsramEnabled() ? loadRomInPsRam(curdir, selectedRomOrFolder, rompath, errorInSavingRom) : GetCRCOfRomFile(curdir, selectedRomOrFolder, rompath);
+                    uint32_t crc = GetCRCOfRomFile(curdir, selectedRomOrFolder, rompath);
                     showartwork(crc);
                     displayRoms(romlister, settings.firstVisibleRowINDEX);
                 }
