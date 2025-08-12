@@ -103,7 +103,11 @@ static uint32_t update_crc32(uint32_t crc, const uint8_t* data, UINT length) {
     return ~crc;
 }
 
-int compute_crc32(const char* filename, uint32_t* crc_out) {
+
+/// @brief Computes the CRC32 checksum of a file.
+/// @param filename The name of the file to compute the CRC32 for.
+/// @return The computed CRC32 checksum, or 0 on error.
+uint32_t compute_crc32(const char* filename) {
     FATFS fs;
     FIL file;
     FRESULT res;
@@ -115,7 +119,7 @@ int compute_crc32(const char* filename, uint32_t* crc_out) {
     res = f_open(&file, filename, FA_READ);
     if (res != FR_OK) {
         printf("Failed to open file: %d\n", res);
-        return -1;
+        return 0;
     }
    
     // Skip the first 16 bytes
@@ -123,7 +127,7 @@ int compute_crc32(const char* filename, uint32_t* crc_out) {
     if (res != FR_OK) {
         printf("Failed to seek in file: %d\n", res);
         f_close(&file);
-        return -1;
+        return 0;
     }
     buffer = (uint8_t *)Frens::f_malloc(BUFFER_SIZE);
     // Read and compute CRC
@@ -133,20 +137,20 @@ int compute_crc32(const char* filename, uint32_t* crc_out) {
             printf("Error reading file: %d\n", res);
             f_close(&file);
             Frens::f_free(buffer);
-            return -1;
+            return 0    ;
         }
         crc = update_crc32(crc, buffer, bytesRead);
     } while (bytesRead > 0);
 
     f_close(&file);
-
-    *crc_out = crc;
     Frens::f_free(buffer);
-    return 0;
+    return crc;
 }
 
-// Computes the CRC32 checksum of a memory buffer, skipping the first 16 bytes.
-// Returns the CRC32 value.
+/// @brief Computes the CRC32 checksum of a memory buffer. Starting from the 17th byte.
+/// @param data Pointer to the memory buffer.
+/// @param size Size of the memory buffer.
+/// @return The computed CRC32 checksum.
 uint32_t compute_crc32_buffer(const void* data, size_t size) {
     if (size <= 16) {
         return 0; // Not enough data to compute CRC
