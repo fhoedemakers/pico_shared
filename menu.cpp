@@ -280,10 +280,10 @@ void RomSelect_DrawLine(int line, int selectedRow, int pixelsToSkip = 0)
     {
         memset(WorkLineRom8, 0, SCREENWIDTH);
     }
-    else
-    {
-        memset(WorkLineRom, 0, SCREENWIDTH * sizeof(WORD));
-    }
+    // else
+    // {
+    //     memset(WorkLineRom, 0, SCREENWIDTH * sizeof(WORD));
+    // }
 #endif
     auto pixelRow = WorkLineRom + pixelsToSkip;
 #if !HSTX
@@ -402,7 +402,7 @@ void drawline(int scanline, int selectedRow, int w = 0, int h = 0, uint16_t *ima
 
             offset = w;
         }
-        RomSelect_DrawLine(scanline, selectedRow);
+        RomSelect_DrawLine(scanline, selectedRow, offset);
         dvi_->setLineBuffer(scanline, b);
     }
 #else
@@ -739,8 +739,13 @@ void __not_in_flash_func(processMenuScanLine)(int line, uint8_t *framebuffer, ui
 #endif
 #define ARTFILE "/ART/output_RGB555.raw"
 #define ARTFILERGB "/ART/output_RGB555.rgb"
+#if !HSTX
+#define ARTWORKFILE "/metadata/%s/images/%d/%c/%s.565"
+#else
 #define ARTWORKFILE "/metadata/%s/images/%d/%c/%s.555"
+#endif
 #define METADDATAFILE "/metadata/%s/descr/%c/%s.txt"
+#define DESC_SIZE 512
 void showartwork(uint32_t crc)
 {
 #if PICO_RP2350
@@ -752,7 +757,8 @@ void showartwork(uint32_t crc)
     char genre[64];       // Platform-Platform / Run & Jump
     // char rating[10]; // E, E10+, T, M, AO
     char CRC[9];
-    char desc[512]; // 256 characters is enough for a short description
+    char *desc = (char *)Frens::f_malloc(DESC_SIZE); // preserve stack
+
     FIL fil;
     FRESULT fr;
     uint8_t *buffer = nullptr;
@@ -763,15 +769,12 @@ void showartwork(uint32_t crc)
     // printf("%s\n", line);
     printf("Path: %s\n", PATH);
     fr = f_open(&fil, PATH, FA_READ);
+    FSIZE_t fsize;
     if (fr == FR_OK)
     {
-        auto fsize = f_size(&fil);
+        fsize = f_size(&fil);
         printf("Reading %s, size: %d bytes\n", PATH, fsize);
         buffer = (uint8_t *)Frens::f_malloc(fsize);
-        if (buffer == nullptr)
-        {
-            printf("Error allocating memory for %s\n", PATH);
-        }
         size_t r;
         fr = f_read(&fil, buffer, fsize, &r);
         if (fr != FR_OK || r != fsize)
@@ -792,6 +795,7 @@ void showartwork(uint32_t crc)
     // next two bytes is height
     int16_t height = buffer ? *((uint16_t *)(buffer + 2)) : 0;
     uint16_t *imagebuffer = buffer ? (uint16_t *)(buffer + 4) : nullptr;
+
     printf("Image size: %d x %d pixels\n", width, height);
     snprintf(PATH, sizeof(PATH), METADDATAFILE, emulator, CRC[0], CRC);
     printf("Metadata file: %s\n", PATH);
@@ -825,7 +829,7 @@ void showartwork(uint32_t crc)
         Frens::get_tag_text(metadatabuffer, "releasedate", releaseDate, sizeof(releaseDate));
         Frens::get_tag_text(metadatabuffer, "developer", developer, sizeof(developer));
         Frens::get_tag_text(metadatabuffer, "genre", genre, sizeof(genre));
-        Frens::get_tag_text(metadatabuffer, "desc", desc, sizeof(desc));
+        Frens::get_tag_text(metadatabuffer, "desc", desc, DESC_SIZE * sizeof(char));
         // Frens::get_tag_text(metadatabuffer, "rating", rating, sizeof(rating));
         printf("Game name: %s\n", gamename);
         printf("Release date: %s\n", releaseDate);
@@ -871,6 +875,10 @@ void showartwork(uint32_t crc)
     if (metadatabuffer)
     {
         Frens::f_free(metadatabuffer);
+    }
+    if (desc)
+    {
+        Frens::f_free(desc);
     }
 #endif
 }
@@ -950,8 +958,8 @@ static void showLoadingScreen()
     {
         printf("Error opening %s: %d\n", ARTFILE, fr);
     }
-#endif   // 0
-#endif   // HSTX
+#endif // 0
+#endif // HSTX
         ClearScreen(settings.bgcolor);
         putText(SCREEN_COLS / 2 - 5, SCREEN_ROWS / 2, "Loading...", settings.fgcolor, settings.bgcolor);
         DrawScreen(-1);
@@ -963,6 +971,33 @@ static void showLoadingScreen()
 #endif
 }
 
+uint32_t GetCRCOfRomFile(char *curdir, char *selectedRomOrFolder, char *rompath)
+{
+    char fullPath[FF_MAX_LFN];
+    uint32_t crc = 0;
+    // concatenate the current directory and the selected rom or folder
+    // and save it to the global variable selectedRomOrFolder
+    if (strlen(curdir) + strlen(selectedRomOrFolder) + 2 > FF_MAX_LFN)
+    {
+        printf("Path too long: %s/%s\n", curdir, selectedRomOrFolder);
+        return 0;
+    }
+    else
+    {
+        snprintf(fullPath, FF_MAX_LFN, "%s/%s", curdir, selectedRomOrFolder);
+        printf("Full path: %s\n", fullPath);
+    }
+    crc = compute_crc32(fullPath);
+    if (crc != 0)
+    {
+        printf("CRC32 Checksum: 0x%08X\n", crc);
+    }
+    else
+    {
+        printf("Error computing CRC32 for %s\n", fullPath);
+    }
+    return crc;
+}
 uint32_t loadRomInPsRam(char *curdir, char *selectedRomOrFolder, char *rompath, bool &errorInSavingRom)
 {
 #if PICO_RP2350
@@ -1229,8 +1264,8 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
                 break; // reboot
 
 #else
-                if (!Frens::isPsramEnabled())
-                {
+
+#if 0
                     showLoadingScreen();
                     // reboot and start emulator with currently loaded game
                     // Create a file /START indicating not to reflash the already flashed game
@@ -1252,19 +1287,19 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
                         printf("Cannot create file /START:%d\n", fr);
                     }
                     break; // reboot
-                }
-                else
+#endif
+
+                // show screen with ArtWork
+
+                if (!entries[index].IsDirectory && selectedRomOrFolder)
                 {
-                    // show screen with ArtWork
                     fr = my_getcwd(curdir, sizeof(curdir)); // f_getcwd(curdir, sizeof(curdir));
                     printf("Current dir: %s\n", curdir);
-                    if (Frens::isPsramEnabled() && !entries[index].IsDirectory && selectedRomOrFolder)
-                    {
-                        uint32_t crc = loadRomInPsRam(curdir, selectedRomOrFolder, rompath, errorInSavingRom);
-                        showartwork(crc);
-                        displayRoms(romlister, settings.firstVisibleRowINDEX);
-                    }
+                    uint32_t crc = Frens::isPsramEnabled() ? loadRomInPsRam(curdir, selectedRomOrFolder, rompath, errorInSavingRom) : GetCRCOfRomFile(curdir, selectedRomOrFolder, rompath);
+                    showartwork(crc);
+                    displayRoms(romlister, settings.firstVisibleRowINDEX);
                 }
+
 #endif
             }
             else if ((PAD1_Latch & A) == A && selectedRomOrFolder)
