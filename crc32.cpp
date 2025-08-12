@@ -121,7 +121,7 @@ uint32_t compute_crc32(const char* filename) {
         printf("Failed to open file: %d\n", res);
         return 0;
     }
-   
+    auto fsize = f_size(&file);
     // Skip the first 16 bytes
     res = f_lseek(&file, 16);
     if (res != FR_OK) {
@@ -129,15 +129,18 @@ uint32_t compute_crc32(const char* filename) {
         f_close(&file);
         return 0;
     }
-    buffer = (uint8_t *)Frens::f_malloc(BUFFER_SIZE);
+    if (!Frens::isPsramEnabled()) {
+        fsize = BUFFER_SIZE;
+    }
+    buffer = (uint8_t *)Frens::f_malloc(fsize);
     // Read and compute CRC
     do {
-        res = f_read(&file, buffer, BUFFER_SIZE, &bytesRead);
+        res = f_read(&file, buffer, fsize, &bytesRead);
         if (res != FR_OK) {
             printf("Error reading file: %d\n", res);
             f_close(&file);
             Frens::f_free(buffer);
-            return 0    ;
+            return 0;
         }
         crc = update_crc32(crc, buffer, bytesRead);
     } while (bytesRead > 0);
