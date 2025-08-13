@@ -63,9 +63,8 @@ charCell *screenBuffer;
 static char *selectedRomOrFolder;
 static bool errorInSavingRom = false;
 static char *globalErrorMessage;
-#if PICO_RP2350
-static char emulator[32]; // preserve memory for RP2040, used for showing artwork
-#endif
+
+static char emulator[32]; 
 
 #define LONG_PRESS_TRESHOLD (500)
 #define REPEAT_DELAY (40)
@@ -542,7 +541,7 @@ void DrawScreen(int selectedRow, int w = 0, int h = 0, uint16_t *imagebuffer = n
         snprintf(tmpstr, sizeof(tmpstr), "- %s -", connectedGamePadName[0] != 0 ? connectedGamePadName : "No USB GamePad");
         putText(SCREEN_COLS / 2 - strlen(tmpstr) / 2, SCREEN_ROWS - 1, tmpstr, CBLUE, CWHITE);
         snprintf(s, sizeof(s), "%c%dK", Frens::isPsramEnabled() ? 'P' : 'F', maxRomSize / 1024);
-        putText(1, SCREEN_ROWS - 1, s, CBLACK, settings.bgcolor);
+        putText(1, SCREEN_ROWS - 1, s, settings.fgcolor, settings.bgcolor);
         if (strcmp(connectedGamePadName, "Dual Shock 4") == 0 || strcmp(connectedGamePadName, "Dual Sense") == 0 || strcmp(connectedGamePadName, "PSClassic") == 0)
         {
             strcpy(s, "O Select, X Back");
@@ -740,7 +739,7 @@ void __not_in_flash_func(processMenuScanLine)(int line, uint8_t *framebuffer, ui
 #define ARTFILE "/ART/output_RGB555.raw"
 #define ARTFILERGB "/ART/output_RGB555.rgb"
 #if !HSTX
-#define ARTWORKFILE "/metadata/%s/images/%d/%c/%s.565"
+#define ARTWORKFILE "/metadata/%s/images/%d/%c/%s.444"
 #else
 #define ARTWORKFILE "/metadata/%s/images/%d/%c/%s.555"
 #endif
@@ -748,7 +747,7 @@ void __not_in_flash_func(processMenuScanLine)(int line, uint8_t *framebuffer, ui
 #define DESC_SIZE 512
 void showartwork(uint32_t crc)
 {
-#if PICO_RP2350
+
     char info[SCREEN_COLS + 1];
     char PATH[FF_MAX_LFN + 1];
     char gamename[64];
@@ -788,14 +787,14 @@ void showartwork(uint32_t crc)
     }
     else
     {
-        printf("Error opening %s: %d\n", ARTFILERGB, fr);
+        printf("Error opening %s: %d\n", PATH, fr);
     }
     // first two bytes of buffer is width
     int16_t width = buffer ? *((uint16_t *)buffer) : 0;
     // next two bytes is height
     int16_t height = buffer ? *((uint16_t *)(buffer + 2)) : 0;
     uint16_t *imagebuffer = buffer ? (uint16_t *)(buffer + 4) : nullptr;
-
+   
     printf("Image size: %d x %d pixels\n", width, height);
     snprintf(PATH, sizeof(PATH), METADDATAFILE, emulator, CRC[0], CRC);
     printf("Metadata file: %s\n", PATH);
@@ -805,10 +804,6 @@ void showartwork(uint32_t crc)
         auto fsize = f_size(&fil);
         printf("Reading %s, size: %d bytes\n", PATH, fsize);
         metadatabuffer = (char *)Frens::f_malloc(fsize + 1);
-        if (metadatabuffer == nullptr)
-        {
-            printf("Error allocating memory for %s\n", PATH);
-        }
         size_t r;
         fr = f_read(&fil, metadatabuffer, fsize, &r);
         if (fr != FR_OK || r != fsize)
@@ -820,6 +815,9 @@ void showartwork(uint32_t crc)
         metadatabuffer[fsize] = '\0';
         printf("%s\n", metadatabuffer);
         f_close(&fil);
+    } else {
+        printf("Error opening %s: %d\n", PATH, fr);
+        metadatabuffer = nullptr;
     }
     gamename[0] = desc[0] = releaseDate[0] = developer[0] = genre[0] = '\0';
     // extract the tags:
@@ -881,7 +879,7 @@ void showartwork(uint32_t crc)
     {
         Frens::f_free(desc);
     }
-#endif
+
 }
 static void showLoadingScreen()
 {
@@ -1037,9 +1035,9 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
     FIL fil;
     DWORD PAD1_Latch;
     char curdir[FF_MAX_LFN];
-#if PICO_RP2350
+
     strcpy(emulator, emulatorType);
-#endif
+
 #if !HSTX
     int margintop = dvi_->getBlankSettings().top;
     int marginbottom = dvi_->getBlankSettings().bottom;
@@ -1241,7 +1239,7 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
             }
             else if ((PAD1_Latch & START) == START && ((PAD1_Latch & SELECT) != SELECT))
             {
-#if !PICO_RP2350
+#if  0
                 showLoadingScreen();
                 // reboot and start emulator with currently loaded game
                 // Create a file /START indicating not to reflash the already flashed game
