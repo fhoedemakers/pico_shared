@@ -54,6 +54,7 @@ extern "C" {
 
 
 #define AUDIO_RING_SIZE 1024 // Size of the audio ring buffer (must be a multiple of DMA_BLOCK_SIZE)
+#define AUDIO_RING_MASK (AUDIO_RING_SIZE - 1)
 #define DMA_BLOCK_SIZE 256 // Size of each DMA block transfer
 
 #define TLV320_HEADPHONE_NOTCONNECTED 0b00 // Headphone not connected
@@ -71,6 +72,7 @@ void audio_i2s_update_pio_frequency(uint32_t sample_freq);
 void audio_i2s_out_32(uint32_t sample32);
 void audio_i2s_enqueue_sample(uint32_t sample32);
 void audio_i2s_poll_headphone_status();
+int audio_i2s_get_freebuffer_size();
 #ifdef __cplusplus
 }
 #endif

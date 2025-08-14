@@ -716,3 +716,6 @@ void __not_in_flash_func(audio_i2s_enqueue_sample)(uint32_t sample32)
 	}
 #endif
 }
+int  audio_i2s_get_freebuffer_size() {
+	return  (read_index - write_index - 1) & AUDIO_RING_MASK;
+}
