@@ -472,11 +472,17 @@ void tlv320_poll_headphone_status()
 	uint8_t data;
 	
 	read_tlv320(0x2E, &data, 1); // Read the headphone detection register
+#endif
+#if 1
+	setPage(0);
+	// read_tlv320(0x2E, &data, 1); // Read the headphone detection register
+	uint8_t data = readRegister(0x43); // Read the headphone detection register	
 	//printf("Headphone status: %02X\n", data);
 	data &= 0b00110000; // Mask to get headphone status bits
 	data >>= 4; // Shift to get the status bits in the lower bits
 	//printf("Headphone after shift: %02X\n", data);
-	read_tlv320(0x2C, &data, 1); // Read the headphone detection register
+	// read_tlv320(0x2C, &data, 1); // Read the headphone detection register
+	data = readRegister(0x2c);
 	//printf("Headphone status: %02X\n", data);
 	data &= 0b00110000; // Mask to get headphone status bits
 	data >>= 4; // Shift to get the status bits in the lower bits
@@ -511,7 +517,7 @@ void audio_i2s_poll_headphone_status()
 {
 	if (_driver == PICO_AUDIO_I2S_DRIVER_TLV320)
 	{
-		tlv320_poll_headphone_status();
+		//tlv320_poll_headphone_status();
 	}
 }
 
