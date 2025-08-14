@@ -50,7 +50,8 @@ static int samplefreq = PICO_AUDIO_I2S_FREQ;
 
 #define I2C_PORT i2c0 // hardcoded I2C port for the TLV320 codec, must be configurable in the future
 #define I2C_ADDR 0x18
-
+#define DAC_I2C_ADDR I2C_ADDR
+#if 0
 /// @brief Write data to the TLV320AIC3204 over I2C
 /// @param data Pointer to the data buffer
 /// @param len Length of the data buffer
@@ -95,7 +96,7 @@ bool read_tlv320(uint8_t reg, uint8_t *data, size_t len)
 
 	return true;
 }
-
+#endif
 /// @brief Perform a hardware reset of the TLV320AIC3204
 /// This function toggles the reset pin to reset the codec hardware.
 static void tlv320_hardware_reset()
@@ -103,6 +104,7 @@ static void tlv320_hardware_reset()
 	// assert that the reset pin is defined
 	assert(PICO_AUDIO_I2S_RESET_PIN >= 0 && PICO_AUDIO_I2S_RESET_PIN < NUM_BANK0_GPIOS);
 	printf("Performing TLV320 hardware reset...\n");
+#if 1
 	gpio_put(PICO_AUDIO_I2S_RESET_PIN, 0);
 	gpio_set_dir(PICO_AUDIO_I2S_RESET_PIN, GPIO_OUT);
 	gpio_set_function(PICO_AUDIO_I2S_RESET_PIN, GPIO_FUNC_SIO);
@@ -111,9 +113,66 @@ static void tlv320_hardware_reset()
 	gpio_set_dir(PICO_AUDIO_I2S_RESET_PIN, GPIO_OUT);
 	gpio_set_function(PICO_AUDIO_I2S_RESET_PIN, GPIO_FUNC_SIO);
 	sleep_ms(10); // Wait for the chip to reset
+#else
+	gpio_init(PICO_AUDIO_I2S_RESET_PIN);
+	gpio_set_dir(PICO_AUDIO_I2S_RESET_PIN, true);
+	gpio_put(PICO_AUDIO_I2S_RESET_PIN, true); // allow i2s to come out of reset
+#endif
 	printf("TLV320 hardware reset complete\n");
 }
 
+static void writeRegister(uint8_t reg, uint8_t value)
+{
+	uint8_t buf[2];
+	buf[0] = reg;
+	buf[1] = value;
+	int res = i2c_write_timeout_us(i2c0, DAC_I2C_ADDR, buf, sizeof(buf), /* nostop */ false, 1000);
+	if (res != 2)
+	{
+		panic("i2c_write_timeout failed: res=%d\n", res);
+	}
+
+	printf("Write Reg: %d = 0x%x\n", reg, value);
+}
+
+static uint8_t readRegister(uint8_t reg)
+{
+	uint8_t buf[1];
+	buf[0] = reg;
+	int res = i2c_write_timeout_us(i2c0, DAC_I2C_ADDR, buf, sizeof(buf), /* nostop */ true, 1000);
+	if (res != 1)
+	{
+
+		printf("res=%d\n", res);
+		panic("i2c_write_timeout failed: res=%d\n", res);
+	}
+	res = i2c_read_timeout_us(i2c0, DAC_I2C_ADDR, buf, sizeof(buf), /* nostop */ false, 1000);
+	if (res != 1)
+	{
+
+		printf("res=%d\n", res);
+		panic("i2c_read_timeout failed: res=%d\n", res);
+	}
+	uint8_t value = buf[0];
+
+	printf("Read Reg: %d = 0x%x\n", reg, value);
+	return value;
+}
+
+static void modifyRegister(uint8_t reg, uint8_t mask, uint8_t value)
+{
+	uint8_t current = readRegister(reg);
+
+	printf("Modify Reg: %d = [Before: 0x%x] with mask 0x%x and value 0x%x\n", reg, current, mask, value);
+	uint8_t new_value = (current & ~mask) | (value & mask);
+	writeRegister(reg, new_value);
+}
+
+static void setPage(uint8_t page)
+{
+	printf("Set page %d\n", page);
+	writeRegister(0x00, page);
+}
 /// @brief Initialize the TLV320AIC3204 codec
 /// This function sets up the codec with default settings for audio playback.
 /// From tlv320dac3100 datasheet, section 6.3.10.15
@@ -126,6 +185,8 @@ static void tlv320_init()
 	// Initialize the DAC over I2C
 	printf("Initializing TLV320AIC3204 audio DAC...\n");
 	i2c_init(I2C_PORT, 400 * 1000); // Initialize I2C at 400kHz
+	sleep_ms(1000); // Wait for I2C to stabilize
+#if 0
 	// 1. Define starting point:
 	// 		(a) Power up applicable external hardware power supplies
 	//     	(b) Set register to Page 0
@@ -232,14 +293,178 @@ static void tlv320_init()
 	data |= 0b10010100;
 	//printf("Setting headphone detection register to: %02X\n", data);
 	write_tlv320((uint8_t[]){0x43, data}, 2);
-	//printf("All I2C writes complete.\n");
+
+#endif
+
+	// Reset codec
+	writeRegister(0x01, 0x01);
+	sleep_ms(10);
+
+	// Interface Control
+	modifyRegister(0x1B, 0xC0, 0x00);
+	modifyRegister(0x1B, 0x30, 0x00);
+
+	// Clock MUX and PLL settings
+	modifyRegister(0x04, 0x03, 0x03);
+	modifyRegister(0x04, 0x0C, 0x04);
+
+	writeRegister(0x06, 0x20); // PLL J
+	writeRegister(0x08, 0x00); // PLL D LSB
+	writeRegister(0x07, 0x00); // PLL D MSB
+
+	modifyRegister(0x05, 0x0F, 0x02); // PLL P/R
+	modifyRegister(0x05, 0x70, 0x10);
+
+	// DAC/ADC Config
+	modifyRegister(0x0B, 0x7F, 0x08); // NDAC
+	modifyRegister(0x0B, 0x80, 0x80);
+
+	modifyRegister(0x0C, 0x7F, 0x02); // MDAC
+	modifyRegister(0x0C, 0x80, 0x80);
+
+	modifyRegister(0x12, 0x7F, 0x08); // NADC
+	modifyRegister(0x12, 0x80, 0x80);
+
+	modifyRegister(0x13, 0x7F, 0x02); // MADC
+	modifyRegister(0x13, 0x80, 0x80);
+
+	// PLL Power Up
+	modifyRegister(0x05, 0x80, 0x80);
+
+	// Headset and GPIO Config
+	setPage(1);
+	modifyRegister(0x2e, 0xFF, 0x0b);
+	setPage(0);
+	modifyRegister(0x43, 0x80, 0x80); // Headset Detect
+	modifyRegister(0x30, 0x80, 0x80); // INT1 Control
+	modifyRegister(0x33, 0x3C, 0x14); // GPIO1
+
+	// DAC Setup
+	modifyRegister(0x3F, 0xC0, 0xC0);
+
+	// DAC Routing
+	setPage(1);
+	modifyRegister(0x23, 0xC0, 0x40);
+	modifyRegister(0x23, 0x0C, 0x04);
+
+	// DAC Volume Control
+	setPage(0);
+	modifyRegister(0x40, 0x0C, 0x00);
+	writeRegister(0x41, 0x28); // Left DAC Vol
+	writeRegister(0x42, 0x28); // Right DAC Vol
+
+	// ADC Setup
+	modifyRegister(0x51, 0x80, 0x80);
+	modifyRegister(0x52, 0x80, 0x00);
+	writeRegister(0x53, 0x68); // ADC Volume
+
+	// Headphone and Speaker Setup
+	setPage(1);
+	modifyRegister(0x1F, 0xC0, 0xC0); // HP Driver
+	modifyRegister(0x28, 0x04, 0x04); // HP Left Gain
+	modifyRegister(0x29, 0x04, 0x04); // HP Right Gain
+	writeRegister(0x24, 0x0A);		  // Left Analog HP
+	writeRegister(0x25, 0x0A);		  // Right Analog HP
+
+	modifyRegister(0x28, 0x78, 0x40); // HP Left Gain
+	modifyRegister(0x29, 0x78, 0x40); // HP Right Gain
+
+	// Speaker Amp
+	modifyRegister(0x20, 0x80, 0x80);
+	modifyRegister(0x2A, 0x04, 0x04);
+	modifyRegister(0x2A, 0x18, 0x08);
+	writeRegister(0x26, 0x0A);
+
+	// Return to page 0
+	setPage(0);
+
+	printf("Initialization complete!\n");
+
+	// Read all registers for verification
+
+	printf("Reading all registers for verification:\n");
+
+	setPage(0);
+	readRegister(0x00); // AIC31XX_PAGECTL
+	readRegister(0x01); // AIC31XX_RESET
+	readRegister(0x03); // AIC31XX_OT_FLAG
+	readRegister(0x04); // AIC31XX_CLKMUX
+	readRegister(0x05); // AIC31XX_PLLPR
+	readRegister(0x06); // AIC31XX_PLLJ
+	readRegister(0x07); // AIC31XX_PLLDMSB
+	readRegister(0x08); // AIC31XX_PLLDLSB
+	readRegister(0x0B); // AIC31XX_NDAC
+	readRegister(0x0C); // AIC31XX_MDAC
+	readRegister(0x0D); // AIC31XX_DOSRMSB
+	readRegister(0x0E); // AIC31XX_DOSRLSB
+	readRegister(0x10); // AIC31XX_MINI_DSP_INPOL
+	readRegister(0x12); // AIC31XX_NADC
+	readRegister(0x13); // AIC31XX_MADC
+	readRegister(0x14); // AIC31XX_AOSR
+	readRegister(0x19); // AIC31XX_CLKOUTMUX
+	readRegister(0x1A); // AIC31XX_CLKOUTMVAL
+	readRegister(0x1B); // AIC31XX_IFACE1
+	readRegister(0x1C); // AIC31XX_DATA_OFFSET
+	readRegister(0x1D); // AIC31XX_IFACE2
+	readRegister(0x1E); // AIC31XX_BCLKN
+	readRegister(0x1F); // AIC31XX_IFACESEC1
+	readRegister(0x20); // AIC31XX_IFACESEC2
+	readRegister(0x21); // AIC31XX_IFACESEC3
+	readRegister(0x22); // AIC31XX_I2C
+	readRegister(0x24); // AIC31XX_ADCFLAG
+	readRegister(0x25); // AIC31XX_DACFLAG1
+	readRegister(0x26); // AIC31XX_DACFLAG2
+	readRegister(0x27); // AIC31XX_OFFLAG
+	readRegister(0x2C); // AIC31XX_INTRDACFLAG
+	readRegister(0x2D); // AIC31XX_INTRADCFLAG
+	readRegister(0x2E); // AIC31XX_INTRDACFLAG2
+	readRegister(0x2F); // AIC31XX_INTRADCFLAG2
+	readRegister(0x30); // AIC31XX_INT1CTRL
+	readRegister(0x31); // AIC31XX_INT2CTRL
+	readRegister(0x33); // AIC31XX_GPIO1
+	readRegister(0x3C); // AIC31XX_DACPRB
+	readRegister(0x3D); // AIC31XX_ADCPRB
+	readRegister(0x3F); // AIC31XX_DACSETUP
+	readRegister(0x40); // AIC31XX_DACMUTE
+	readRegister(0x41); // AIC31XX_LDACVOL
+	readRegister(0x42); // AIC31XX_RDACVOL
+	readRegister(0x43); // AIC31XX_HSDETECT
+	readRegister(0x51); // AIC31XX_ADCSETUP
+	readRegister(0x52); // AIC31XX_ADCFGA
+	readRegister(0x53); // AIC31XX_ADCVOL
+
+	setPage(1);
+	readRegister(0x1F); // AIC31XX_HPDRIVER
+	readRegister(0x20); // AIC31XX_SPKAMP
+	readRegister(0x21); // AIC31XX_HPPOP
+	readRegister(0x22); // AIC31XX_SPPGARAMP
+	readRegister(0x23); // AIC31XX_DACMIXERROUTE
+	readRegister(0x24); // AIC31XX_LANALOGHPL
+	readRegister(0x25); // AIC31XX_RANALOGHPR
+	readRegister(0x26); // AIC31XX_LANALOGSPL
+	readRegister(0x27); // AIC31XX_RANALOGSPR
+	readRegister(0x28); // AIC31XX_HPLGAIN
+	readRegister(0x29); // AIC31XX_HPRGAIN
+	readRegister(0x2A); // AIC31XX_SPLGAIN
+	readRegister(0x2B); // AIC31XX_SPRGAIN
+	readRegister(0x2C); // AIC31XX_HPCONTROL
+	readRegister(0x2E); // AIC31XX_MICBIAS
+	readRegister(0x2F); // AIC31XX_MICPGA
+	readRegister(0x30); // AIC31XX_MICPGAPI
+	readRegister(0x31); // AIC31XX_MICPGAMI
+	readRegister(0x32); // AIC31XX_MICPGACM
+
+	setPage(3);
+	readRegister(0x10); // AIC31XX_TIMERDIVIDER
+	printf("All I2C writes complete.\n");
 
 	sleep_ms(100);
 }
 
 uint8_t last_status = -1;
 
-void tlv320_poll_headphone_status() {
+void tlv320_poll_headphone_status()
+{
 	// not working for now
 #if 0
 	// goto page 0
@@ -256,7 +481,6 @@ void tlv320_poll_headphone_status() {
 	data &= 0b00110000; // Mask to get headphone status bits
 	data >>= 4; // Shift to get the status bits in the lower bits
 	//printf("Headphone after shift: %02X\n", data);
-	
 
 #if 1
 
@@ -278,7 +502,7 @@ void tlv320_poll_headphone_status() {
 		last_status = data;
 		printf("\n");
 	}
-		#endif
+#endif
 #endif
 	return;
 }
@@ -289,7 +513,7 @@ void audio_i2s_poll_headphone_status()
 	{
 		tlv320_poll_headphone_status();
 	}
-}	
+}
 
 /**
  * @brief Updates the PIO frequency for the audio I2S interface.
@@ -442,7 +666,7 @@ audio_i2s_hw_t *audio_i2s_setup(int driver, int freqHZ, int dmachan)
 	dma_channel_set_read_addr(audio_i2s.dma_chan, &audio_ring[read_index], false);
 	dma_channel_set_trans_count(audio_i2s.dma_chan, DMA_BLOCK_SIZE, true); // true = start immediately
 	tlv320_poll_headphone_status();
-	return &audio_i2s;													   // Return the audio_i2s hardware structure for further use
+	return &audio_i2s; // Return the audio_i2s hardware structure for further use
 }
 
 /**
