@@ -7,6 +7,10 @@
 #include "pico/stdlib.h"
 #include "hardware/pio.h"
 #include "hardware/clocks.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 #define PICO_AUDIO_I2S_DRIVER_NONE 0         // No I2S driver
 #define PICO_AUDIO_I2S_DRIVER_TLV320 1       // TLV320 DAC - Adafruit FruitJam
 #define PICO_AUDIO_I2S_DRIVER_PCM5000A 2     // PCM5000A DAC - Pimoroni Pico Dv Demo base
@@ -17,6 +21,9 @@
 #define PICO_AUDIO_I2S_COUNT 2
 #endif
 
+#ifndef PICO_AUDIO_I2S_DEBUG
+#define PICO_AUDIO_I2S_DEBUG 0 // Set to 1 to enable debug output
+#endif
 
 // Reset pin, when using TLV320 codec
 #ifndef PICO_AUDIO_I2S_RESET_PIN
@@ -46,11 +53,13 @@
 // #define PICO_AUDIO_I2S_HP_DETECT_PIN -1
 // #endif
 
-
-
-#ifdef __cplusplus
-extern "C" {
+#ifndef PICO_AUDIO_I2S_INTERRUPT_PIN
+#define PICO_AUDIO_I2S_INTERRUPT_PIN -1
 #endif
+#ifndef PICO_AUDIO_I2S_INTERRUPT_IS_BUTTON
+#define PICO_AUDIO_I2S_INTERRUPT_IS_BUTTON 0
+#endif
+
 
 
 #define AUDIO_RING_SIZE 1024 // Size of the audio ring buffer (must be a multiple of DMA_BLOCK_SIZE)

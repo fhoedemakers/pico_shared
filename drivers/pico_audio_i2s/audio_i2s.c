@@ -33,10 +33,11 @@
 #define GPIO_FUNC_PIOx __CONCAT(GPIO_FUNC_PIO, PICO_AUDIO_I2S_PIO)
 
 // Ring buffer for audio samples. It holds AUDIO_RING_SIZE samples, which are 32-bit integers.
-uint32_t *audio_ring = NULL;
-volatile size_t write_index = 0;
-volatile size_t read_index = 0;
+static uint32_t *audio_ring = NULL;
+static volatile size_t write_index = 0;
+static volatile size_t read_index = 0;
 static int _driver = 0;
+static volatile bool speakerIsMuted = false;
 // Audio I2S hardware structure that holds the state machine, PIO instance, and DMA channel.
 static audio_i2s_hw_t audio_i2s = {
 	.sm = -1,		  // State machine index, initialized to -1 (not set)
@@ -120,7 +121,8 @@ static void tlv320_hardware_reset()
 #endif
 	printf("TLV320 hardware reset complete\n");
 }
-
+// Helper functions for reading/writing and modifying registers over I2C
+// From https://github.com/jepler/fruitjam-doom/blob/adafruit-fruitjam/src/i_main.c
 static void writeRegister(uint8_t reg, uint8_t value)
 {
 	uint8_t buf[2];
@@ -131,8 +133,9 @@ static void writeRegister(uint8_t reg, uint8_t value)
 	{
 		panic("i2c_write_timeout failed: res=%d\n", res);
 	}
-
+#if PICO_AUDIO_I2S_DEBUG
 	printf("Write Reg: %d = 0x%x\n", reg, value);
+#endif
 }
 
 static uint8_t readRegister(uint8_t reg)
@@ -154,24 +157,104 @@ static uint8_t readRegister(uint8_t reg)
 		panic("i2c_read_timeout failed: res=%d\n", res);
 	}
 	uint8_t value = buf[0];
-
+#if PICO_AUDIO_I2S_DEBUG
 	printf("Read Reg: %d = 0x%x\n", reg, value);
+#endif
 	return value;
 }
 
+/// @brief Modify a register on the TLV320AIC3204
+/// @param reg The register address
+/// @param mask tells the function which bits you care about. keeps all other bits as they were.
+/// Example: mask = 0x04 means “only bit 2 matters; ignore the rest.”
+/// @param value contains the desired state for those masked bits.
+/// Example: value = 0x04 means “bit 2 should be 1”
+///          value = 0x00 means “bit 2 should be 0”.
 static void modifyRegister(uint8_t reg, uint8_t mask, uint8_t value)
 {
 	uint8_t current = readRegister(reg);
-
+#if PICO_AUDIO_I2S_DEBUG
 	printf("Modify Reg: %d = [Before: 0x%x] with mask 0x%x and value 0x%x\n", reg, current, mask, value);
+#endif
 	uint8_t new_value = (current & ~mask) | (value & mask);
 	writeRegister(reg, new_value);
 }
 
 static void setPage(uint8_t page)
 {
+#if PICO_AUDIO_I2S_DEBUG
 	printf("Set page %d\n", page);
+#endif
 	writeRegister(0x00, page);
+}
+
+#define MASK_SPK_UNMUTE (1 << 2) // D2
+
+void speakerMute(void)
+{
+	// Switch to page 1
+	setPage(0x01);
+
+	// Set D2 = 0 → mute
+	modifyRegister(0x2A, MASK_SPK_UNMUTE, 0x00);
+}
+
+void speakerUnmute(void)
+{
+	// Switch to page 1
+	setPage(0x01);
+
+	// Set D2 = 1 → unmute
+	modifyRegister(0x2A, MASK_SPK_UNMUTE, MASK_SPK_UNMUTE);
+}
+static volatile uint32_t last_irq_time;
+// Handle the GPIO callback for mute/unmute
+static void gpio_callback(uint gpio, uint32_t events)
+{
+	// No printfs in IRQs
+	// printf("GPIO callback on GPIO %d, events: %u\n", gpio, events);
+	uint32_t now = to_ms_since_boot(get_absolute_time());
+	if (now - last_irq_time < 50)
+	{
+		return;
+	}
+	last_irq_time = now;
+	if (events & GPIO_IRQ_EDGE_RISE)
+	{
+		// printf("GPIO %d went HIGH\n", gpio);
+		speakerIsMuted = !speakerIsMuted; // Toggle mute state
+		if (speakerIsMuted)
+		{
+			speakerMute();
+		}
+		else
+		{
+			speakerUnmute();
+		}
+	}
+	if (events & GPIO_IRQ_EDGE_FALL)
+	{
+		// printf("GPIO %d went LOW\n", gpio);
+	}
+}
+
+// Set up the IRQ handler to mute/unmute the speaker on Fruit Jam
+void setupHeadphoneDetectionInterrupt(int gpio, bool gpioisbutton)
+{
+	speakerIsMuted = false; // Reset mute state on headphone detection setup
+	printf("Setting up headphone detection on GPIO %d, is_button=%d\n", gpio, gpioisbutton);
+	// Initialize the GPIO pin for headphone detection
+	if (gpioisbutton)
+	{
+		gpio_init(gpio);
+		gpio_set_dir(gpio, GPIO_IN);
+		gpio_pull_down(gpio);
+		gpio_set_irq_enabled_with_callback(gpio, GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL, true, &gpio_callback);
+	}
+	else
+	{
+		printf("TODO: Implement headphone via INT1/GPIO1 on DAC\n");
+	}
 }
 /// @brief Initialize the TLV320AIC3204 codec
 /// This function sets up the codec with default settings for audio playback.
@@ -185,8 +268,9 @@ static void tlv320_init()
 	// Initialize the DAC over I2C
 	printf("Initializing TLV320AIC3204 audio DAC...\n");
 	i2c_init(I2C_PORT, 400 * 1000); // Initialize I2C at 400kHz
-	sleep_ms(1000); // Wait for I2C to stabilize
+	sleep_ms(1000);					// Wait for I2C to stabilize
 #if 0
+    // Old setup, from DataSheet
 	// 1. Define starting point:
 	// 		(a) Power up applicable external hardware power supplies
 	//     	(b) Set register to Page 0
@@ -295,7 +379,7 @@ static void tlv320_init()
 	write_tlv320((uint8_t[]){0x43, data}, 2);
 
 #endif
-
+	// Better setup, from https://github.com/jepler/fruitjam-doom/blob/adafruit-fruitjam/src/i_main.c
 	// Reset codec
 	writeRegister(0x01, 0x01);
 	sleep_ms(10);
@@ -377,11 +461,13 @@ static void tlv320_init()
 
 	// Return to page 0
 	setPage(0);
-
+#if PICO_AUDIO_I2S_INTERRUPT_PIN != -1
+	setupHeadphoneDetectionInterrupt(PICO_AUDIO_I2S_INTERRUPT_PIN, PICO_AUDIO_I2S_INTERRUPT_IS_BUTTON);
+#endif
 	printf("Initialization complete!\n");
 
 	// Read all registers for verification
-
+#if 0
 	printf("Reading all registers for verification:\n");
 
 	setPage(0);
@@ -457,59 +543,53 @@ static void tlv320_init()
 	setPage(3);
 	readRegister(0x10); // AIC31XX_TIMERDIVIDER
 	printf("All I2C writes complete.\n");
-
+#endif
 	sleep_ms(100);
 }
 
+	// Headphone status check, not working for now
+#if 0
 uint8_t last_status = -1;
-
 void tlv320_poll_headphone_status()
 {
-	// not working for now
-#if 0
-	// goto page 0
-	write_tlv320((uint8_t[]){0x00, 0x00}, 2);
-	uint8_t data;
-	
-	read_tlv320(0x2E, &data, 1); // Read the headphone detection register
-#endif
-#if 1
+
 	setPage(0);
 	// read_tlv320(0x2E, &data, 1); // Read the headphone detection register
-	uint8_t data = readRegister(0x43); // Read the headphone detection register	
-	//printf("Headphone status: %02X\n", data);
+	uint8_t data = readRegister(0x43); // Read the headphone detection register
+	// printf("Headphone status: %02X\n", data);
 	data &= 0b00110000; // Mask to get headphone status bits
-	data >>= 4; // Shift to get the status bits in the lower bits
-	//printf("Headphone after shift: %02X\n", data);
-	// read_tlv320(0x2C, &data, 1); // Read the headphone detection register
+	data >>= 4;			// Shift to get the status bits in the lower bits
+	// printf("Headphone after shift: %02X\n", data);
+	//  read_tlv320(0x2C, &data, 1); // Read the headphone detection register
 	data = readRegister(0x2c);
-	//printf("Headphone status: %02X\n", data);
+	// printf("Headphone status: %02X\n", data);
 	data &= 0b00110000; // Mask to get headphone status bits
-	data >>= 4; // Shift to get the status bits in the lower bits
-	//printf("Headphone after shift: %02X\n", data);
+	data >>= 4;			// Shift to get the status bits in the lower bits
+						// printf("Headphone after shift: %02X\n", data);
 
-#if 1
 
-	if (last_status != data) {
+
+	if (last_status != data)
+	{
 		last_status = data;
-		switch (data) {
-			case TLV320_HEADPHONE_NOTCONNECTED:
-				printf("Headphone not connected");
-				break;
-			case TLV320_HEADPHONE_CONNECTED:
-				printf("Headphone connected");
-			case TLV320_HEADPHONE_CONNECTED_WITH_MIC:
-				printf(" with microphone");
-				break;
-			default:
-				printf("Unknown headphone status: %02X", data);
-				break;
+		switch (data)
+		{
+		case TLV320_HEADPHONE_NOTCONNECTED:
+			printf("Headphone not connected");
+			break;
+		case TLV320_HEADPHONE_CONNECTED:
+			printf("Headphone connected");
+		case TLV320_HEADPHONE_CONNECTED_WITH_MIC:
+			printf(" with microphone");
+			break;
+		default:
+			printf("Unknown headphone status: %02X", data);
+			break;
 		}
 		last_status = data;
 		printf("\n");
 	}
-#endif
-#endif
+
 	return;
 }
 
@@ -517,9 +597,10 @@ void audio_i2s_poll_headphone_status()
 {
 	if (_driver == PICO_AUDIO_I2S_DRIVER_TLV320)
 	{
-		//tlv320_poll_headphone_status();
+		 tlv320_poll_headphone_status();
 	}
 }
+#endif
 
 /**
  * @brief Updates the PIO frequency for the audio I2S interface.
@@ -671,8 +752,7 @@ audio_i2s_hw_t *audio_i2s_setup(int driver, int freqHZ, int dmachan)
 	}
 	dma_channel_set_read_addr(audio_i2s.dma_chan, &audio_ring[read_index], false);
 	dma_channel_set_trans_count(audio_i2s.dma_chan, DMA_BLOCK_SIZE, true); // true = start immediately
-	tlv320_poll_headphone_status();
-	return &audio_i2s; // Return the audio_i2s hardware structure for further use
+	return &audio_i2s;													   // Return the audio_i2s hardware structure for further use
 }
 
 /**
@@ -722,6 +802,7 @@ void __not_in_flash_func(audio_i2s_enqueue_sample)(uint32_t sample32)
 	}
 #endif
 }
-int  audio_i2s_get_freebuffer_size() {
-	return  (read_index - write_index - 1) & AUDIO_RING_MASK;
+int audio_i2s_get_freebuffer_size()
+{
+	return (read_index - write_index - 1) & AUDIO_RING_MASK;
 }
