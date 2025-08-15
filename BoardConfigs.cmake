@@ -310,6 +310,8 @@ elseif ( HW_CONFIG EQUAL 8 )
     set(PICO_AUDIO_I2S_PIO 1 CACHE STRING "Select the PIO for I2S audio output")
     set(PICO_AUDIO_I2S_CLOCK_PINS_SWAPPED 0 CACHE STRING "Set to 1 if the I2S clock pins are swapped")
     set(PICO_AUDIO_I2S_RESET_PIN 22 CACHE STRING "Select the GPIO pin for I2S reset")
+    set(PICO_AUDIO_I2S_INTERRUPT_PIN 0 CACHE STRING "Select the GPIO pin for I2S interrupt")
+    set(PICO_AUDIO_I2S_INTERRUPT_IS_BUTTON 1 CACHE STRING "Set to 1 if the I2S interrupt pin is a button")
     set(BOARD "adafruit_fruit_jam")         # found in $PICO__SDK_PATH/lib/tinyusb/hw/bsp/rp2040/boards/adafruit_metro_rp2350/board.h
     set(PICO_BOARD "adafruit_fruit_jam")    # found in $PICO__SDK_PATH/lib/tinyusb/hw/bsp/rp2040/boards/adafruit_metro_rp2350/adafruit_metro_rp2350.h
     set(ENABLE_PIO_USB 1 CACHE BOOL "Enable PIO USB support")
@@ -337,7 +339,12 @@ elseif ( HW_CONFIG EQUAL 8 )
    set (PICO_DEFAULT_UART_TX_PIN 44 CACHE STRING "Select the GPIO pin for UART TX") # Adafruit Fruit Jam uses GPIO 44 for UART TX
    set (PICO_DEFAULT_UART_RX_PIN 45 CACHE STRING "Select the GPIO pin for UART RX") # Adafruit Fruit Jam uses GPIO 45 for UART RX
 endif ( )
-
+if ( NOT DEFINED PICO_AUDIO_I2S_INTERRUPT_PIN )
+    set(PICO_AUDIO_I2S_INTERRUPT_PIN -1 CACHE STRING "Select the GPIO pin for I2S interrupt")
+endif()
+if ( NOT DEFINED PICO_AUDIO_I2S_INTERRUPT_IS_BUTTON )
+    set(PICO_AUDIO_I2S_INTERRUPT_IS_BUTTON 0 CACHE STRING "Set to 1 if the I2S interrupt pin is a button")
+endif()
 if (NOT DEFINED GPIOHSTXD0)
     set(GPIOHSTXD0 0 CACHE STRING "HSTX D0 pin")
     set(GPIOHSTXD1 0 CACHE STRING "HSTX D1 pin")
