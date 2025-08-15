@@ -754,7 +754,7 @@ void showartwork(uint32_t crc)
     char releaseDate[16]; // 19900212T000000
     char developer[64];   // Nintendo
     char genre[64];       // Platform-Platform / Run & Jump
-    // char rating[10]; // E, E10+, T, M, AO
+    char rating[4];       // 0.0 0.1 0.2 - 1.0
     char CRC[9];
     char *desc = (char *)Frens::f_malloc(DESC_SIZE); // preserve stack
 
@@ -828,13 +828,14 @@ void showartwork(uint32_t crc)
         Frens::get_tag_text(metadatabuffer, "developer", developer, sizeof(developer));
         Frens::get_tag_text(metadatabuffer, "genre", genre, sizeof(genre));
         Frens::get_tag_text(metadatabuffer, "desc", desc, DESC_SIZE * sizeof(char));
-        // Frens::get_tag_text(metadatabuffer, "rating", rating, sizeof(rating));
+        Frens::get_tag_text(metadatabuffer, "rating", rating, sizeof(rating));
         printf("Game name: %s\n", gamename);
         printf("Release date: %s\n", releaseDate);
         printf("Developer: %s\n", developer);
         printf("Genre: %s\n", genre);
+        printf("Rating: %s\n", rating);
         printf("Description: %s\n", desc);
-        // printf("Rating: %s\n", rating);
+       
     }
     DWORD PAD1_Latch;
     ClearScreen(settings.bgcolor);
