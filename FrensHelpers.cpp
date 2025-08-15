@@ -963,10 +963,6 @@ namespace Frens
         }
     }
 #endif // DVI
-    void pollHeadphoneStatus()
-    {
-        EXT_AUDIO_POLL_HEADPHONE_STATUS();
-    }
 
     void blinkLed(bool on)
     {
