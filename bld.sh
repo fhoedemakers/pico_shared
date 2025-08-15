@@ -72,7 +72,7 @@ if [ ! -d "$PICO_SDK_PATH" ] ; then
 	echo "Pico SDK not found. Please set the PICO_SDK_PATH environment variable to the location of the Pico SDK"
 	exit 1
 fi
-SDKVERSION=`cat $PICO_SDK_PATH/pico_sdk_version.cmake | grep "set(PICO_SDK_VERSION_MAJOR" | cut -f2  -d\( | cut -f1 -d\)`
+SDKVERSION=`cat $PICO_SDK_PATH/pico_sdk_version.cmake | grep "set(PICO_SDK_VERSION_MAJOR" | cut -f2  -d\( | cut -f2 -d" " | cut -f1 -d\)`
 TOOLCHAIN_PATH=
 picoarmIsSet=0
 picoRiscIsSet=0
