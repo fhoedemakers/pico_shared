@@ -54,6 +54,14 @@ const __UINT16_TYPE__ NesMenuPalette[64] = {
     CC(0xE6DF9C), CC(0xD3E99A), CC(0xC2EFA8), CC(0xB7EFC4),
     CC(0xB6EAE5), CC(0xB8B8B8), CC(0x000000), CC(0x000000)};
 #endif
+// Define the artwork directory and file formats
+#if !HSTX
+#define ARTWORKFILE "/metadata/%s/images/%d/%c/%s.444"
+#else
+#define ARTWORKFILE "/metadata/%s/images/%d/%c/%s.555"
+#endif
+#define METADDATAFILE "/metadata/%s/descr/%c/%s.txt"
+
 int NesMenuPaletteItems = sizeof(NesMenuPalette) / sizeof(NesMenuPalette[0]);
 static char connectedGamePadName[sizeof(io::GamePadState::GamePadName)];
 static bool useFrameBuffer = false;
@@ -64,7 +72,8 @@ static char *selectedRomOrFolder;
 static bool errorInSavingRom = false;
 static char *globalErrorMessage;
 
-static char emulator[32]; 
+static char emulator[32];
+static bool artworkEnabled = false;
 
 #define LONG_PRESS_TRESHOLD (500)
 #define REPEAT_DELAY (40)
@@ -105,6 +114,27 @@ void resetColors(int prevfgColor, int prevbgColor)
     }
 }
 
+static bool isArtWorkEnabled()
+{
+    FILINFO fi;
+    char PATH[FF_MAX_LFN];
+    bool exists = false;
+    if (strcmp(emulator, "NES") == 0)
+    {
+        sprintf(PATH, "/Metadata/%s/Images/320/D/D0E96F6B.444", emulator);
+        FRESULT res = f_stat(PATH, &fi);
+        exists = (res == FR_OK);
+        if (exists)
+        {
+            printf("Artwork enabled for %s\n", emulator);
+        }
+        else
+        {
+            printf("Artwork not found for %s\n", emulator);
+        }
+    }
+    return exists;
+}
 int Menu_LoadFrame()
 {
     Frens::PaceFrames60fps(false);
@@ -255,7 +285,7 @@ void RomSelect_PadState(DWORD *pdwPad1, bool ignorepushed = false)
             v = 0;
         }
 
-        //v = 0;
+        // v = 0;
     }
 
     if (pushed || longpressTreshold > LONG_PRESS_TRESHOLD)
@@ -385,7 +415,7 @@ void RomSelect_DrawLine(int line, int selectedRow, int pixelsToSkip = 0)
     return;
 }
 
-void drawline(int scanline, int selectedRow, int w = 0, int h = 0, uint16_t *imagebuffer = nullptr)
+void drawline(int scanline, int selectedRow, int w = 0, int h = 0, uint16_t *imagebuffer = nullptr, int imagex = 0, int imagey = 0)
 {
 #if !HSTX
     if (Frens::isFrameBufferUsed())
@@ -399,15 +429,23 @@ void drawline(int scanline, int selectedRow, int w = 0, int h = 0, uint16_t *ima
         auto b = dvi_->getLineBuffer();
         WorkLineRom = b->data();
         bool validImage = (imagebuffer != nullptr) && (w > 0 && w <= 320 && h > 0 && h <= 240);
-        if (validImage && scanline < h)
+        if (validImage )
         {
-            // copy image row into worklinerom
-            auto rowOffset = scanline * w;
-            memcpy(WorkLineRom, imagebuffer + rowOffset, w * sizeof(uint16_t));
-
-            offset = w;
+            memset(WorkLineRom, 0, SCREENWIDTH * sizeof(WORD));
+            if (scanline >= imagey && scanline < imagey + h)
+            {
+                //printf("Drawing image at scanline %d, imagey %d, h %d imagey + h %d\n", scanline, imagey, h, imagey + h);
+                // copy image row into worklinerom
+                auto rowOffset = (scanline - imagey) * w;
+                memcpy(WorkLineRom + imagex, imagebuffer + rowOffset, w * sizeof(uint16_t));
+                offset = w;
+            }
         }
-        RomSelect_DrawLine(scanline, selectedRow, offset);
+        if (imagex == 0 && imagey == 0)
+        {
+            RomSelect_DrawLine(scanline, selectedRow, offset);
+        }
+
         dvi_->setLineBuffer(scanline, b);
     }
 #else
@@ -535,7 +573,7 @@ void putText(int x, int y, const char *text, int fgcolor, int bgcolor, bool wrap
     }
 }
 
-void DrawScreen(int selectedRow, int w = 0, int h = 0, uint16_t *imagebuffer = nullptr)
+void DrawScreen(int selectedRow, int w = 0, int h = 0, uint16_t *imagebuffer = nullptr, int imagex = 0, int imagey = 0)
 {
     const char *spaces = "                   ";
     char tmpstr[sizeof(connectedGamePadName) + 4];
@@ -569,7 +607,7 @@ void DrawScreen(int selectedRow, int w = 0, int h = 0, uint16_t *imagebuffer = n
 
     for (auto line = 0; line < 240; line++)
     {
-        drawline(line, selectedRow, w, h, imagebuffer);
+        drawline(line, selectedRow, w, h, imagebuffer, imagex, imagey);
     }
 }
 
@@ -706,26 +744,159 @@ void showSplashScreen()
         }
     }
 }
+#if !HSTX
+#define FILEXTFORSEARCH ".444"
+#else
+#define FILEXTFORSEARCH ".555"
+#endif
+static FRESULT pick_random_file_fullpath(const char *dirpath, char *out_path, size_t out_size)
+{
+    FRESULT fr;
+    DIR dir;
+    FILINFO fno;
+    UINT file_count = 0;
 
+    fr = f_opendir(&dir, dirpath);
+    if (fr != FR_OK)
+        return fr;
+
+    while (1)
+    {
+        fr = f_readdir(&dir, &fno);
+        if (fr != FR_OK || fno.fname[0] == 0)
+            break; // End or error
+        if (fno.fattrib & AM_DIR)
+            continue; // Skip directories
+                      // skip files with wrong extension
+        int l = strlen(fno.fname);
+        if (l > 4 && strcmp(&fno.fname[l - 4], FILEXTFORSEARCH) == 0)
+        {
+            // Found a file with the correct extension
+        }
+        else
+        {
+            continue;
+        }
+        file_count++;
+
+        // Reservoir sampling: replace current choice with probability 1/file_count
+        if ((rand() % file_count) == 0)
+        {
+            const char *name = fno.fname;
+            // Build full path: "<dirpath>/<filename>"
+            size_t dir_len = strlen(dirpath);
+            if (dir_len + 1 + strlen(name) + 1 <= out_size)
+            {
+                strcpy(out_path, dirpath);
+                if (dirpath[dir_len - 1] != '/' && dirpath[dir_len - 1] != '\\')
+                {
+                    strcat(out_path, "/");
+                }
+                strcat(out_path, name);
+            }
+            else
+            {
+                f_closedir(&dir);
+                return FR_INVALID_NAME; // Output buffer too small
+            }
+        }
+    }
+    if (file_count > 0)
+    {
+        printf("Picked random file: %s\n", out_path);
+    }
+    f_closedir(&dir);
+    return (file_count > 0) ? FR_OK : FR_NO_FILE;
+}
 void screenSaver()
 {
     DWORD PAD1_Latch;
     WORD frameCount;
+
+    char fld = (char)(rand() % 15);
+    char PATH[FF_MAX_LFN + 1];
+    char CHOSEN[FF_MAX_LFN + 1];
+    FIL fil;
+    FRESULT fr;
+    uint8_t *buffer = nullptr;
+    bool first = true;
+    int16_t width, height;
+    uint16_t *imagebuffer = nullptr;
+    int imagex = -1, imagey = -1;
     while (true)
     {
         frameCount = Menu_LoadFrame();
-        DrawScreen(-1);
+        // increase imagex every 30 frames
+        if ((imagex == -1 && imagey == -1) || (frameCount % 30) == 0)
+        {
+            imagex = rand() % (320 - width);
+            imagey = rand() % (240 - height);
+        }
+        DrawScreen(-1, width, height, imagebuffer, imagex, imagey);
         RomSelect_PadState(&PAD1_Latch);
         if (PAD1_Latch > 0)
         {
+            if (buffer)
+            {
+                Frens::f_free(buffer);
+                buffer = nullptr;
+            }
             return;
         }
-        if ((frameCount % 3) == 0)
+        if (!artworkEnabled)
         {
-            auto color = rand() % 63;
-            auto row = rand() % SCREEN_ROWS;
-            auto column = rand() % SCREEN_COLS;
-            putText(column, row, " ", color, color);
+            if ((frameCount % 3) == 0)
+            {
+                auto color = rand() % 63;
+                auto row = rand() % SCREEN_ROWS;
+                auto column = rand() % SCREEN_COLS;
+                putText(column, row, " ", color, color);
+            }
+        }
+        else
+        {
+            // choose new file every 60 * 30 frames
+            if (first || (frameCount % (60 * 30)) == 0)
+            {
+                if (buffer)
+                {
+                    Frens::f_free(buffer);
+                    buffer = nullptr;
+                }
+                ClearScreen(settings.bgcolor);
+                first = false;
+                fld = (char)(rand() % 15);
+                snprintf(PATH, sizeof(PATH), "/metadata/%s/images/160/%X", emulator, fld);
+                printf("Scanning folder: %s\n", PATH);
+                pick_random_file_fullpath(PATH, CHOSEN, sizeof(CHOSEN));
+                fr = f_open(&fil, CHOSEN, FA_READ);
+                FSIZE_t fsize;
+                if (fr == FR_OK)
+                {
+                    fsize = f_size(&fil);
+                    // printf("Reading %s, size: %d bytes\n", PATH, fsize);
+                    buffer = (uint8_t *)Frens::f_malloc(fsize);
+                    size_t r;
+                    fr = f_read(&fil, buffer, fsize, &r);
+                    if (fr != FR_OK || r != fsize)
+                    {
+                        printf("Error reading %s: %d, read %d bytes\n", PATH, fr, r);
+                        Frens::f_free(buffer);
+                        buffer = nullptr;
+                    }
+
+                    f_close(&fil);
+                }
+                else
+                {
+                    printf("Error opening %s: %d\n", PATH, fr);
+                }
+                // first two bytes of buffer is width
+                width = buffer ? *((uint16_t *)buffer) : 0;
+                // next two bytes is height
+                height = buffer ? *((uint16_t *)(buffer + 2)) : 0;
+                imagebuffer = buffer ? (uint16_t *)(buffer + 4) : nullptr;
+            }
         }
     }
 }
@@ -742,14 +913,9 @@ void __not_in_flash_func(processMenuScanLine)(int line, uint8_t *framebuffer, ui
     }
 }
 #endif
-#define ARTFILE "/ART/output_RGB555.raw"
-#define ARTFILERGB "/ART/output_RGB555.rgb"
-#if !HSTX
-#define ARTWORKFILE "/metadata/%s/images/%d/%c/%s.444"
-#else
-#define ARTWORKFILE "/metadata/%s/images/%d/%c/%s.555"
-#endif
-#define METADDATAFILE "/metadata/%s/descr/%c/%s.txt"
+// #define ARTFILE "/ART/output_RGB555.raw"
+// #define ARTFILERGB "/ART/output_RGB555.rgb"
+
 #define DESC_SIZE 1024
 bool showartwork(uint32_t crc)
 {
@@ -761,7 +927,7 @@ bool showartwork(uint32_t crc)
     char developer[64];   // Nintendo
     char genre[64];       // Platform-Platform / Run & Jump
     char rating[4];       // 0.0 0.1 0.2 - 1.0
-    char players[4]; // 1-2 players
+    char players[4];      // 1-2 players
     char CRC[9];
     char *desc = (char *)Frens::f_malloc(DESC_SIZE); // preserve stack
     int stars = -1;
@@ -772,13 +938,13 @@ bool showartwork(uint32_t crc)
     char *metadatabuffer;
     snprintf(CRC, sizeof(CRC), "%08X", crc);
     snprintf(PATH, sizeof(PATH), ARTWORKFILE, emulator, 160, CRC[0], CRC);
-   
+
     fr = f_open(&fil, PATH, FA_READ);
     FSIZE_t fsize;
     if (fr == FR_OK)
     {
         fsize = f_size(&fil);
-        //printf("Reading %s, size: %d bytes\n", PATH, fsize);
+        // printf("Reading %s, size: %d bytes\n", PATH, fsize);
         buffer = (uint8_t *)Frens::f_malloc(fsize);
         size_t r;
         fr = f_read(&fil, buffer, fsize, &r);
@@ -803,7 +969,7 @@ bool showartwork(uint32_t crc)
 
     printf("Image size: %d x %d pixels\n", width, height);
     snprintf(PATH, sizeof(PATH), METADDATAFILE, emulator, CRC[0], CRC);
-    //printf("Metadata file: %s\n", PATH);
+    // printf("Metadata file: %s\n", PATH);
     fr = f_open(&fil, PATH, FA_READ);
     if (fr == FR_OK)
     {
@@ -820,7 +986,9 @@ bool showartwork(uint32_t crc)
         }
         metadatabuffer[fsize] = '\0';
         f_close(&fil);
-    } else {
+    }
+    else
+    {
         printf("Error opening %s: %d\n", PATH, fr);
         metadatabuffer = nullptr;
     }
@@ -841,7 +1009,7 @@ bool showartwork(uint32_t crc)
         Frens::get_tag_text(metadatabuffer, "desc", desc, DESC_SIZE * sizeof(char));
         Frens::get_tag_text(metadatabuffer, "rating", rating, sizeof(rating));
         Frens::get_tag_text(metadatabuffer, "players", players, sizeof(players));
-    #if 0
+#if 0
         printf("Game name: %s\n", gamename);
         printf("Release date: %s\n", releaseDate);
         printf("Developer: %s\n", developer);
@@ -849,12 +1017,12 @@ bool showartwork(uint32_t crc)
         printf("Rating: %s\n", rating);
         printf("Players: %s\n", players);
         printf("Description: %s\n", desc);
-    #endif
+#endif
         stars = (int)(rating[0] - '0') * 10 + (int)(rating[2] - '0'); // convert first character to int
         if (stars < 0 || stars > 10)
         {
             stars = -1; // invalid rating
-        }   
+        }
     }
     DWORD PAD1_Latch;
     ClearScreen(settings.bgcolor);
@@ -873,28 +1041,29 @@ bool showartwork(uint32_t crc)
     putText(firstCharColumnIndex, 3, "Genre:", settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex);
     putText(firstCharColumnIndex + 7, 3, genre, settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex + 7);
     putText(firstCharColumnIndex, 6, "By:", settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex);
-    putText(firstCharColumnIndex + 4 , 6, developer, settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex + 4);
+    putText(firstCharColumnIndex + 4, 6, developer, settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex + 4);
     putText(firstCharColumnIndex, 8, "Released:", settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex);
     putText(firstCharColumnIndex + 10, 8, info, settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex);
     putText(firstCharColumnIndex, 10, "Player(s):", settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex);
     putText(firstCharColumnIndex + 11, 10, players, settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex + 11);
     if (stars >= 0)
     {
-       putText(firstCharColumnIndex, 12, "Rating:", settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex);
-       for (int i=0; i < (stars >> 1); i++)
-       {
-           putText(firstCharColumnIndex + 8 + i, 12, "*", settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex + 7 + i);
-       }    
+        putText(firstCharColumnIndex, 12, "Rating:", settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex);
+        for (int i = 0; i < (stars >> 1); i++)
+        {
+            putText(firstCharColumnIndex + 8 + i, 12, "*", settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex + 7 + i);
+        }
     }
     bool skipImage = false;
     while (true)
     {
         auto frameCount = Menu_LoadFrame();
-        DrawScreen(-1, width, height, (skipImage ? nullptr : imagebuffer)  );
+        DrawScreen(-1, width, height, (skipImage ? nullptr : imagebuffer));
         RomSelect_PadState(&PAD1_Latch);
         if (PAD1_Latch > 0)
         {
-            if ((PAD1_Latch & SELECT) == SELECT) {
+            if ((PAD1_Latch & SELECT) == SELECT)
+            {
                 // show entire description
                 ClearScreen(settings.bgcolor);
                 putText(0, 0, desc, settings.fgcolor, settings.bgcolor, true);
@@ -922,7 +1091,6 @@ bool showartwork(uint32_t crc)
         Frens::f_free(desc);
     }
     return startGame;
-
 }
 static void showLoadingScreen()
 {
@@ -1080,7 +1248,7 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
     char curdir[FF_MAX_LFN];
 
     strcpy(emulator, emulatorType);
-
+    artworkEnabled = isArtWorkEnabled();
 #if !HSTX
     int margintop = dvi_->getBlankSettings().top;
     int marginbottom = dvi_->getBlankSettings().bottom;
@@ -1283,7 +1451,7 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
             }
             else if ((PAD1_Latch & START) == START && ((PAD1_Latch & SELECT) != SELECT))
             {
-#if  0
+#if 0
                 showLoadingScreen();
                 // reboot and start emulator with currently loaded game
                 // Create a file /START indicating not to reflash the already flashed game
@@ -1337,7 +1505,7 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
                 if (!entries[index].IsDirectory && selectedRomOrFolder)
                 {
                     fr = my_getcwd(curdir, sizeof(curdir)); // f_getcwd(curdir, sizeof(curdir));
-                    //printf("Current dir: %s\n", curdir);
+                    // printf("Current dir: %s\n", curdir);
                     uint32_t crc = GetCRCOfRomFile(curdir, selectedRomOrFolder, rompath);
                     startGame = showartwork(crc);
                     displayRoms(romlister, settings.firstVisibleRowINDEX);
@@ -1347,7 +1515,7 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
             }
             else if (startGame || ((PAD1_Latch & A) == A && selectedRomOrFolder))
             {
-                if (entries[index].IsDirectory && ! startGame)
+                if (entries[index].IsDirectory && !startGame)
                 {
                     romlister.list(selectedRomOrFolder);
                     settings.firstVisibleRowINDEX = 0;
