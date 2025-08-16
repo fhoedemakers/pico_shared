@@ -203,6 +203,7 @@ void RomSelect_PadState(DWORD *pdwPad1, bool ignorepushed = false)
             }
             printf("fgcolor: %d\n", settings.fgcolor);
             resetColors(prevFgColor, prevBgColor);
+            v = 0;
         }
         else if (pushed & DOWN)
         {
@@ -213,6 +214,7 @@ void RomSelect_PadState(DWORD *pdwPad1, bool ignorepushed = false)
             }
             printf("fgcolor: %d\n", settings.fgcolor);
             resetColors(prevFgColor, prevBgColor);
+            v = 0;
         }
         else if (pushed & LEFT)
         {
@@ -223,6 +225,7 @@ void RomSelect_PadState(DWORD *pdwPad1, bool ignorepushed = false)
             }
             printf("bgcolor: %d\n", settings.bgcolor);
             resetColors(prevFgColor, prevBgColor);
+            v = 0;
         }
         else if (pushed & RIGHT)
         {
@@ -233,11 +236,13 @@ void RomSelect_PadState(DWORD *pdwPad1, bool ignorepushed = false)
             }
             printf("bgcolor: %d\n", settings.bgcolor);
             resetColors(prevFgColor, prevBgColor);
+            v = 0;
         }
         else if (pushed & A)
         {
             printf("Saving colors to settings file.\n");
             Frens::savesettings();
+            v = 0;
         }
         else if (pushed & B)
         {
@@ -247,9 +252,10 @@ void RomSelect_PadState(DWORD *pdwPad1, bool ignorepushed = false)
             settings.bgcolor = DEFAULT_BGCOLOR;
             resetColors(prevFgColor, prevBgColor);
             Frens::savesettings();
+            v = 0;
         }
 
-        v = 0;
+        //v = 0;
     }
 
     if (pushed || longpressTreshold > LONG_PRESS_TRESHOLD)
@@ -744,7 +750,7 @@ void __not_in_flash_func(processMenuScanLine)(int line, uint8_t *framebuffer, ui
 #define ARTWORKFILE "/metadata/%s/images/%d/%c/%s.555"
 #endif
 #define METADDATAFILE "/metadata/%s/descr/%c/%s.txt"
-#define DESC_SIZE 512
+#define DESC_SIZE 1024
 void showartwork(uint32_t crc)
 {
 
@@ -884,13 +890,22 @@ void showartwork(uint32_t crc)
     //putText(firstCharColumnIndex, 9, CRC, settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex);
     // putText(firstCharColumnIndex, 9, rating, settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex);
     // putText(firstCharColumnIndex, 8, desc, settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex);
+    bool skipImage = false;
     while (true)
     {
         auto frameCount = Menu_LoadFrame();
-        DrawScreen(-1, width, height, imagebuffer);
+        DrawScreen(-1, width, height, (skipImage ? nullptr : imagebuffer)  );
         RomSelect_PadState(&PAD1_Latch);
         if (PAD1_Latch > 0)
         {
+            printf("PAD1_Latch: %08X\n", PAD1_Latch);
+            if ((PAD1_Latch & SELECT) == SELECT) {
+                // show entire description
+                ClearScreen(settings.bgcolor);
+                putText(0, 0, desc, settings.fgcolor, settings.bgcolor, true);
+                skipImage = true;
+                continue;
+            }
             break;
         }
     }
