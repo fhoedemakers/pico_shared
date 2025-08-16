@@ -820,7 +820,7 @@ void screenSaver()
     FRESULT fr;
     uint8_t *buffer = nullptr;
     bool first = true;
-    int16_t width, height;
+    int16_t width = 0, height = 0;
     uint16_t *imagebuffer = nullptr;
     int imagex = -1, imagey = -1;
     while (true)
