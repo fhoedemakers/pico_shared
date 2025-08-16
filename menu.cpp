@@ -772,15 +772,13 @@ bool showartwork(uint32_t crc)
     char *metadatabuffer;
     snprintf(CRC, sizeof(CRC), "%08X", crc);
     snprintf(PATH, sizeof(PATH), ARTWORKFILE, emulator, 160, CRC[0], CRC);
-    // sprintf(line, "Showing artwork for CRC: %08X", crc);
-    // printf("%s\n", line);
-    printf("Path: %s\n", PATH);
+   
     fr = f_open(&fil, PATH, FA_READ);
     FSIZE_t fsize;
     if (fr == FR_OK)
     {
         fsize = f_size(&fil);
-        printf("Reading %s, size: %d bytes\n", PATH, fsize);
+        //printf("Reading %s, size: %d bytes\n", PATH, fsize);
         buffer = (uint8_t *)Frens::f_malloc(fsize);
         size_t r;
         fr = f_read(&fil, buffer, fsize, &r);
@@ -802,10 +800,10 @@ bool showartwork(uint32_t crc)
     // next two bytes is height
     int16_t height = buffer ? *((uint16_t *)(buffer + 2)) : 0;
     uint16_t *imagebuffer = buffer ? (uint16_t *)(buffer + 4) : nullptr;
-   
+
     printf("Image size: %d x %d pixels\n", width, height);
     snprintf(PATH, sizeof(PATH), METADDATAFILE, emulator, CRC[0], CRC);
-    printf("Metadata file: %s\n", PATH);
+    //printf("Metadata file: %s\n", PATH);
     fr = f_open(&fil, PATH, FA_READ);
     if (fr == FR_OK)
     {
@@ -821,7 +819,6 @@ bool showartwork(uint32_t crc)
             metadatabuffer = nullptr;
         }
         metadatabuffer[fsize] = '\0';
-        printf("%s\n", metadatabuffer);
         f_close(&fil);
     } else {
         printf("Error opening %s: %d\n", PATH, fr);
@@ -833,7 +830,7 @@ bool showartwork(uint32_t crc)
         printf("No metadata or image found for CRC: %s\n", CRC);
         return false;
     }
-    gamename[0] = desc[0] = releaseDate[0] = developer[0] = genre[0] = players[0] = '\0';
+    gamename[0] = desc[0] = releaseDate[0] = developer[0] = genre[0] = rating[0] = players[0] = '\0';
     // extract the tags:
     if (metadatabuffer)
     {
@@ -844,6 +841,7 @@ bool showartwork(uint32_t crc)
         Frens::get_tag_text(metadatabuffer, "desc", desc, DESC_SIZE * sizeof(char));
         Frens::get_tag_text(metadatabuffer, "rating", rating, sizeof(rating));
         Frens::get_tag_text(metadatabuffer, "players", players, sizeof(players));
+    #if 0
         printf("Game name: %s\n", gamename);
         printf("Release date: %s\n", releaseDate);
         printf("Developer: %s\n", developer);
@@ -851,6 +849,7 @@ bool showartwork(uint32_t crc)
         printf("Rating: %s\n", rating);
         printf("Players: %s\n", players);
         printf("Description: %s\n", desc);
+    #endif
         stars = (int)(rating[0] - '0') * 10 + (int)(rating[2] - '0'); // convert first character to int
         if (stars < 0 || stars > 10)
         {
@@ -867,8 +866,7 @@ bool showartwork(uint32_t crc)
     {
         snprintf(info, sizeof(info), "%c%c-%c%c%c%c", releaseDate[4], releaseDate[5], releaseDate[0], releaseDate[1], releaseDate[2], releaseDate[3]);
     }
-    printf("Release date: %s\n", releaseDate);
-    // putText(0, 0, line, settings.fgcolor, settings.bgcolor);
+    // printf("Release date: %s\n", releaseDate);
     putText(0, height == 0 ? 9 : 20, desc, settings.fgcolor, settings.bgcolor, true);
     auto firstCharColumnIndex = ((width % SCREENWIDTH) / FONT_CHAR_WIDTH) + 1;
     putText(firstCharColumnIndex, 0, gamename, settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex);
@@ -888,9 +886,6 @@ bool showartwork(uint32_t crc)
            putText(firstCharColumnIndex + 8 + i, 12, "*", settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex + 7 + i);
        }    
     }
-    //putText(firstCharColumnIndex, 9, CRC, settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex);
-    // putText(firstCharColumnIndex, 9, rating, settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex);
-    // putText(firstCharColumnIndex, 8, desc, settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex);
     bool skipImage = false;
     while (true)
     {
@@ -899,7 +894,6 @@ bool showartwork(uint32_t crc)
         RomSelect_PadState(&PAD1_Latch);
         if (PAD1_Latch > 0)
         {
-            printf("PAD1_Latch: %08X\n", PAD1_Latch);
             if ((PAD1_Latch & SELECT) == SELECT) {
                 // show entire description
                 ClearScreen(settings.bgcolor);
@@ -1343,7 +1337,7 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
                 if (!entries[index].IsDirectory && selectedRomOrFolder)
                 {
                     fr = my_getcwd(curdir, sizeof(curdir)); // f_getcwd(curdir, sizeof(curdir));
-                    printf("Current dir: %s\n", curdir);
+                    //printf("Current dir: %s\n", curdir);
                     uint32_t crc = GetCRCOfRomFile(curdir, selectedRomOrFolder, rompath);
                     startGame = showartwork(crc);
                     displayRoms(romlister, settings.firstVisibleRowINDEX);
