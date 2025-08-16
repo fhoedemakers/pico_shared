@@ -751,7 +751,7 @@ void __not_in_flash_func(processMenuScanLine)(int line, uint8_t *framebuffer, ui
 #endif
 #define METADDATAFILE "/metadata/%s/descr/%c/%s.txt"
 #define DESC_SIZE 1024
-void showartwork(uint32_t crc)
+bool showartwork(uint32_t crc)
 {
 
     char info[SCREEN_COLS + 1];
@@ -765,6 +765,7 @@ void showartwork(uint32_t crc)
     char CRC[9];
     char *desc = (char *)Frens::f_malloc(DESC_SIZE); // preserve stack
     int stars = -1;
+    bool startGame = false;
     FIL fil;
     FRESULT fr;
     uint8_t *buffer = nullptr;
@@ -830,7 +831,7 @@ void showartwork(uint32_t crc)
     {
         // no metadata and no image, nothing to show
         printf("No metadata or image found for CRC: %s\n", CRC);
-        return;
+        return false;
     }
     gamename[0] = desc[0] = releaseDate[0] = developer[0] = genre[0] = players[0] = '\0';
     // extract the tags:
@@ -906,6 +907,11 @@ void showartwork(uint32_t crc)
                 skipImage = true;
                 continue;
             }
+            if ((PAD1_Latch & START) == START || (PAD1_Latch & A) == A)
+            {
+                printf("Starting game with CRC: %s\n", CRC);
+                startGame = true;
+            }
             break;
         }
     }
@@ -921,6 +927,7 @@ void showartwork(uint32_t crc)
     {
         Frens::f_free(desc);
     }
+    return startGame;
 
 }
 static void showLoadingScreen()
@@ -1133,6 +1140,7 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
     }
     romlister.list(settings.currentDir);
     displayRoms(romlister, settings.firstVisibleRowINDEX);
+    bool startGame = false;
     while (1)
     {
 
@@ -1148,7 +1156,7 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
             resetScreenSaver = false;
             totalFrames = frameCount;
         }
-        if (PAD1_Latch > 0)
+        if (PAD1_Latch > 0 || startGame)
         {
             // reset horizontal scroll of highlighted row
             settings.horzontalScrollIndex = 0;
@@ -1337,15 +1345,15 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
                     fr = my_getcwd(curdir, sizeof(curdir)); // f_getcwd(curdir, sizeof(curdir));
                     printf("Current dir: %s\n", curdir);
                     uint32_t crc = GetCRCOfRomFile(curdir, selectedRomOrFolder, rompath);
-                    showartwork(crc);
+                    startGame = showartwork(crc);
                     displayRoms(romlister, settings.firstVisibleRowINDEX);
                 }
 
 #endif
             }
-            else if ((PAD1_Latch & A) == A && selectedRomOrFolder)
+            else if (startGame || ((PAD1_Latch & A) == A && selectedRomOrFolder))
             {
-                if (entries[index].IsDirectory)
+                if (entries[index].IsDirectory && ! startGame)
                 {
                     romlister.list(selectedRomOrFolder);
                     settings.firstVisibleRowINDEX = 0;
