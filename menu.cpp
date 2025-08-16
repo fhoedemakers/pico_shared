@@ -755,9 +755,10 @@ void showartwork(uint32_t crc)
     char developer[64];   // Nintendo
     char genre[64];       // Platform-Platform / Run & Jump
     char rating[4];       // 0.0 0.1 0.2 - 1.0
+    char players[4]; // 1-2 players
     char CRC[9];
     char *desc = (char *)Frens::f_malloc(DESC_SIZE); // preserve stack
-
+    int stars = -1;
     FIL fil;
     FRESULT fr;
     uint8_t *buffer = nullptr;
@@ -819,7 +820,13 @@ void showartwork(uint32_t crc)
         printf("Error opening %s: %d\n", PATH, fr);
         metadatabuffer = nullptr;
     }
-    gamename[0] = desc[0] = releaseDate[0] = developer[0] = genre[0] = '\0';
+    if (!metadatabuffer && !buffer)
+    {
+        // no metadata and no image, nothing to show
+        printf("No metadata or image found for CRC: %s\n", CRC);
+        return;
+    }
+    gamename[0] = desc[0] = releaseDate[0] = developer[0] = genre[0] = players[0] = '\0';
     // extract the tags:
     if (metadatabuffer)
     {
@@ -829,13 +836,19 @@ void showartwork(uint32_t crc)
         Frens::get_tag_text(metadatabuffer, "genre", genre, sizeof(genre));
         Frens::get_tag_text(metadatabuffer, "desc", desc, DESC_SIZE * sizeof(char));
         Frens::get_tag_text(metadatabuffer, "rating", rating, sizeof(rating));
+        Frens::get_tag_text(metadatabuffer, "players", players, sizeof(players));
         printf("Game name: %s\n", gamename);
         printf("Release date: %s\n", releaseDate);
         printf("Developer: %s\n", developer);
         printf("Genre: %s\n", genre);
         printf("Rating: %s\n", rating);
+        printf("Players: %s\n", players);
         printf("Description: %s\n", desc);
-       
+        stars = (int)(rating[0] - '0') * 10 + (int)(rating[2] - '0'); // convert first character to int
+        if (stars < 0 || stars > 10)
+        {
+            stars = -1; // invalid rating
+        }   
     }
     DWORD PAD1_Latch;
     ClearScreen(settings.bgcolor);
@@ -852,10 +865,23 @@ void showartwork(uint32_t crc)
     putText(0, height == 0 ? 9 : 20, desc, settings.fgcolor, settings.bgcolor, true);
     auto firstCharColumnIndex = ((width % SCREENWIDTH) / FONT_CHAR_WIDTH) + 1;
     putText(firstCharColumnIndex, 0, gamename, settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex);
-    putText(firstCharColumnIndex, 2, developer, settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex);
-    putText(firstCharColumnIndex, 4, genre, settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex);
-    putText(firstCharColumnIndex, 7, info, settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex);
-    putText(firstCharColumnIndex, 9, CRC, settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex);
+    putText(firstCharColumnIndex, 3, "Genre:", settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex);
+    putText(firstCharColumnIndex + 7, 3, genre, settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex + 7);
+    putText(firstCharColumnIndex, 6, "By:", settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex);
+    putText(firstCharColumnIndex + 4 , 6, developer, settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex + 4);
+    putText(firstCharColumnIndex, 8, "Released:", settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex);
+    putText(firstCharColumnIndex + 10, 8, info, settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex);
+    putText(firstCharColumnIndex, 10, "Player(s):", settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex);
+    putText(firstCharColumnIndex + 11, 10, players, settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex + 11);
+    if (stars >= 0)
+    {
+       putText(firstCharColumnIndex, 12, "Rating:", settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex);
+       for (int i=0; i < (stars >> 1); i++)
+       {
+           putText(firstCharColumnIndex + 8 + i, 12, "*", settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex + 7 + i);
+       }    
+    }
+    //putText(firstCharColumnIndex, 9, CRC, settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex);
     // putText(firstCharColumnIndex, 9, rating, settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex);
     // putText(firstCharColumnIndex, 8, desc, settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex);
     while (true)
