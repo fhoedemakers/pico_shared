@@ -570,7 +570,7 @@ namespace Frens
         {
             PicoPlusPsram &psram_ = PicoPlusPsram::getInstance();
             size_t uFreeing = psram_.GetSize(pMem);
-            printf("Freeing %zu bytes from PSRAM\n", uFreeing);
+            printf("Freeing %zu bytes from PSRAM at %p\n", uFreeing, pMem);
             psram_.Free(pMem);
             return;
         }
