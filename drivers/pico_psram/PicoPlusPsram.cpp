@@ -106,7 +106,10 @@ size_t __no_inline_not_in_flash_func(PicoPlusPsram::Detect)(void)
     return psram_size;
 }
 
-size_t __no_inline_not_in_flash_func(PicoPlusPsram::Init)(uint cs_pin) 
+
+// Does __no_inline_not_in_flash_func cause the hang after enabling direct mode? 
+//size_t __no_inline_not_in_flash_func(PicoPlusPsram::Init)(uint cs_pin) 
+size_t __not_in_flash_func(PicoPlusPsram::Init)(uint cs_pin) 
 {
     if (cs_pin == 0) {
         return 0; // Invalid CS pin
