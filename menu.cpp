@@ -830,8 +830,8 @@ void screenSaverWithArt()
     WORD frameCount = 0;
 
     char fld = (char)(rand() % 15);
-    char PATH[FF_MAX_LFN + 1];
-    char CHOSEN[FF_MAX_LFN + 1];
+    char *PATH = nullptr;
+    char *CHOSEN = nullptr;
     FIL fil;
     FRESULT fr;
     uint8_t *buffer = nullptr;
@@ -840,7 +840,8 @@ void screenSaverWithArt()
     uint16_t *imagebuffer = nullptr;
     int imagex = 0;
     int imagey = 0;
-
+    PATH = (char *)Frens::f_malloc(FF_MAX_LFN + 1);
+    CHOSEN = (char *)Frens::f_malloc(FF_MAX_LFN + 1);
     // set speed
     int dx = 1; // (rand() % 2) + 1;
     int dy = 1; // (rand() % 2) + 1;
@@ -864,9 +865,9 @@ void screenSaverWithArt()
             ClearScreen(settings.bgcolor);
 
             fld = (char)(rand() % 15);
-            snprintf(PATH, sizeof(PATH), "/metadata/%s/images/160/%X", emulator, fld);
+            snprintf(PATH, (FF_MAX_LFN + 1) * sizeof(char), "/metadata/%s/images/160/%X", emulator, fld);
             printf("Scanning random folder: %s\n", PATH);
-            pick_random_file_fullpath(PATH, CHOSEN, sizeof(CHOSEN));
+            pick_random_file_fullpath(PATH, CHOSEN, (FF_MAX_LFN + 1) * sizeof(char));
             fr = f_open(&fil, CHOSEN, FA_READ);
             FSIZE_t fsize;
             if (fr == FR_OK)
@@ -889,6 +890,8 @@ void screenSaverWithArt()
             {
                 printf("Error opening %s: %d\n", PATH, fr);
                 printf("Screensaver not started\n");
+                Frens::f_free(PATH);
+                Frens::f_free(CHOSEN);
                 return;
             }
             // first two bytes of buffer is width
@@ -900,6 +903,10 @@ void screenSaverWithArt()
                 printf("Invalid image size: %d x %d pixels\n", width, height);
                 Frens::f_free(buffer);
                 buffer = nullptr;
+                Frens::f_free(PATH);
+                PATH = nullptr;
+                Frens::f_free(CHOSEN);
+                CHOSEN = nullptr;
                 return; // avoid endless loop of invalid images
             }
             imagebuffer = buffer ? (uint16_t *)(buffer + 4) : nullptr;
@@ -921,31 +928,39 @@ void screenSaverWithArt()
             {
                 Frens::f_free(buffer);
                 buffer = nullptr;
+                Frens::f_free(PATH);
+                PATH = nullptr;
+                Frens::f_free(CHOSEN);
+                CHOSEN = nullptr;
             }
             return;
         }
-        imagex += dx;
-        imagey += dy;
-        if (imagex <= 0)
+        if (frameCount % 2 == 0)
         {
-            imagex = 0;
-            dx = -dx; // reverse direction
-        }
-        else if (imagex >= SCREENWIDTH - width)
-        {
-            imagex = SCREENWIDTH - width;
-            dx = -dx; // reverse direction
-        }
+            imagex += dx;
+            imagey += dy;
 
-        if (imagey <= 0)
-        {
-            imagey = 0;
-            dy = -dy; // reverse direction
-        }
-        else if (imagey >= SCREENHEIGHT - height)
-        {
-            imagey = SCREENHEIGHT - height;
-            dy = -dy; // reverse direction
+            if (imagex <= 0)
+            {
+                imagex = 0;
+                dx = -dx; // reverse direction
+            }
+            else if (imagex >= SCREENWIDTH - width)
+            {
+                imagex = SCREENWIDTH - width;
+                dx = -dx; // reverse direction
+            }
+
+            if (imagey <= 0)
+            {
+                imagey = 0;
+                dy = -dy; // reverse direction
+            }
+            else if (imagey >= SCREENHEIGHT - height)
+            {
+                imagey = SCREENHEIGHT - height;
+                dy = -dy; // reverse direction
+            }
         }
     }
 }
@@ -979,11 +994,12 @@ void __not_in_flash_func(processMenuScanLine)(int line, uint8_t *framebuffer, ui
 // #define ARTFILERGB "/ART/output_RGB555.rgb"
 
 #define DESC_SIZE 1024
-bool showartwork(uint32_t crc)
+/// @brief Show artwork for a given game
+/// @param crc The CRC32 checksum of the game
+/// @return 0: Do nothing, 1: start game, 2: start screensaver
+int showartwork(uint32_t crc)
 {
-
     char info[SCREEN_COLS + 1];
-    char PATH[FF_MAX_LFN + 1];
     char gamename[64];
     char releaseDate[16]; // 19900212T000000
     char developer[64];   // Nintendo
@@ -992,15 +1008,17 @@ bool showartwork(uint32_t crc)
     char players[4];      // 1-2 players
     char CRC[9];
     char *desc = (char *)Frens::f_malloc(DESC_SIZE); // preserve stack
+    char *PATH = (char *)Frens::f_malloc(FF_MAX_LFN + 1);
     int stars = -1;
-    bool startGame = false;
+    int startGame = 0;
+    // bool startscreensaver = false;
     FIL fil;
     FRESULT fr;
     uint8_t *buffer = nullptr;
-    char *metadatabuffer;
+    char *metadatabuffer = nullptr;
     snprintf(CRC, sizeof(CRC), "%08X", crc);
-    snprintf(PATH, sizeof(PATH), ARTWORKFILE, emulator, 160, CRC[0], CRC);
-
+    snprintf(PATH, (FF_MAX_LFN + 1) * sizeof(char), ARTWORKFILE, emulator, 160, CRC[0], CRC);
+    // open the image
     fr = f_open(&fil, PATH, FA_READ);
     FSIZE_t fsize;
     if (fr == FR_OK)
@@ -1028,10 +1046,10 @@ bool showartwork(uint32_t crc)
     // next two bytes is height
     int16_t height = buffer ? *((uint16_t *)(buffer + 2)) : 0;
     uint16_t *imagebuffer = buffer ? (uint16_t *)(buffer + 4) : nullptr;
-
     printf("Image size: %d x %d pixels\n", width, height);
-    snprintf(PATH, sizeof(PATH), METADDATAFILE, emulator, CRC[0], CRC);
-    // printf("Metadata file: %s\n", PATH);
+
+    // open the file with metadata info
+    snprintf(PATH, (FF_MAX_LFN + 1) * sizeof(char), METADDATAFILE, emulator, CRC[0], CRC);
     fr = f_open(&fil, PATH, FA_READ);
     if (fr == FR_OK)
     {
@@ -1058,6 +1076,13 @@ bool showartwork(uint32_t crc)
     {
         // no metadata and no image, nothing to show
         printf("No metadata or image found for CRC: %s\n", CRC);
+        Frens::f_free(PATH);
+        Frens::f_free(desc);
+        if (buffer)
+        {
+            Frens::f_free(buffer);
+            buffer = nullptr;
+        }
         return false;
     }
     gamename[0] = desc[0] = releaseDate[0] = developer[0] = genre[0] = rating[0] = players[0] = '\0';
@@ -1117,9 +1142,14 @@ bool showartwork(uint32_t crc)
         }
     }
     bool skipImage = false;
+    int totalframes = -1;
     while (true)
     {
         auto frameCount = Menu_LoadFrame();
+        if (totalframes == -1)
+        {
+            totalframes = frameCount;
+        }
         DrawScreen(-1, width, height, (skipImage ? nullptr : imagebuffer));
         RomSelect_PadState(&PAD1_Latch);
         if (PAD1_Latch > 0)
@@ -1130,13 +1160,21 @@ bool showartwork(uint32_t crc)
                 ClearScreen(settings.bgcolor);
                 putText(0, 0, desc, settings.fgcolor, settings.bgcolor, true);
                 skipImage = true;
+                totalframes = frameCount; // reset totalframes to current frame count
                 continue;
             }
             if ((PAD1_Latch & START) == START || (PAD1_Latch & A) == A)
             {
                 printf("Starting game with CRC: %s\n", CRC);
-                startGame = true;
+                startGame = 1;
             }
+            break;
+        }
+        if (frameCount - totalframes > 1600)
+        {
+            // if no input for 1600 frames, start screensaver
+            // startscreensaver = true;
+            startGame = 2;
             break;
         }
     }
@@ -1152,6 +1190,16 @@ bool showartwork(uint32_t crc)
     {
         Frens::f_free(desc);
     }
+    if (PATH)
+    {
+        Frens::f_free(PATH);
+    }
+
+    // occupies too much stack and crashes, return from call and let the caller
+    // start the screensaver.
+    // if (startscreensaver) {
+    //     screenSaver();
+    // }
     return startGame;
 }
 static void showLoadingScreen()
@@ -1569,7 +1617,21 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
                     fr = my_getcwd(curdir, sizeof(curdir)); // f_getcwd(curdir, sizeof(curdir));
                     // printf("Current dir: %s\n", curdir);
                     uint32_t crc = GetCRCOfRomFile(curdir, selectedRomOrFolder, rompath);
-                    startGame = showartwork(crc);
+                    int startAction = showartwork(crc);
+                    switch (startAction)
+                    {
+                    case 0:
+                        /* code */
+                        break;
+                    case 1:
+                        startGame = true;
+                        break;
+                    case 2:
+                        screenSaver();
+                        break;
+                    default:
+                        break;
+                    }
                     displayRoms(romlister, settings.firstVisibleRowINDEX);
                 }
 
