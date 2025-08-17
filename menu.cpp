@@ -137,7 +137,7 @@ static bool isArtWorkEnabled()
 }
 int Menu_LoadFrame()
 {
-    Frens::PaceFrames60fps(false);
+    Frens::waitForVSync();
 #if NES_PIN_CLK != -1
     nespad_read_start();
 #endif
@@ -425,17 +425,18 @@ void drawline(int scanline, int selectedRow, int w = 0, int h = 0, uint16_t *ima
     }
     else
     {
-        auto offset = 0;
+      
         auto b = dvi_->getLineBuffer();
+        auto offset = 0;
         WorkLineRom = b->data();
         bool validImage = (imagebuffer != nullptr) && (w > 0 && w <= 320 && h > 0 && h <= 240);
-        if (validImage )
+        if (validImage)
         {
             memset(WorkLineRom, 0, SCREENWIDTH * sizeof(WORD));
             if (scanline >= imagey && scanline < imagey + h)
             {
-                //printf("Drawing image at scanline %d, imagey %d, h %d imagey + h %d\n", scanline, imagey, h, imagey + h);
-                // copy image row into worklinerom
+                // printf("Drawing image at scanline %d, imagey %d, h %d imagey + h %d\n", scanline, imagey, h, imagey + h);
+                //  copy image row into worklinerom
                 auto rowOffset = (scanline - imagey) * w;
                 memcpy(WorkLineRom + imagex, imagebuffer + rowOffset, w * sizeof(uint16_t));
                 offset = w;
@@ -453,16 +454,23 @@ void drawline(int scanline, int selectedRow, int w = 0, int h = 0, uint16_t *ima
     auto offset = 0;
     // overlay with image
     // Image is raw 16 bit RGB555 w width, h height, corresponding row of pixels must be copied into worklinerom
-    bool validImage = (imagebuffer != nullptr) && (w > 0 && w <= 320 && h > 0 && h <= 240);
-    if (validImage && scanline < h)
+    bool validImage = (imagebuffer != nullptr) && (w > 0 && w <= SCREENWIDTH && h > 0 && h <= SCREENHEIGHT);
+    if (validImage)
     {
-        // copy image row into worklinerom
-        auto rowOffset = scanline * w;
-        memcpy(WorkLineRom, imagebuffer + rowOffset, w * sizeof(uint16_t));
-
-        offset = w;
+        memset(WorkLineRom, 0, SCREENWIDTH * sizeof(WORD));
+        if (scanline >= imagey && scanline < imagey + h)
+        {
+            // printf("Drawing image at scanline %d, imagey %d, h %d imagey + h %d\n", scanline, imagey, h, imagey + h);
+            //  copy image row into worklinerom
+            auto rowOffset = (scanline - imagey) * w;
+            memcpy(WorkLineRom + imagex, imagebuffer + rowOffset, w * sizeof(uint16_t));
+            offset = w;
+        }
     }
-    RomSelect_DrawLine(scanline, selectedRow, offset);
+    if (imagex == 0 && imagey == 0)
+    {
+        RomSelect_DrawLine(scanline, selectedRow, offset);
+    }
 
 #endif
 }
@@ -808,10 +816,34 @@ static FRESULT pick_random_file_fullpath(const char *dirpath, char *out_path, si
     f_closedir(&dir);
     return (file_count > 0) ? FR_OK : FR_NO_FILE;
 }
-void screenSaver()
+
+void screenSaverWithBlocks()
 {
     DWORD PAD1_Latch;
     WORD frameCount;
+    while (true)
+    {
+        frameCount = Menu_LoadFrame();
+        DrawScreen(-1);
+        RomSelect_PadState(&PAD1_Latch);
+        if (PAD1_Latch > 0)
+        {
+            return;
+        }
+        if ((frameCount % 3) == 0)
+        {
+            auto color = rand() % 63;
+            auto row = rand() % SCREEN_ROWS;
+            auto column = rand() % SCREEN_COLS;
+            putText(column, row, " ", color, color);
+        }
+    }
+}
+
+void screenSaverWithArt()
+{
+    DWORD PAD1_Latch;
+    WORD frameCount = 0;
 
     char fld = (char)(rand() % 15);
     char PATH[FF_MAX_LFN + 1];
@@ -822,16 +854,74 @@ void screenSaver()
     bool first = true;
     int16_t width = 0, height = 0;
     uint16_t *imagebuffer = nullptr;
-    int imagex = -1, imagey = -1;
+    int imagex = 0;
+    int imagey = 0;
+
+    // set speed
+    int dx = 1; // (rand() % 2) + 1;
+    int dy = 1; // (rand() % 2) + 1;
+    // set direction
+    if (rand() % 2)
+        dx = -dx;
+    if (rand() % 2)
+        dy = -dy;
+
     while (true)
     {
-        frameCount = Menu_LoadFrame();
-        // increase imagex every 30 frames
-        if ((imagex == -1 && imagey == -1) || (frameCount % 30) == 0)
+
+        // choose new file every 60 * 20 frames
+        if (first || (frameCount % (60 * 20)) == 0)
         {
-            imagex = rand() % (320 - width);
-            imagey = rand() % (240 - height);
+            if (buffer)
+            {
+                Frens::f_free(buffer);
+                buffer = nullptr;
+            }
+            ClearScreen(settings.bgcolor);
+
+            fld = (char)(rand() % 15);
+            snprintf(PATH, sizeof(PATH), "/metadata/%s/images/160/%X", emulator, fld);
+            printf("Scanning random folder: %s\n", PATH);
+            pick_random_file_fullpath(PATH, CHOSEN, sizeof(CHOSEN));
+            fr = f_open(&fil, CHOSEN, FA_READ);
+            FSIZE_t fsize;
+            if (fr == FR_OK)
+            {
+                fsize = f_size(&fil);
+                // printf("Reading %s, size: %d bytes\n", PATH, fsize);
+                buffer = (uint8_t *)Frens::f_malloc(fsize);
+                size_t r;
+                fr = f_read(&fil, buffer, fsize, &r);
+                if (fr != FR_OK || r != fsize)
+                {
+                    printf("Error reading %s: %d, read %d bytes\n", PATH, fr, r);
+                    Frens::f_free(buffer);
+                    buffer = nullptr;
+                }
+
+                f_close(&fil);
+            }
+            else
+            {
+                printf("Error opening %s: %d\n", PATH, fr);
+                printf("Screensaver not started\n");
+                return;
+            }
+            // first two bytes of buffer is width
+            width = buffer ? *((uint16_t *)buffer) : 0;
+            // next two bytes is height
+            height = buffer ? *((uint16_t *)(buffer + 2)) : 0;
+            imagebuffer = buffer ? (uint16_t *)(buffer + 4) : nullptr;
+            if (first)
+            {
+                // if first time, set imagex and imagey to random position
+                imagex = rand() % (SCREENWIDTH - width + 1);
+                imagey = rand() % (SCREENHEIGHT - height + 1);
+            }
+            first = false;
         }
+        Menu_LoadFrame();
+        frameCount++;
         DrawScreen(-1, width, height, imagebuffer, imagex, imagey);
         RomSelect_PadState(&PAD1_Latch);
         if (PAD1_Latch > 0)
@@ -843,63 +933,44 @@ void screenSaver()
             }
             return;
         }
-        if (!artworkEnabled)
+        imagex += dx;
+        imagey += dy;
+        if (imagex <= 0)
         {
-            if ((frameCount % 3) == 0)
-            {
-                auto color = rand() % 63;
-                auto row = rand() % SCREEN_ROWS;
-                auto column = rand() % SCREEN_COLS;
-                putText(column, row, " ", color, color);
-            }
+            imagex = 0;
+            dx = -dx; // reverse direction
         }
-        else
+        else if (imagex >= SCREENWIDTH - width)
         {
-            // choose new file every 60 * 30 frames
-            if (first || (frameCount % (60 * 30)) == 0)
-            {
-                if (buffer)
-                {
-                    Frens::f_free(buffer);
-                    buffer = nullptr;
-                }
-                ClearScreen(settings.bgcolor);
-                first = false;
-                fld = (char)(rand() % 15);
-                snprintf(PATH, sizeof(PATH), "/metadata/%s/images/160/%X", emulator, fld);
-                printf("Scanning folder: %s\n", PATH);
-                pick_random_file_fullpath(PATH, CHOSEN, sizeof(CHOSEN));
-                fr = f_open(&fil, CHOSEN, FA_READ);
-                FSIZE_t fsize;
-                if (fr == FR_OK)
-                {
-                    fsize = f_size(&fil);
-                    // printf("Reading %s, size: %d bytes\n", PATH, fsize);
-                    buffer = (uint8_t *)Frens::f_malloc(fsize);
-                    size_t r;
-                    fr = f_read(&fil, buffer, fsize, &r);
-                    if (fr != FR_OK || r != fsize)
-                    {
-                        printf("Error reading %s: %d, read %d bytes\n", PATH, fr, r);
-                        Frens::f_free(buffer);
-                        buffer = nullptr;
-                    }
+            imagex = SCREENWIDTH - width;
+            dx = -dx; // reverse direction
+        }
 
-                    f_close(&fil);
-                }
-                else
-                {
-                    printf("Error opening %s: %d\n", PATH, fr);
-                }
-                // first two bytes of buffer is width
-                width = buffer ? *((uint16_t *)buffer) : 0;
-                // next two bytes is height
-                height = buffer ? *((uint16_t *)(buffer + 2)) : 0;
-                imagebuffer = buffer ? (uint16_t *)(buffer + 4) : nullptr;
-            }
+        if (imagey <= 0)
+        {
+            imagey = 0;
+            dy = -dy; // reverse direction
+        }
+        else if (imagey >= SCREENHEIGHT - height)
+        {
+            imagey = SCREENHEIGHT - height;
+            dy = -dy; // reverse direction
         }
     }
 }
+
+void screenSaver()
+{
+    if (artworkEnabled)
+    {
+        screenSaverWithArt();
+    }
+    else
+    {
+        screenSaverWithBlocks();
+    }
+}
+
 #if !HSTX
 void __not_in_flash_func(processMenuScanLine)(int line, uint8_t *framebuffer, uint16_t *dvibuffer)
 {
