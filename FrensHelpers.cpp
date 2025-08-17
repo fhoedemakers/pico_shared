@@ -127,6 +127,16 @@ namespace Frens
         return 1 << rxbuf[3];
     }
 
+    /// @brief Wait for vertical sync
+    void waitForVSync()
+    {
+#if !HSTX
+        // no vsync here
+#else
+        hstx_waitForVSync();
+#endif
+    }
+
     /// @brief Poor way to pace frames to 60fps
     /// @param init
     void PaceFrames60fps(bool init)

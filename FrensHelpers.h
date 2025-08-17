@@ -113,7 +113,7 @@ namespace Frens
     void f_free(void *pMem);
     int GetUnUsedDMAChan(int startChannel);
     char *get_tag_text(const char *xml, const char *tag, char *buffer, size_t bufsize);
-    
+    void waitForVSync();
     //extern volatile ProcessScanLineFunction processScanLineFunction;
    
 } // namespace Frens
