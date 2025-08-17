@@ -580,21 +580,26 @@ void DrawScreen(int selectedRow, int w = 0, int h = 0, uint16_t *imagebuffer = n
         putText(1, SCREEN_ROWS - 1, s, settings.fgcolor, settings.bgcolor);
         if (strcmp(connectedGamePadName, "Dual Shock 4") == 0 || strcmp(connectedGamePadName, "Dual Sense") == 0 || strcmp(connectedGamePadName, "PSClassic") == 0)
         {
-            strcpy(s, "O Select, X Back");
+            strcpy(s, "O:Select X:Back");
         }
         else if (strcmp(connectedGamePadName, "XInput") == 0 || strncmp(connectedGamePadName, "Genesis", 7) == 0)
         {
-            strcpy(s, "B Select, A Back");
+            strcpy(s, "B:Select A:Back");
         }
         else if (strcmp(connectedGamePadName, "Keyboard") == 0)
         {
-            strcpy(s, "X, Select, Z Back");
+            strcpy(s, "X:Select Z:Back");
         }
         else
         {
-            strcpy(s, "A Select, B Back");
+            strcpy(s, "A:Select B:Back");
         }
         putText(1, ENDROW + 2, s, settings.fgcolor, settings.bgcolor);
+        if (artworkEnabled)
+        {
+            strcpy(s, "START:Info");
+        }
+       putText(17, ENDROW + 2, s, settings.fgcolor, settings.bgcolor);
     }
 
     for (auto line = 0; line < 240; line++)
@@ -1141,6 +1146,9 @@ int showartwork(uint32_t crc)
             putText(firstCharColumnIndex + 8 + i, 12, "*", settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex + 7 + i);
         }
     }
+    putText(firstCharColumnIndex, 16, "SELECT: Full description", settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex);
+    putText(firstCharColumnIndex, 17, "START or A: Start game", settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex);
+    putText(firstCharColumnIndex, 18, "B: Back to rom list", settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex);
     bool skipImage = false;
     int totalframes = -1;
     while (true)
