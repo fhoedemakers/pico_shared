@@ -1178,9 +1178,9 @@ int showartwork(uint32_t crc)
             }
             break;
         }
-        if (frameCount - totalframes > 1600)
+        if (frameCount - totalframes > 3600)
         {
-            // if no input for 1600 frames, start screensaver
+            // if no input for 3600 frames, start screensaver
             // startscreensaver = true;
             startGame = 2;
             break;
@@ -1629,7 +1629,6 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
                     switch (startAction)
                     {
                     case 0:
-                        /* code */
                         break;
                     case 1:
                         startGame = true;
