@@ -119,9 +119,13 @@ static bool isArtWorkEnabled()
     FILINFO fi;
     char PATH[FF_MAX_LFN];
     bool exists = false;
+    PATH[0] = 0;
     if (strcmp(emulator, "NES") == 0)
     {
         sprintf(PATH, "/Metadata/%s/Images/320/D/D0E96F6B.444", emulator);
+    }
+    if (strlen(PATH) > 0)
+    {
         FRESULT res = f_stat(PATH, &fi);
         exists = (res == FR_OK);
         if (exists)
@@ -135,6 +139,7 @@ static bool isArtWorkEnabled()
     }
     return exists;
 }
+
 int Menu_LoadFrame()
 {
     Frens::waitForVSync();
@@ -422,38 +427,15 @@ void drawline(int scanline, int selectedRow, int w = 0, int h = 0, uint16_t *ima
     {
         WorkLineRom8 = &Frens::framebufferCore0[scanline * SCREENWIDTH];
         RomSelect_DrawLine(scanline, selectedRow);
+        return;
     }
-    else
-    {
-      
-        auto b = dvi_->getLineBuffer();
-        auto offset = 0;
-        WorkLineRom = b->data();
-        bool validImage = (imagebuffer != nullptr) && (w > 0 && w <= 320 && h > 0 && h <= 240);
-        if (validImage)
-        {
-            memset(WorkLineRom, 0, SCREENWIDTH * sizeof(WORD));
-            if (scanline >= imagey && scanline < imagey + h)
-            {
-                // printf("Drawing image at scanline %d, imagey %d, h %d imagey + h %d\n", scanline, imagey, h, imagey + h);
-                //  copy image row into worklinerom
-                auto rowOffset = (scanline - imagey) * w;
-                memcpy(WorkLineRom + imagex, imagebuffer + rowOffset, w * sizeof(uint16_t));
-                offset = w;
-            }
-        }
-        if (imagex == 0 && imagey == 0)
-        {
-            RomSelect_DrawLine(scanline, selectedRow, offset);
-        }
-
-        dvi_->setLineBuffer(scanline, b);
-    }
+    auto b = dvi_->getLineBuffer();
+    WorkLineRom = b->data();
 #else
     WorkLineRom = hstx_getlineFromFramebuffer(scanline);
+#endif
+
     auto offset = 0;
-    // overlay with image
-    // Image is raw 16 bit RGB555 w width, h height, corresponding row of pixels must be copied into worklinerom
     bool validImage = (imagebuffer != nullptr) && (w > 0 && w <= SCREENWIDTH && h > 0 && h <= SCREENHEIGHT);
     if (validImage)
     {
@@ -472,6 +454,8 @@ void drawline(int scanline, int selectedRow, int w = 0, int h = 0, uint16_t *ima
         RomSelect_DrawLine(scanline, selectedRow, offset);
     }
 
+#if !HSTX
+    dvi_->setLineBuffer(scanline, b);
 #endif
 }
 
@@ -911,6 +895,13 @@ void screenSaverWithArt()
             width = buffer ? *((uint16_t *)buffer) : 0;
             // next two bytes is height
             height = buffer ? *((uint16_t *)(buffer + 2)) : 0;
+            if (width <= 0 || width > SCREENWIDTH || height <= 0 || height > SCREENHEIGHT)
+            {
+                printf("Invalid image size: %d x %d pixels\n", width, height);
+                Frens::f_free(buffer);
+                buffer = nullptr;
+                return; // avoid endless loop of invalid images
+            }
             imagebuffer = buffer ? (uint16_t *)(buffer + 4) : nullptr;
             if (first)
             {
