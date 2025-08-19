@@ -442,8 +442,8 @@ static void tlv320_init()
 	setPage(0);
 	modifyRegister(0x43, 0x80, 0x80); // Headset Detect
 
-	// INT1 Control: enable INT1 (D7=1), set level mode (D6=0)
-	modifyRegister(0x30, 0xC0, 0x80); // D7=1 (enable), D6=0 (level mode)
+	// INT1 Control: enable INT1 (D7=1), set level mode (D6=0, disables button-press interrupt)
+	modifyRegister(0x30, 0xC0, 0x80); // D7=1 (enable INT1), D6=0 (level mode, no button interrupt)
 
 	modifyRegister(0x33, 0x3C, 0x14); // GPIO1
 
