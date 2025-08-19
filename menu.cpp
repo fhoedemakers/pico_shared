@@ -938,6 +938,7 @@ void screenSaverWithArt()
                 Frens::f_free(CHOSEN);
                 CHOSEN = nullptr;
             }
+            srand(time_us_32()); // Seed the random number generator for screensaver
             return;
         }
         if (frameCount % 2 == 0)
@@ -1418,6 +1419,7 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
         printf("Showing splash screen\n");
         showSplashScreen();
     }
+    srand(time_us_32()); // Seed the random number generator for screensaver
     romlister.list(settings.currentDir);
     displayRoms(romlister, settings.firstVisibleRowINDEX);
     bool startGame = false;

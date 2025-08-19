@@ -28,7 +28,6 @@ target_include_directories(pico_shared INTERFACE
 )
 target_link_libraries(pico_shared 
                       INTERFACE 
-                      pico_rand
                       pico_fatfs 
                       pico_audio_i2s 
                       lwmem 
