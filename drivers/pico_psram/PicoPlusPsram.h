@@ -1,7 +1,9 @@
 #pragma once
 #if PICO_RP2350
 #include "lwmem/lwmem.h"
-
+extern "C" {
+  int32_t SetupPsram(int psramCS);
+}
 class PicoPlusPsram
 {
   public:
