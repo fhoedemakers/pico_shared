@@ -21,7 +21,7 @@ PicoPlusPsram::PicoPlusPsram(void)
 #else
     m_uMemorySize = SetupPsram(PSRAM_CS_PIN);
 #endif
-    if (m_uMemorySize)
+    if (m_uMemorySize>0)
     {
         static lwmem_region_t regions[] =
             {
@@ -29,10 +29,12 @@ PicoPlusPsram::PicoPlusPsram(void)
                 {nullptr, 0}};
 
         lwmem_assignmem(regions);
+    } else {
+        m_uMemorySize = 0;
     }
 }
 #if 0
-// Old implementation
+// Old implementation causes intermittent signal trap in enable direct mode, PSRAM CS, clkdiv of 10.
 size_t __no_inline_not_in_flash_func(PicoPlusPsram::Detect)(void)
 {
     int psram_size = 0;
