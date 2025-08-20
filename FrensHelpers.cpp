@@ -4,6 +4,7 @@
 #include "pico.h"
 #include "pico/stdlib.h"
 #include "pico/multicore.h"
+#include "pico/rand.h"
 #include "hardware/flash.h"
 #include "hardware/watchdog.h"
 #include "util/exclusive_proc.h"
@@ -1240,6 +1241,7 @@ namespace Frens
         initVintageControllers(CPUFreqKHz);
         // TODO: DMA chan 1-3 are used for PIO0, chan 4-7 for PIO1, Assuming PIO1 is used for audio.
         EXT_AUDIO_SETUP(USE_I2S_AUDIO, DVIAUDIOFREQ, GetUnUsedDMAChan(4)); // Initialize external audio if needed
+        srand(get_rand_32()); // Seed the random number generator with a random value
         return ok;
     }
 #if !HSTX
