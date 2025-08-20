@@ -598,8 +598,9 @@ void DrawScreen(int selectedRow, int w = 0, int h = 0, uint16_t *imagebuffer = n
         if (artworkEnabled)
         {
             strcpy(s, "START:Info");
+             putText(17, ENDROW + 2, s, settings.fgcolor, settings.bgcolor);
         }
-       putText(17, ENDROW + 2, s, settings.fgcolor, settings.bgcolor);
+      
     }
 
     for (auto line = 0; line < 240; line++)
