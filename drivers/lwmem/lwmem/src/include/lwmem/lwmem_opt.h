@@ -29,7 +29,7 @@
  * This file is part of LwMEM - Lightweight dynamic memory manager library.
  *
  * Author:          Tilen MAJERLE <tilen@majerle.eu>
- * Version:         v2.1.0
+ * Version:         v2.2.3
  */
 #ifndef LWMEM_OPT_HDR_H
 #define LWMEM_OPT_HDR_H
@@ -82,7 +82,27 @@ extern "C" {
  *                  Usually alignment of `4` bytes fits to all processors.
  */
 #ifndef LWMEM_CFG_ALIGN_NUM
-#define LWMEM_CFG_ALIGN_NUM ((size_t)4)
+#define LWMEM_CFG_ALIGN_NUM 4
+#endif
+
+/**
+ * \brief           Enables `1` or disables `0` full memory management support.
+ * 
+ * When enabled (default config), library supports allocation, reallocation and freeing of the memory.
+ *  - Memory [c]allocation
+ *  - Memory reallocation
+ *  - Memory allocation in user defined memory regions
+ *  - Memory freeing
+ * 
+ * When disabled, library only supports allocation and does not provide any other service.
+ *  - Its purpose is for memory allocation at the start of firmware initialization only
+ * 
+ * \note            When disabled, statistics functionaltiy is not available
+ *                  and only one region is supported (for now, may be updated later).
+ *                  API to allocate memory remains the same as for full configuration.
+ */
+#ifndef LWMEM_CFG_FULL
+#define LWMEM_CFG_FULL 1
 #endif
 
 /**
