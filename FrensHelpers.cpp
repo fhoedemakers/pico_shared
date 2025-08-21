@@ -123,7 +123,9 @@ namespace Frens
     {
         uint8_t txbuf[STORAGE_CMD_TOTAL_BYTES] = {0x9f};
         uint8_t rxbuf[STORAGE_CMD_TOTAL_BYTES] = {0};
+        auto irq = save_and_disable_interrupts();
         flash_do_cmd(txbuf, rxbuf, STORAGE_CMD_TOTAL_BYTES);
+        restore_interrupts(irq);
 
         return 1 << rxbuf[3];
     }
