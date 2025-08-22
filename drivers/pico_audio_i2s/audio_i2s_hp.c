@@ -211,45 +211,48 @@ static volatile uint32_t last_irq_time;
 // Handle the GPIO callback for mute/unmute
 static void gpio_callback(uint gpio, uint32_t events)
 {
-	// No printfs in IRQs
+	// No printfs in IRQs (note: prints below are for diagnostics and can affect timing)
 	uint32_t now = to_ms_since_boot(get_absolute_time());
-	if (now - last_irq_time < 50)
-	{
+	if (now - last_irq_time < 50) {
 		return;
 	}
 	last_irq_time = now;
 
-	// Headphone detection via INT1/GPIO1 (GPIO23)
+	// Headphone detection via INT1/GPIO1 on GPIO23
 	if (gpio == PICO_AUDIO_I2S_INTERRUPT_PIN) {
-		if (events & GPIO_IRQ_EDGE_RISE) {
-			// Headphone inserted: mute speaker
+		uint8_t hs = readRegister(0x43);           // HSDETECT
+		bool connected = (hs & 0x30) != 0x00;      // bits [5:4]
+
+		// Clear latched interrupt sources by reading flag registers
+		(void)readRegister(0x2C); // INTR DAC FLAG
+		(void)readRegister(0x2D); // INTR ADC FLAG
+		(void)readRegister(0x2E); // INTR DAC FLAG2
+		(void)readRegister(0x2F); // INTR ADC FLAG2
+
+		if (connected) {
 			speakerMute();
 			speakerIsMuted = true;
-		}
-		if (events & GPIO_IRQ_EDGE_FALL) {
-			// Headphone removed: unmute speaker
+			printf("INT1: Headphone inserted (HSDETECT=0x%02x) -> mute speakers\n", hs);
+		} else {
 			speakerUnmute();
 			speakerIsMuted = false;
+			printf("INT1: Headphone removed (HSDETECT=0x%02x) -> unmute speakers\n", hs);
 		}
 		return;
 	}
 
 	// Button-based mute/unmute (legacy)
-	if (events & GPIO_IRQ_EDGE_RISE)
-	{
-		// printf("GPIO %d went HIGH\n", gpio);
+	if (events & GPIO_IRQ_EDGE_RISE) {
 		speakerIsMuted = !speakerIsMuted; // Toggle mute state
-		if (speakerIsMuted)
-		{
+		if (speakerIsMuted) {
 			speakerMute();
-		}
-		else
-		{
+			printf("Button: mute speakers\n");
+		} else {
 			speakerUnmute();
+			printf("Button: unmute speakers\n");
 		}
 	}
-	if (events & GPIO_IRQ_EDGE_FALL)
-	{
+	if (events & GPIO_IRQ_EDGE_FALL) {
 		// printf("GPIO %d went LOW\n", gpio);
 	}
 }
@@ -260,20 +263,18 @@ void setupHeadphoneDetectionInterrupt(int gpio, bool gpioisbutton)
 	speakerIsMuted = false; // Reset mute state on headphone detection setup
 	printf("Setting up headphone detection on GPIO %d, is_button=%d\n", gpio, gpioisbutton);
 	// Initialize the GPIO pin for headphone detection
-	if (gpioisbutton)
-	{
+	if (gpioisbutton) {
 		gpio_init(gpio);
 		gpio_set_dir(gpio, GPIO_IN);
 		gpio_pull_down(gpio);
 		gpio_set_irq_enabled_with_callback(gpio, GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL, true, &gpio_callback);
-	}
-	else
-	{
+	} else {
 		// INT1/GPIO1 from TLV320DAC3100, connected to RP2350 GPIO23
 		gpio_init(PICO_AUDIO_I2S_INTERRUPT_PIN);
 		gpio_set_dir(PICO_AUDIO_I2S_INTERRUPT_PIN, GPIO_IN);
-		gpio_pull_down(PICO_AUDIO_I2S_INTERRUPT_PIN);
-		gpio_set_irq_enabled_with_callback(PICO_AUDIO_I2S_INTERRUPT_PIN, GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL, true, &gpio_callback);
+		gpio_pull_down(PICO_AUDIO_I2S_INTERRUPT_PIN); // INT1 typically active-high
+		gpio_set_irq_enabled_with_callback(PICO_AUDIO_I2S_INTERRUPT_PIN,
+			GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL, true, &gpio_callback);
 		printf("Configured INT1/GPIO1 headphone detection on GPIO %d\n", PICO_AUDIO_I2S_INTERRUPT_PIN);
 	}
 }
@@ -438,14 +439,15 @@ static void tlv320_init()
 
 	// Headset and GPIO Config
 	setPage(1);
-	modifyRegister(0x2e, 0xFF, 0x0b);
+	modifyRegister(0x2e, 0xFF, 0x0b);   // MICBIAS etc. from reference script
 	setPage(0);
-	modifyRegister(0x43, 0x80, 0x80); // Headset Detect
+	modifyRegister(0x43, 0x80, 0x80);   // Enable Headset Detect (HSDETECT.D7=1)
 
-	// INT1 Control: enable INT1 (D7=1), set level mode (D6=0, disables button-press interrupt)
-	modifyRegister(0x30, 0xC0, 0x80); // D7=1 (enable INT1), D6=0 (level mode, no button interrupt)
+	// INT1 Control: enable INT1 (D7=1), level mode (D6=0)
+	modifyRegister(0x30, 0xC0, 0x80);
 
-	modifyRegister(0x33, 0x3C, 0x14); // GPIO1
+	// Route INT1 to GPIO1 pin
+	modifyRegister(0x33, 0x3C, 0x14);   // Set GPIO1 mode to INT1 output
 
 	// DAC Setup
 	modifyRegister(0x3F, 0xC0, 0xC0);
@@ -485,9 +487,33 @@ static void tlv320_init()
 
 	// Return to page 0
 	setPage(0);
+
+	// Ensure speaker state matches current jack presence BEFORE enabling GPIO IRQ
+	uint8_t hs0 = readRegister(0x43);                  // HSDETECT
+	bool hp_connected0 = (hs0 & 0x30) != 0x00;
+	// Clear any latched interrupt flags
+	(void)readRegister(0x2C);
+	(void)readRegister(0x2D);
+	(void)readRegister(0x2E);
+	(void)readRegister(0x2F);
+	if (hp_connected0) {
+		if (!speakerIsMuted) {
+			speakerMute();
+			speakerIsMuted = true;
+		}
+		printf("Init: Headphone detected (HSDETECT=0x%02x) -> mute speakers\n", hs0);
+	} else {
+		if (speakerIsMuted) {
+			speakerUnmute();
+		}
+		speakerIsMuted = false;
+		printf("Init: Headphone not detected (HSDETECT=0x%02x) -> unmute speakers\n", hs0);
+	}
+
 #if PICO_AUDIO_I2S_INTERRUPT_PIN != -1
 	setupHeadphoneDetectionInterrupt(PICO_AUDIO_I2S_INTERRUPT_PIN, PICO_AUDIO_I2S_INTERRUPT_IS_BUTTON);
 #endif
+
 	printf("Initialization complete!\n");
 
 	// Read all registers for verification
@@ -572,7 +598,12 @@ static void tlv320_init()
 }
 
 // Add defines for INT1/GPIO1 headphone detection
-#define TLV320_INT1_GPIO_PIN 23 // RP2350 GPIO23 connected to TLV320 INT1/GPIO1
+#ifndef PICO_AUDIO_I2S_INTERRUPT_PIN
+#define PICO_AUDIO_I2S_INTERRUPT_PIN 23   // RP2350 GPIO23 connected to TLV320 INT1/GPIO1
+#endif
+#ifndef PICO_AUDIO_I2S_INTERRUPT_IS_BUTTON
+#define PICO_AUDIO_I2S_INTERRUPT_IS_BUTTON 0
+#endif
 
 	// Headphone status check, not working for now
 #if 0
@@ -669,7 +700,7 @@ void __isr dma_handler()
 {
 	// Clear the interrupt
 	dma_hw->ints0 = 1u << audio_i2s.dma_chan;
-	// Advance read_index by block size
+	// Advance read_index to next block
 	read_index = (read_index + DMA_BLOCK_SIZE) % AUDIO_RING_SIZE;
 	// Check if we have enough data to continue DMA transfer
 	// If write_index is ahead of read_index, we have data to send
