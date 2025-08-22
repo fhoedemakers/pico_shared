@@ -29,54 +29,64 @@ static inline pio_sm_config nespad_program_get_default_config(uint offset) {
     return c;
 }
 
+#if defined(PICO_RP2350)
+  #define NES_NUM_PIOS 3
+#elif defined(PICO_RP2040)
+  #define NES_NUM_PIOS 2
+#else
+  #define NES_NUM_PIOS 2
+#endif
+
 static PIO pio[2];
 static int8_t sm[2] = {-1, -1};
 static bool second_pad = false;
+
+// Cache program once per PIO instance
+static int program_offset[NES_NUM_PIOS];      // valid only if program_added[i] is true
+static bool program_added[NES_NUM_PIOS] = {}; // default-initialized to false
+
 uint8_t nespad_states[2] = {0, 0};
 uint8_t nespad_state = 0;
 bool nespad_begin(uint8_t padnum, uint32_t cpu_khz, uint8_t clkPin, uint8_t dataPin,
                   uint8_t latPin, PIO _pio)
 {
-  if (padnum > 1) {
-    return false; // Only 2 pads supported
-  }
-  if ( padnum == 1 )  {
-    second_pad = true;
-  }
+  if (padnum > 1) return false;
+  if (padnum == 1) second_pad = true;
+
   pio[padnum] = _pio;
-  if (pio_can_add_program(pio[padnum], &nespad_program) &&
-      ((sm[padnum] = pio_claim_unused_sm(pio[padnum], true)) >= 0))
-  {
-    uint offset = pio_add_program(pio[padnum], &nespad_program);
-    pio_sm_config c = nespad_program_get_default_config(offset);
+  int pio_idx = pio_get_index(_pio);
 
-    sm_config_set_sideset_pins(&c, clkPin);
-    sm_config_set_in_pins(&c, dataPin);
-    sm_config_set_set_pins(&c, latPin, 1);
-    pio_gpio_init(pio[padnum], clkPin);
-    pio_gpio_init(pio[padnum], dataPin);
-    pio_gpio_init(pio[padnum], latPin);
-    gpio_set_pulls(dataPin, true, false); // Pull data high, 0xFF if unplugged
-    pio_sm_set_pindirs_with_mask(pio[padnum], sm[padnum],
-                                 (1 << clkPin) | (1 << latPin), // Outputs
-                                 (1 << clkPin) | (1 << dataPin) |
-                                     (1 << latPin)); // All pins
-    sm_config_set_in_shift(&c, true, true, 8);       // R shift, autopush @ 8 bits
+  // Claim an SM first
+  if ((sm[padnum] = pio_claim_unused_sm(pio[padnum], true)) < 0) return false;
 
-    sm_config_set_clkdiv_int_frac(&c, cpu_khz / 1000, 0); // 1 MHz clock
-
-    // IRQ is just a 'go' flag, don't assert a system interrupt
-    pio_set_irq0_source_enabled(
-        pio[padnum], (pio_interrupt_source)(pis_interrupt0 + sm[padnum]), false);
-
-    pio_sm_clear_fifos(pio[padnum], sm[padnum]);
-
-    pio_sm_init(pio[padnum], sm[padnum], offset, &c);
-    pio_sm_set_enabled(pio[padnum], sm[padnum], true);
-
-    return true; // Success
+  // Load program once per PIO instance
+  if (!program_added[pio_idx]) {
+    if (!pio_can_add_program(pio[padnum], &nespad_program)) return false;
+    program_offset[pio_idx] = pio_add_program(pio[padnum], &nespad_program);
+    program_added[pio_idx] = true;
   }
-  return false;
+  uint offset = (uint)program_offset[pio_idx];
+
+  pio_sm_config c = nespad_program_get_default_config(offset);
+  sm_config_set_sideset_pins(&c, clkPin);
+  sm_config_set_in_pins(&c, dataPin);
+  sm_config_set_set_pins(&c, latPin, 1);
+  pio_gpio_init(pio[padnum], clkPin);
+  pio_gpio_init(pio[padnum], dataPin);
+  pio_gpio_init(pio[padnum], latPin);
+  gpio_set_pulls(dataPin, true, false);
+  pio_sm_set_pindirs_with_mask(pio[padnum], sm[padnum],
+                               (1u << clkPin) | (1u << latPin),
+                               (1u << clkPin) | (1u << dataPin) | (1u << latPin));
+  sm_config_set_in_shift(&c, true, true, 8);
+  sm_config_set_clkdiv_int_frac(&c, cpu_khz / 1000, 0);
+
+  pio_set_irq0_source_enabled(pio[padnum], (pio_interrupt_source)(pis_interrupt0 + sm[padnum]), false);
+  pio_sm_clear_fifos(pio[padnum], sm[padnum]);
+
+  pio_sm_init(pio[padnum], sm[padnum], offset, &c);
+  pio_sm_set_enabled(pio[padnum], sm[padnum], true);
+  return true;
 }
 
 // Initiate nespad read. Non-blocking; result will be available in ~100 uS
