@@ -984,7 +984,8 @@ namespace Frens
         gpio_put(LED_GPIO_PIN, on);
 #elif defined(PICO_DEFAULT_LED_PIN)
         gpio_put(PICO_DEFAULT_LED_PIN, on);
-#elif defined(CYW43_WL_GPIO_LED_PIN)
+#elif defined(CYW43_WL_GPIO_LED_PIN) && ! USE_I2S_AUDIO
+        // Because of a conflict with the i2s audio, there is no led support when using i2s audio
         cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, on);
 #else
         // No LED pin defined
@@ -1012,8 +1013,9 @@ namespace Frens
         gpio_init(PICO_DEFAULT_LED_PIN);
         gpio_set_dir(PICO_DEFAULT_LED_PIN, GPIO_OUT);
         gpio_put(PICO_DEFAULT_LED_PIN, 1);
-#elif defined(CYW43_WL_GPIO_LED_PIN)
+#elif defined(CYW43_WL_GPIO_LED_PIN)  && ! USE_I2S_AUDIO
         // For Pico W devices we need to initialize the driver
+        // Because of a conflict with the i2s audio, there is no led support when using i2s audio
         return cyw43_arch_init();
 #endif
 #endif
