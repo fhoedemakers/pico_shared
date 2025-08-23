@@ -6,11 +6,14 @@
 #else
 #define HSTX 0
 #endif
-
+#define FRAMEBUFFERISPOSSIBLE ( !HSTX && PICO_RP2350 )
 #include <string>
 #include <algorithm>
 #include <memory>
 #include <pico/mutex.h>
+#include "ff.h"
+#include "ffwrappers.h"
+#include "tf_card.h"
 #include "crc32.h"
 #if !HSTX
 #include "dvi/dvi.h"
@@ -63,17 +66,18 @@ extern int abSwapped;      // defined in hid_app.cpp
 extern int isManta;        // defined in hid_app.cpp
 namespace Frens
 {
-#if !HSTX
-    extern uint8_t *framebuffer1;  // [320 * 240];
-    extern uint8_t *framebuffer2;  // [320 * 240];
-    extern uint8_t *framebufferCore0;
-    extern volatile bool framebuffer1_ready;
-    extern volatile bool framebuffer2_ready;
-    extern volatile bool use_framebuffer1; // Toggle flag
-    extern volatile bool framebuffer1_rendering;
-    extern volatile bool framebuffer2_rendering;
-    // Mutex for synchronization
-    extern mutex_t framebuffer_mutex;
+#if !HSTX && FRAMEBUFFERISPOSSIBLE
+    // extern uint8_t *framebuffer1;  // [320 * 240];
+    // extern uint8_t *framebuffer2;  // [320 * 240];
+    // extern uint8_t *framebufferCore0;
+    // extern volatile bool framebuffer1_ready;
+    // extern volatile bool framebuffer2_ready;
+    // extern volatile bool use_framebuffer1; // Toggle flag
+    // extern volatile bool framebuffer1_rendering;
+    // extern volatile bool framebuffer2_rendering;
+    // // Mutex for synchronization
+    // extern mutex_t framebuffer_mutex;
+    extern WORD *framebuffer;
 #endif  
     bool endsWith(std::string const &str, std::string const &suffix);
     std::string str_tolower(std::string s);
@@ -97,8 +101,9 @@ namespace Frens
     void printbin16(int16_t v);
     uint64_t time_us();
     uint32_t time_ms();
-#if !HSTX
     bool isFrameBufferUsed();
+#if !HSTX && 0
+    
     void markFrameReadyForReendering(bool waitForFrameReady = false);
     typedef void (*ProcessScanLineFunction)(int line, uint8_t *framebuffer, uint16_t *dvibuffer);
     void SetFrameBufferProcessScanLineFunction(ProcessScanLineFunction processScanLineFunction);

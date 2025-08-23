@@ -17,10 +17,6 @@
 #include "tusb.h"
 #include "hardware/dma.h"
 
-#include "ff.h"
-#include "ffwrappers.h"
-#include "tf_card.h"
-
 #include "nespad.h"
 #include "wiipad.h"
 #include "settings.h"
@@ -33,13 +29,13 @@
 #include "pico/cyw43_arch.h"
 #endif
 
-
 #ifndef DVIAUDIOFREQ
 #define DVIAUDIOFREQ 44100
 #endif
 #if !HSTX
 std::unique_ptr<dvi::DVI> dvi_;
 util::ExclusiveProc exclProc_;
+volatile bool vsync = false;
 #endif
 char ErrorMessage[ERRORMESSAGESIZE];
 bool scaleMode8_7_ = true;
@@ -49,22 +45,23 @@ int maxRomSize = 0;
 namespace Frens
 {
     static FATFS fs;
-#if !HSTX
-    uint8_t *framebuffer1; // [320 * 240];
-    uint8_t *framebuffer2; // [320 * 240];
-    uint8_t *framebufferCore0;
+#if !HSTX && FRAMEBUFFERISPOSSIBLE
+    // uint8_t *framebuffer1; // [320 * 240];
+    // uint8_t *framebuffer2; // [320 * 240];
+    //  uint8_t *framebufferCore0;
 
     // Shared state
-    volatile bool framebuffer1_ready = false;
-    volatile bool framebuffer2_ready = false;
-    volatile bool use_framebuffer1 = true; // Toggle flag
-    volatile bool framebuffer1_rendering = false;
-    volatile bool framebuffer2_rendering = false;
-    volatile ProcessScanLineFunction processScanLineFunction;
-    // Mutex for synchronization
-    mutex_t framebuffer_mutex;
-    static bool usingFramebuffer = false;
+    // volatile bool framebuffer1_ready = false;
+    // volatile bool framebuffer2_ready = false;
+    // volatile bool use_framebuffer1 = true; // Toggle flag
+    // volatile bool framebuffer1_rendering = false;
+    // volatile bool framebuffer2_rendering = false;
+    // volatile ProcessScanLineFunction processScanLineFunction;
+    // // Mutex for synchronization
+   
 #endif
+    WORD *framebuffer;
+    static bool usingFramebuffer = false;
     bool psRamEnabled = false;
     size_t psramMemorySize = 0;
     bool isPsramEnabled()
@@ -89,6 +86,7 @@ namespace Frens
     {
         psRamEnabled = false;
         psramMemorySize = 0;
+        //return false;
         // Initialize PSRAM if available
 #if PICO_RP2350 && PSRAM_CS_PIN
         printf("GetInstance...\n");
@@ -111,7 +109,7 @@ namespace Frens
         return psRamEnabled;
     }
 #if !HSTX
-    bool isFrameBufferUsed()
+    bool __not_in_flash_func(isFrameBufferUsed)()
     {
         return usingFramebuffer;
     }
@@ -130,21 +128,35 @@ namespace Frens
         return 1 << rxbuf[3];
     }
 
-    /// @brief Wait for vertical sync
+    /// @brief Wait for vertical sync 
     void waitForVSync()
     {
 #if !HSTX
-        // no vsync here
+        if (Frens::isFrameBufferUsed())
+        {
+            while (vsync == false)
+            {
+                // busy wait
+                tight_loop_contents();
+            }
+        }
 #else
         hstx_waitForVSync();
 #endif
     }
-
     /// @brief Poor way to pace frames to 60fps
     /// @param init
     void PaceFrames60fps(bool init)
     {
 #if !HSTX
+        if (Frens::isFrameBufferUsed())
+        {
+            while (vsync == false)
+            {
+                // busy wait
+                tight_loop_contents();
+            }
+        }
 #else
         static absolute_time_t next_frame_time = {0};
         if (init)
@@ -161,6 +173,7 @@ namespace Frens
         next_frame_time = delayed_by_us(next_frame_time, 16666); // 1/60s = 16666us
 #endif
     }
+
     //
     //
     // test if string ends with suffix
@@ -875,13 +888,13 @@ namespace Frens
         }
     }
 
-    static WORD buffer[320];
+    static WORD *buffer;
     /// @brief Render function in core1 to render the framebuffers
     /// @param
     /// @return
     void __not_in_flash_func(coreFB_main)()
     {
-        uint8_t *framebufferCore1 = framebuffer1;
+        WORD *framebufferCore1 = framebuffer;
         dvi_->registerIRQThisCore();
         dvi_->start();
         int fb1 = 0;
@@ -890,80 +903,37 @@ namespace Frens
 
         while (true)
         {
+            vsync = false;
+            // printf("Core 1:Frame %d\n", frame++);
+            auto startLine = dvi_->getBlankSettings().top / 2;
+            auto endLine = dvi_->getBlankSettings().bottom / 2;
+
             bool may_render = false;
             // Try to acquire the mutex to check for new frames
-            if (mutex_try_enter(&framebuffer_mutex, NULL))
-            {
-                // Check if the other framebuffer is ready
-                if (framebuffer1_ready && !framebuffer1_rendering)
-                {
-                    // printf("Core 1: Switching to framebuffer1\n");
-                    framebuffer1_rendering = true;
-                    may_render = true;
-                    framebufferCore1 = framebuffer1;
-                    fb1 = 0;
-                }
-                else if (framebuffer2_ready && !framebuffer2_rendering)
-                {
-                    // printf("Core 1: Switching to framebuffer2\n");
-                    framebuffer2_rendering = true;
-                    may_render = true;
-                    framebufferCore1 = framebuffer2;
-                    fb2 = 0;
-                }
-                mutex_exit(&framebuffer_mutex);
-            }
-            if (may_render)
-            {
-                auto startLine = dvi_->getBlankSettings().top / 2;
-                auto endLine = dvi_->getBlankSettings().bottom / 2;
-                // printf("Core 1: Rendering frame %s %d\n", current_framebuffer == framebuffer1 ? "framebuffer1" : "framebuffer2", frame++);
-                for (int line = startLine; line < SCREENHEIGHT - endLine; ++line)
-                {
-                    processScanLineFunction(line - startLine, framebufferCore1, buffer);
-                    if (scaleMode8_7_)
-                    {
-                        dvi_->convertScanBuffer12bppScaled16_7(34, 32, 288 * 2, line, buffer, 640);
-                        // 34 + 252 + 34
-                        // 32 + 576 + 32
-                    }
-                    else
-                    {
-                        // printf("line: %d\n", line);
-                        dvi_->convertScanBuffer12bpp(line, buffer, 640);
-                    }
-                }
-                // Mark the framebuffer as no longer being rendered
-                mutex_enter_blocking(&framebuffer_mutex);
-                if (framebufferCore1 == framebuffer1)
-                {
-                    framebuffer1_rendering = false;
 
-                    fb1++;
-                    fb2 = 0;
+            // printf("Core 1: Rendering frame %s %d\n", current_framebuffer == framebuffer1 ? "framebuffer1" : "framebuffer2", frame++);
+            for (int line = startLine; line < SCREENHEIGHT - endLine; ++line)
+            {
+                // processScanLineFunction(line - startLine, framebufferCore1, buffer);
+                // point buffer to correct scanline
+                buffer = &framebufferCore1[(line - startLine) * SCREENWIDTH];
+                if (scaleMode8_7_)
+                {
+                    // printf("8_7 Scaling\n");
+                    dvi_->convertScanBuffer12bppScaled16_7(34, 32, 288 * 2, line, buffer, 640);
+                    // 34 + 252 + 34
+                    // 32 + 576 + 32
                 }
                 else
                 {
-                    framebuffer2_rendering = false;
-
-                    fb2++;
-                    fb1 = 0;
-                }
-                mutex_exit(&framebuffer_mutex);
-                if (fb1 > 1)
-                {
-                    printf("fb1: %d\n", fb1);
-                    // printf("Framebuffer 1 ready: %d\n", framebuffer1_ready);
-                }
-                if (fb2 > 1)
-                {
-                    printf("fb2: %d\n", fb2);
-                    // printf("Framebuffer 2 ready: %d\n", framebuffer2_ready);
+                    // printf("line: %d\n", line);
+                    dvi_->convertScanBuffer12bpp(line, buffer, 640);
                 }
             }
+            vsync = true;
         }
     }
-
+#if 0
     void SetFrameBufferProcessScanLineFunction(ProcessScanLineFunction processScanLineFunction)
     {
         if (isFrameBufferUsed())
@@ -975,6 +945,7 @@ namespace Frens
             mutex_exit(&framebuffer_mutex);
         }
     }
+#endif
 #endif // DVI
 
     void blinkLed(bool on)
@@ -984,7 +955,7 @@ namespace Frens
         gpio_put(LED_GPIO_PIN, on);
 #elif defined(PICO_DEFAULT_LED_PIN)
         gpio_put(PICO_DEFAULT_LED_PIN, on);
-#elif defined(CYW43_WL_GPIO_LED_PIN) && ! USE_I2S_AUDIO
+#elif defined(CYW43_WL_GPIO_LED_PIN) && !USE_I2S_AUDIO
         // Because of a conflict with the i2s audio, there is no led support when using i2s audio
         cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, on);
 #else
@@ -1013,7 +984,7 @@ namespace Frens
         gpio_init(PICO_DEFAULT_LED_PIN);
         gpio_set_dir(PICO_DEFAULT_LED_PIN, GPIO_OUT);
         gpio_put(PICO_DEFAULT_LED_PIN, 1);
-#elif defined(CYW43_WL_GPIO_LED_PIN)  && ! USE_I2S_AUDIO
+#elif defined(CYW43_WL_GPIO_LED_PIN) && !USE_I2S_AUDIO
         // For Pico W devices we need to initialize the driver
         // Because of a conflict with the i2s audio, there is no led support when using i2s audio
         return cyw43_arch_init();
@@ -1196,19 +1167,12 @@ namespace Frens
                 flashrom(selectedRom, swapbytes);
             }
         }
-#if !HSTX
+#if !HSTX && FRAMEBUFFERISPOSSIBLE
         usingFramebuffer = useFrameBuffer;
         if (usingFramebuffer)
         {
-            framebuffer1 = (uint8_t *)malloc(SCREENWIDTH * SCREENHEIGHT);
-            framebuffer2 = (uint8_t *)malloc(SCREENWIDTH * SCREENHEIGHT);
-            framebufferCore0 = framebuffer1;
-            if (framebuffer1 == NULL || framebuffer2 == NULL)
-            {
-                printf("Error allocating framebuffers\n");
-                ok = false;
-            }
-            mutex_init(&framebuffer_mutex);
+            // always allocate framebuffer in SRAM
+            framebuffer = (WORD *)malloc(SCREENWIDTH * SCREENHEIGHT * sizeof(WORD));
         }
 #endif // DVI
         initDVandAudio(marginTop, marginBottom, audiobufferSize);
@@ -1245,10 +1209,10 @@ namespace Frens
         initVintageControllers(CPUFreqKHz);
         // TODO: DMA chan 1-3 are used for PIO0, chan 4-7 for PIO1, Assuming PIO1 is used for audio.
         EXT_AUDIO_SETUP(USE_I2S_AUDIO, DVIAUDIOFREQ, GetUnUsedDMAChan(4)); // Initialize external audio if needed
-        srand(get_rand_32()); // Seed the random number generator with a random value
+        srand(get_rand_32());                                              // Seed the random number generator with a random value
         return ok;
     }
-#if !HSTX
+#if !HSTX && 0
     void markFrameReadyForReendering(bool waitForFrameReady)
     {
         // switch framebuffers
