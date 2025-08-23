@@ -271,6 +271,7 @@ case $HWCONFIG in
 		USESIMPLEFILENAMES=1
 		;;
 	6)
+		USESIMPLEFILENAMES=1
 		if [[ $PICO_PLATFORM == rp2350* ]] ; then
 			UF2="WaveShareRP2350ZeroWithPCB"
 		else
