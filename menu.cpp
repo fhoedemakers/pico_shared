@@ -81,7 +81,7 @@ static bool artworkEnabled = false;
 
 static WORD *WorkLineRom = nullptr;
 #if !HSTX
-static BYTE *WorkLineRom8 = nullptr;
+// static BYTE *WorkLineRom8 = nullptr;
 
 void RomSelect_SetLineBuffer(WORD *p, WORD size)
 {
@@ -160,7 +160,7 @@ int Menu_LoadFrame()
     nespad_read_finish(); // Sets global nespad_state var
 #endif
     tuh_task();
-#if !HSTX
+#if !HSTX && 0
     if (Frens::isFrameBufferUsed())
     {
         Frens::markFrameReadyForReendering(true);
@@ -314,22 +314,9 @@ void RomSelect_PadState(DWORD *pdwPad1, bool ignorepushed = false)
 void RomSelect_DrawLine(int line, int selectedRow, int pixelsToSkip = 0)
 {
     WORD fgcolor, bgcolor;
-#if !HSTX
-    bool useFrameBuffer = Frens::isFrameBufferUsed();
 
-    if (useFrameBuffer)
-    {
-        memset(WorkLineRom8, 0, SCREENWIDTH);
-    }
-    // else
-    // {
-    //     memset(WorkLineRom, 0, SCREENWIDTH * sizeof(WORD));
-    // }
-#endif
     auto pixelRow = WorkLineRom + pixelsToSkip;
-#if !HSTX
-    auto pixelRow8 = WorkLineRom8 + pixelsToSkip;
-#endif
+
     // calculate first char column index from pixelstoskip
     auto firstCharColumnIndex = (pixelsToSkip % SCREENWIDTH) / FONT_CHAR_WIDTH;
     for (auto i = 0; i < SCREEN_COLS; ++i)
@@ -375,47 +362,14 @@ void RomSelect_DrawLine(int line, int selectedRow, int pixelsToSkip = 0)
         {
             if (fontSlice & 1)
             {
-#if !HSTX
-                if (useFrameBuffer)
-                {
-                    *pixelRow8 = fgcolor;
-                }
-                else
-                {
-                    *pixelRow = fgcolor;
-                }
-#else
                 *pixelRow = fgcolor;
-#endif
             }
             else
             {
-#if !HSTX
-                if (useFrameBuffer)
-                {
-                    *pixelRow8 = bgcolor;
-                }
-                else
-                {
-                    *pixelRow = bgcolor;
-                }
-#else
                 *pixelRow = bgcolor;
-#endif
             }
             fontSlice >>= 1;
-#if !HSTX
-            if (useFrameBuffer)
-            {
-                pixelRow8++;
-            }
-            else
-            {
-                pixelRow++;
-            }
-#else
             pixelRow++;
-#endif
         }
     }
     return;
@@ -424,17 +378,23 @@ void RomSelect_DrawLine(int line, int selectedRow, int pixelsToSkip = 0)
 void drawline(int scanline, int selectedRow, int w = 0, int h = 0, uint16_t *imagebuffer = nullptr, int imagex = 0, int imagey = 0)
 {
 #if !HSTX
+    dvi::DVI::LineBuffer *b = nullptr;
+#if FRAMEBUFFERISPOSSIBLE
     if (Frens::isFrameBufferUsed())
     {
-        WorkLineRom8 = &Frens::framebufferCore0[scanline * SCREENWIDTH];
-        RomSelect_DrawLine(scanline, selectedRow);
-        return;
+        WorkLineRom = &Frens::framebuffer[scanline * SCREENWIDTH];
     }
-    auto b = dvi_->getLineBuffer();
-    WorkLineRom = b->data();
+    else
+    {
+#endif
+        b = dvi_->getLineBuffer();
+        WorkLineRom = b->data();
+#if FRAMEBUFFERISPOSSIBLE
+    }
+#endif
 #else
     WorkLineRom = hstx_getlineFromFramebuffer(scanline);
-#endif
+#endif // !HSTX
 
     auto offset = 0;
     bool validImage = (imagebuffer != nullptr) && (w > 0 && w <= SCREENWIDTH && h > 0 && h <= SCREENHEIGHT);
@@ -456,7 +416,14 @@ void drawline(int scanline, int selectedRow, int w = 0, int h = 0, uint16_t *ima
     }
 
 #if !HSTX
-    dvi_->setLineBuffer(scanline, b);
+#if FRAMEBUFFERISPOSSIBLE
+    if (!Frens::isFrameBufferUsed())
+    {
+#endif
+        dvi_->setLineBuffer(scanline, b);
+#if FRAMEBUFFERISPOSSIBLE
+    }
+#endif
 #endif
 }
 
@@ -599,9 +566,8 @@ void DrawScreen(int selectedRow, int w = 0, int h = 0, uint16_t *imagebuffer = n
         if (artworkEnabled)
         {
             strcpy(s, "START:Info");
-             putText(17, ENDROW + 2, s, settings.fgcolor, settings.bgcolor);
+            putText(17, ENDROW + 2, s, settings.fgcolor, settings.bgcolor);
         }
-      
     }
 
     for (auto line = 0; line < 240; line++)
@@ -1373,12 +1339,13 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
 #if !HSTX
     int margintop = dvi_->getBlankSettings().top;
     int marginbottom = dvi_->getBlankSettings().bottom;
+    printf("Top margin: %d, bottom margin: %d\n", margintop, marginbottom);
     // Use the entire screen resolution of 320x240 pixels. This makes a 40x30 screen with 8x8 font possible.
     scaleMode8_7_ = Frens::applyScreenMode(ScreenMode::NOSCANLINE_1_1);
     dvi_->getBlankSettings().top = 0;
     dvi_->getBlankSettings().bottom = 0;
 
-    Frens::SetFrameBufferProcessScanLineFunction(processMenuScanLine);
+    // Frens::SetFrameBufferProcessScanLineFunction(processMenuScanLine);
 #else
     hstx_setScanLines(false);
 #endif
@@ -1774,10 +1741,13 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
 
     Frens::savesettings();
 #if !HSTX
-    // Reset the screen mode to the original settings
     scaleMode8_7_ = Frens::applyScreenMode(settings.screenMode);
-    dvi_->getBlankSettings().top = margintop;
-    dvi_->getBlankSettings().bottom = marginbottom;
+    // Reset the screen mode to the original settings
+    if (!Frens::isFrameBufferUsed())
+    {
+        dvi_->getBlankSettings().top = margintop;
+        dvi_->getBlankSettings().bottom = marginbottom;
+    }
 #endif
     // When PSRAM is not enabled, we need to reboot the system to start the emulator with the selected rom. In this case
     // a reboot is neccessary to avoid lockups.
