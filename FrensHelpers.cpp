@@ -69,24 +69,10 @@ namespace Frens
         return psRamEnabled;
     }
 
-    void freePsram(void *pMem)
-    {
-#if PICO_RP2350 && PSRAM_CS_PIN
-        if (pMem)
-        {
-            PicoPlusPsram &psram_ = PicoPlusPsram::getInstance();
-            size_t uFreeing = psram_.GetSize(pMem);
-            printf("Freeing %zu bytes from PSRAM\n", uFreeing);
-            psram_.Free(pMem);
-        }
-#endif
-    }
-
     bool initPsram()
     {
         psRamEnabled = false;
         psramMemorySize = 0;
-        //return false;
         // Initialize PSRAM if available
 #if PICO_RP2350 && PSRAM_CS_PIN
         printf("GetInstance...\n");
@@ -904,19 +890,11 @@ namespace Frens
         while (true)
         {
             vsync = false;
-            // printf("Core 1:Frame %d\n", frame++);
-            auto startLine = dvi_->getBlankSettings().top / 2;
-            auto endLine = dvi_->getBlankSettings().bottom / 2;
-
-            bool may_render = false;
-            // Try to acquire the mutex to check for new frames
-
-            // printf("Core 1: Rendering frame %s %d\n", current_framebuffer == framebuffer1 ? "framebuffer1" : "framebuffer2", frame++);
-            for (int line = startLine; line < SCREENHEIGHT - endLine; ++line)
+            for (int line = 0; line < SCREENHEIGHT; ++line)
             {
                 // processScanLineFunction(line - startLine, framebufferCore1, buffer);
                 // point buffer to correct scanline
-                buffer = &framebufferCore1[(line - startLine) * SCREENWIDTH];
+                buffer = &framebufferCore1[line * SCREENWIDTH];
                 if (scaleMode8_7_)
                 {
                     // printf("8_7 Scaling\n");
@@ -1110,6 +1088,17 @@ namespace Frens
     {
         initDVandAudio(marginTop, marginBottom, 256);
     }
+
+
+    /// @brief Initialize SD Card, Audio, Video etc...
+    /// @param selectedRom   The user selected rom
+    /// @param CPUFreqKHz    Clock frequency in kHz of the cpu
+    /// @param marginTop     Top Margin in lines.    (ignored when framebuffer is used)
+    /// @param marginBottom  Bottom Margin in lines. (Ignored when framebuffer is used)
+    /// @param audiobufferSize Size of the audio buffer
+    /// @param swapbytes Swap bytes when loading Roms (Master System, Game Gear)
+    /// @param useFrameBuffer Use framebuffer when possible
+    /// @return
     bool initAll(char *selectedRom, uint32_t CPUFreqKHz, int marginTop, int marginBottom, size_t audiobufferSize, bool swapbytes, bool useFrameBuffer)
 
     {
@@ -1173,6 +1162,8 @@ namespace Frens
         {
             // always allocate framebuffer in SRAM
             framebuffer = (WORD *)malloc(SCREENWIDTH * SCREENHEIGHT * sizeof(WORD));
+            memset(framebuffer, 0, SCREENWIDTH * SCREENHEIGHT * sizeof(WORD));
+            marginTop = marginBottom = 0; // ignore margins when using framebuffer
         }
 #endif // DVI
         initDVandAudio(marginTop, marginBottom, audiobufferSize);

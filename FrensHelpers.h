@@ -110,7 +110,6 @@ namespace Frens
 #endif
     bool isPsramEnabled();
     void *flashromtoPsram(char *selectdRom, bool swapbytes, uint32_t &crc);
-    void freePsram(void *pMem);
     void PaceFrames60fps(bool init);
     void toggleScanLines();
     void restoreScanlines();
