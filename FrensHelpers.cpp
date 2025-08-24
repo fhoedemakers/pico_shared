@@ -58,7 +58,7 @@ namespace Frens
     // volatile bool framebuffer2_rendering = false;
     // volatile ProcessScanLineFunction processScanLineFunction;
     // // Mutex for synchronization
-   
+
 #endif
     WORD *framebuffer;
     static bool usingFramebuffer = false;
@@ -114,7 +114,7 @@ namespace Frens
         return 1 << rxbuf[3];
     }
 
-    /// @brief Wait for vertical sync 
+    /// @brief Wait for vertical sync
     void waitForVSync()
     {
 #if !HSTX
@@ -880,6 +880,7 @@ namespace Frens
     /// @return
     void __not_in_flash_func(coreFB_main)()
     {
+#if FRAMEBUFFERISPOSSIBLE
         WORD *framebufferCore1 = framebuffer;
         dvi_->registerIRQThisCore();
         dvi_->start();
@@ -910,6 +911,7 @@ namespace Frens
             }
             vsync = true;
         }
+#endif
     }
 #if 0
     void SetFrameBufferProcessScanLineFunction(ProcessScanLineFunction processScanLineFunction)
@@ -1089,7 +1091,6 @@ namespace Frens
         initDVandAudio(marginTop, marginBottom, 256);
     }
 
-
     /// @brief Initialize SD Card, Audio, Video etc...
     /// @param selectedRom   The user selected rom
     /// @param CPUFreqKHz    Clock frequency in kHz of the cpu
@@ -1188,14 +1189,19 @@ namespace Frens
         tusb_init();
 #endif
 #if !HSTX
+#if FRAMEBUFFERISPOSSIBLE
         if (usingFramebuffer)
         {
+
             multicore_launch_core1(coreFB_main);
         }
         else
         {
             multicore_launch_core1(core1_main);
         }
+#else
+        multicore_launch_core1(core1_main);
+#endif
 #endif // DVI
         initVintageControllers(CPUFreqKHz);
         // TODO: DMA chan 1-3 are used for PIO0, chan 4-7 for PIO1, Assuming PIO1 is used for audio.
