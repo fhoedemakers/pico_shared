@@ -399,8 +399,12 @@ void drawline(int scanline, int selectedRow, int w = 0, int h = 0, uint16_t *ima
     auto offset = 0;
     bool validImage = (imagebuffer != nullptr) && (w > 0 && w <= SCREENWIDTH && h > 0 && h <= SCREENHEIGHT);
     if (validImage)
-    {
-        memset(WorkLineRom, 0, SCREENWIDTH * sizeof(WORD));
+    {   
+        // avoid flicker on first line in metadata screen
+        // clear line only when image is moving (screensaver)
+        if (imagex || imagey) {
+            memset(WorkLineRom, 0, SCREENWIDTH * sizeof(WORD));
+        }
         if (scanline >= imagey && scanline < imagey + h)
         {
             // printf("Drawing image at scanline %d, imagey %d, h %d imagey + h %d\n", scanline, imagey, h, imagey + h);
