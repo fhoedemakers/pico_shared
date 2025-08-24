@@ -259,7 +259,7 @@ case $HWCONFIG in
 		UF2="AdafruitDVISD"
 		;;
 	3) 
-		UF2="FeatherDVI"
+		UF2="AdafruitFeatherDVI"
 		USESIMPLEFILENAMES=1
 		;;
 	4)
