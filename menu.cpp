@@ -1315,7 +1315,7 @@ uint32_t loadRomInPsRam(char *curdir, char *selectedRomOrFolder, char *rompath, 
         snprintf(fullPath, FF_MAX_LFN, "%s/%s", curdir, selectedRomOrFolder);
         printf("Full path: %s\n", fullPath);
         // If there is already a rom loaded in PSRAM, free it
-        Frens::freePsram((void *)ROM_FILE_ADDR);
+        Frens::f_free((void *)ROM_FILE_ADDR);
         // and load the new rom to PSRAM
         printf("Loading rom to PSRAM: %s\n", fullPath);
         strcpy(rompath, fullPath);
@@ -1743,6 +1743,8 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
 #if !HSTX
     scaleMode8_7_ = Frens::applyScreenMode(settings.screenMode);
     // Reset the screen mode to the original settings
+    // Do not reset the margins when framebuffer is used, this will lock up the display driver
+    // Margins will be handled by the framebuffer.
     if (!Frens::isFrameBufferUsed())
     {
         dvi_->getBlankSettings().top = margintop;
@@ -1769,4 +1771,6 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
         };
         // Never return
     }
+    Frens::restoreScanlines();
+    Frens::PaceFrames60fps(true); // reset frame pacing
 }
