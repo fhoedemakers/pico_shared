@@ -1,4 +1,49 @@
 # Release notes
+## 26/8/2025
+
+
+- Added support for [Adafruit Fruit Jam](https://www.adafruit.com/product/6200):  
+  - Uses HSTX for video output.  
+  - Audio is not supported over HSTX — connect speakers via the **audio jack** or the **4–8 Ω speaker connector**.  
+  - Audio is simultaneousy played through speaker and jack. Speaker audio can be muted with **Button 1**.  
+  - Controller options:  
+    - **USB gamepad** on USB 1.  
+    - **Wii Classic controller** via [Adafruit Wii Nunchuck Adapter](https://www.adafruit.com/product/4836) on the STEMMA QT port.  
+  - Two-player mode:  
+    - Player 1: USB gamepad (USB 1).  
+    - Player 2: Wii Classic controller.  
+    - Dual USB (USB 1 + USB 2) multiplayer is **not yet supported**.  
+  - Scanlines can be toggled with **SELECT + UP**.  
+
+- Added support for [Waveshare RP2350-PiZero](https://www.waveshare.com/rp2350-pizero.htm):  
+  - Gamepad must be connected via the **PIO USB port**.  
+  - The built-in USB port is now dedicated to **power and firmware flashing**, removing the need for a USB-Y cable.  
+  - Optional: when you solder the optional PSRAM chip on the board, the emulator will make use of it. Roms will be loaded much faster using PSRAM.
+
+- **RP2350 Only** Framebuffer implemented in SRAM. This eliminates the red flicker during slow operations, such as SD card I/O.
+
+- **Cover art and metadata support**:  
+  - Download pack [here](https://github.com/fhoedemakers/pico-infonesPlus/releases/latest/download/PicoNesMetadata.zip).  
+  - Extract the zip contents to the **root of the SD card**.  
+  - In the menu:  
+    - Highlight a game and press **START** → show cover art and metadata.  
+    - Press **SELECT** → show full game description.  
+    - Press **B** → return to menu.  
+    - Press **START** or **A** → start the game.  
+
+>[!NOTE]
+> Cover art and metadata is available for most official released games.
+
+- **Screensaver update**: when cover art is installed, the screensaver displays **floating random cover art** from the SD card.  
+- Updated to **Pico SDK 2.2.0**  
+- Updated to **lwmem V2.2.3**
+
+## fixes
+
+- Fixed a compiler error in pico_lib using SDK 2.2.2  [#129](https://github.com/fhoedemakers/pico-infonesPlus/issues/129)
+- Moved the NES controller port 1 PIO from PIO0 to PIO1. This resolves an issue where polling the NES controller would hang in case HDMI (also driven by PIO0) uses GPIO pin numbers 32 and higher, resulting in no image.
+- **RP2350 Only** Red screen flicker issue fixed. This was caused by slow operations such as SDcard I/O, which prevented the screen getting updated in time. 
+
 
 ## 18/7/2025
 - Fix crash in my_chdir that on RP2040 boards. 
