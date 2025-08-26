@@ -643,6 +643,14 @@ namespace Frens
             }
             else
             {
+                if ((crc = compute_crc32_buffer(pMem, filesize)) > 0)
+                {
+                    printf("CRC32 checksum of %s in PSRAM: %08X\n", selectdRom, crc);
+                }
+                else
+                {
+                    printf("Error calculating CRC32 checksum of %s in PSRAM\n", selectdRom);
+                }
                 if (swapbytes)
                 {
                     // swap bytes in pMem
@@ -656,14 +664,7 @@ namespace Frens
                 }
                 ok = true;
                 printf("Read %d bytes from %s into PSRAM at %p\n", r, selectdRom, pMem);
-                if ((crc = compute_crc32_buffer(pMem, filesize)) > 0)
-                {
-                    printf("CRC32 checksum of %s in PSRAM: %08X\n", selectdRom, crc);
-                }
-                else
-                {
-                    printf("Error calculating CRC32 checksum of %s in PSRAM\n", selectdRom);
-                }
+              
                 selectdRom[0] = 0; //
             }
             f_close(&fil);
