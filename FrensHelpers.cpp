@@ -4,25 +4,23 @@
 #include "pico.h"
 #include "pico/stdlib.h"
 #include "pico/multicore.h"
+#include "pico/rand.h"
 #include "hardware/flash.h"
 #include "hardware/watchdog.h"
 #include "util/exclusive_proc.h"
+#include "FrensHelpers.h"
 #if CFG_TUH_RPI_PIO_USB && PICO_RP2350
 #include "bsp/board_api.h"
 #include "board.h"
 #include "pio_usb.h"
 #endif
 #include "tusb.h"
-#include "tusb.h"
-#include "dvi/dvi.h"
-#include "ff.h"
-#include "ffwrappers.h"
-#include "tf_card.h"
+#include "hardware/dma.h"
 
 #include "nespad.h"
 #include "wiipad.h"
 #include "settings.h"
-#include "FrensHelpers.h"
+
 #include "PicoPlusPsram.h"
 // Pico W devices use a GPIO on the WIFI chip for the LED,
 // so when building for Pico W, CYW43_WL_GPIO_LED_PIN will be defined
@@ -34,8 +32,11 @@
 #ifndef DVIAUDIOFREQ
 #define DVIAUDIOFREQ 44100
 #endif
+#if !HSTX
 std::unique_ptr<dvi::DVI> dvi_;
 util::ExclusiveProc exclProc_;
+volatile bool vsync = false;
+#endif
 char ErrorMessage[ERRORMESSAGESIZE];
 bool scaleMode8_7_ = true;
 uintptr_t ROM_FILE_ADDR = 0;
@@ -44,22 +45,23 @@ int maxRomSize = 0;
 namespace Frens
 {
     static FATFS fs;
-
-    uint8_t *framebuffer1; // [320 * 240];
-    uint8_t *framebuffer2; // [320 * 240];
-    uint8_t *framebufferCore0;
+#if !HSTX && FRAMEBUFFERISPOSSIBLE
+    // uint8_t *framebuffer1; // [320 * 240];
+    // uint8_t *framebuffer2; // [320 * 240];
+    //  uint8_t *framebufferCore0;
 
     // Shared state
-    volatile bool framebuffer1_ready = false;
-    volatile bool framebuffer2_ready = false;
-    volatile bool use_framebuffer1 = true; // Toggle flag
-    volatile bool framebuffer1_rendering = false;
-    volatile bool framebuffer2_rendering = false;
-    volatile ProcessScanLineFunction processScanLineFunction;
-    // Mutex for synchronization
-    mutex_t framebuffer_mutex;
-    static bool usingFramebuffer = false;
+    // volatile bool framebuffer1_ready = false;
+    // volatile bool framebuffer2_ready = false;
+    // volatile bool use_framebuffer1 = true; // Toggle flag
+    // volatile bool framebuffer1_rendering = false;
+    // volatile bool framebuffer2_rendering = false;
+    // volatile ProcessScanLineFunction processScanLineFunction;
+    // // Mutex for synchronization
 
+#endif
+    WORD *framebuffer;
+    static bool usingFramebuffer = false;
     bool psRamEnabled = false;
     size_t psramMemorySize = 0;
     bool isPsramEnabled()
@@ -67,26 +69,13 @@ namespace Frens
         return psRamEnabled;
     }
 
-    void freePsram(void *pMem)
-    {
-#if PICO_RP2350 && PSRAM_CS_PIN
-        if (pMem)
-        {
-            PicoPlusPsram &psram_ = PicoPlusPsram::getInstance();
-            size_t uFreeing = psram_.GetSize(pMem);
-            printf("Freeing %zu bytes from PSRAM\n", uFreeing);
-            psram_.Free(pMem);
-        }
-#endif
-    } 
-
     bool initPsram()
     {
         psRamEnabled = false;
         psramMemorySize = 0;
-
         // Initialize PSRAM if available
 #if PICO_RP2350 && PSRAM_CS_PIN
+        printf("GetInstance...\n");
         PicoPlusPsram &psram_ = PicoPlusPsram::getInstance();
         if (psram_.GetMemorySize() > 0)
         {
@@ -105,11 +94,72 @@ namespace Frens
 #endif
         return psRamEnabled;
     }
-
-    bool isFrameBufferUsed()
+#if !HSTX
+    bool __not_in_flash_func(isFrameBufferUsed)()
     {
         return usingFramebuffer;
     }
+#endif
+#define STORAGE_CMD_DUMMY_BYTES 1
+#define STORAGE_CMD_DATA_BYTES 3
+#define STORAGE_CMD_TOTAL_BYTES (STORAGE_CMD_DUMMY_BYTES + STORAGE_CMD_DATA_BYTES)
+    uint storage_get_flash_capacity()
+    {
+        uint8_t txbuf[STORAGE_CMD_TOTAL_BYTES] = {0x9f};
+        uint8_t rxbuf[STORAGE_CMD_TOTAL_BYTES] = {0};
+        auto irq = save_and_disable_interrupts();
+        flash_do_cmd(txbuf, rxbuf, STORAGE_CMD_TOTAL_BYTES);
+        restore_interrupts(irq);
+
+        return 1 << rxbuf[3];
+    }
+
+    /// @brief Wait for vertical sync
+    void waitForVSync()
+    {
+#if !HSTX
+        if (Frens::isFrameBufferUsed())
+        {
+            while (vsync == false)
+            {
+                // busy wait
+                tight_loop_contents();
+            }
+        }
+#else
+        hstx_waitForVSync();
+#endif
+    }
+    /// @brief Poor way to pace frames to 60fps
+    /// @param init
+    void PaceFrames60fps(bool init)
+    {
+#if !HSTX
+        if (Frens::isFrameBufferUsed())
+        {
+            while (vsync == false)
+            {
+                // busy wait
+                tight_loop_contents();
+            }
+        }
+#else
+        static absolute_time_t next_frame_time = {0};
+        if (init)
+        {
+            next_frame_time = make_timeout_time_us(0); // Reset frame time to 0
+        }
+        // Adjust to about 60fps
+        if (to_us_since_boot(next_frame_time) == 0)
+        {
+            next_frame_time = make_timeout_time_us(0);
+        }
+        // Pace to 60fps
+        sleep_until(next_frame_time);
+        next_frame_time = delayed_by_us(next_frame_time, 16666); // 1/60s = 16666us
+#endif
+    }
+
     //
     //
     // test if string ends with suffix
@@ -253,7 +303,35 @@ namespace Frens
         }
         return fileName;
     }
+    char *get_tag_text(const char *xml, const char *tag, char *buffer, size_t bufsize)
+    {
+        char openTag[64];
+        snprintf(openTag, sizeof(openTag), "<%s", tag); // match tag start (can have attributes)
 
+        const char *start = strstr(xml, openTag);
+        if (!start)
+            return NULL;
+
+        start = strchr(start, '>'); // find '>' after <tag or <tag attr=...>
+        if (!start)
+            return NULL;
+        start++; // move past '>'
+
+        char closeTag[64];
+        snprintf(closeTag, sizeof(closeTag), "</%s>", tag);
+
+        const char *end = strstr(start, closeTag);
+        if (!end)
+            return NULL;
+
+        size_t len = end - start;
+        if (len >= bufsize)
+            len = bufsize - 1; // truncate if needed
+        memcpy(buffer, start, len);
+        buffer[len] = '\0';
+
+        return buffer;
+    }
     // Strip the extension from a file name
     void stripextensionfromfilename(char *filename)
     {
@@ -384,7 +462,7 @@ namespace Frens
         }
         return true;
     }
-
+#if !HSTX
     bool applyScreenMode(ScreenMode screenMode_)
     {
         bool scanLine = false;
@@ -433,11 +511,83 @@ namespace Frens
         savesettings();
         return scaleMode8_7_;
     }
+#endif
+    void toggleScanLines()
+    {
+#if !HSTX
+#else
+        settings.scanlineOn = settings.scanlineOn != 0 ? 0 : 1; // toggle scanlineOn
+        savesettings();
+        hstx_setScanLines(settings.scanlineOn);
+        printf("Scanlines %s\n", settings.scanlineOn ? "enabled" : "disabled");
+#endif
+    }
+    void restoreScanlines()
+    {
+#if !HSTX
+#else
+        hstx_setScanLines(settings.scanlineOn > 0);
+#endif
+        printf("Restoring scanlines: %s\n", settings.scanlineOn ? "enabled" : "disabled");
+    }
 
-    void *flashromtoPsram(char *selectdRom, bool swapbytes)
+    /// @brief Allocates memory from PSRAM if available, otherwise uses malloc
+    /// @param size
+    /// @return
+    void *f_malloc(size_t size)
+    {
+        if (size == 0)
+        {
+            return nullptr;
+        }
+#if PICO_RP2350 && PSRAM_CS_PIN
+        if (isPsramEnabled())
+        {
+            PicoPlusPsram &psram_ = PicoPlusPsram::getInstance();
+            void *pMem = psram_.Malloc(size);
+            if (!pMem)
+            {
+                panic("Cannot allocate %zu bytes in PSRAM\n", size);
+            }
+            printf("Allocated %zu bytes in PSRAM at %p\n", size, pMem);
+            return pMem;
+        }
+#endif
+        // PSRAM not enabled, use malloc
+        void *pMem = malloc(size); // panics if unavailable
+        printf("Allocated %zu bytes in RAM at %p\n", size, pMem);
+        return pMem;
+    }
+
+    /// @brief frees memory allocated by f_malloc
+    /// @param pMem
+    void f_free(void *pMem)
+    {
+        if (!pMem)
+        {
+            return;
+        }
+#if PICO_RP2350 && PSRAM_CS_PIN
+        if (isPsramEnabled())
+        {
+            PicoPlusPsram &psram_ = PicoPlusPsram::getInstance();
+            size_t uFreeing = psram_.GetSize(pMem);
+            printf("Freeing %zu bytes from PSRAM at %p\n", uFreeing, pMem);
+            psram_.Free(pMem);
+            return;
+        }
+#endif
+        // PSRAM not enabled, use free
+        if (pMem)
+        {
+            printf("Freeing memory at %p\n", pMem);
+            free(pMem);
+        }
+    }
+
+    void *flashromtoPsram(char *selectdRom, bool swapbytes, uint32_t &crc)
     {
 #if PICO_RP2350 && PSRAM_CS_PIN
-        PicoPlusPsram &psram_ = PicoPlusPsram::getInstance();
         // Get filesize of rom
         FIL fil;
         FRESULT fr;
@@ -448,6 +598,12 @@ namespace Frens
         {
             printf("Rom will be byteswapped.\n");
         }
+        // calculate the CRC32 checksum of the rom
+        // uint32_t crc;
+        // if (compute_crc32(selectdRom, &crc) == 0)
+        // {
+        //     printf("CRC32 checksum of %s: %08X\n", selectdRom, crc);
+        // }
         fr = f_open(&fil, selectdRom, FA_READ);
         if (fr != FR_OK)
         {
@@ -457,7 +613,7 @@ namespace Frens
             return nullptr;
         }
         FSIZE_t filesize = f_size(&fil);
-        void *pMem = psram_.Malloc(filesize);
+        void *pMem = Frens::f_malloc(filesize);
         if (!pMem)
         {
             snprintf(ErrorMessage, 40, "Cannot allocate %d bytes in PSRAM\n", filesize);
@@ -474,7 +630,7 @@ namespace Frens
             snprintf(ErrorMessage, 40, "Cannot read %s:%d\n", selectdRom, fr);
             selectdRom[0] = 0;
             printf("%s\n", ErrorMessage);
-            psram_.Free(pMem);
+            Frens::f_free(pMem);
         }
         else
         {
@@ -483,10 +639,18 @@ namespace Frens
                 snprintf(ErrorMessage, 40, "Read %d bytes, expected %d bytes\n", r, filesize);
                 printf("%s\n", ErrorMessage);
                 selectdRom[0] = 0;
-                psram_.Free(pMem);
+                Frens::f_free(pMem);
             }
             else
             {
+                if ((crc = compute_crc32_buffer(pMem, filesize)) > 0)
+                {
+                    printf("CRC32 checksum of %s in PSRAM: %08X\n", selectdRom, crc);
+                }
+                else
+                {
+                    printf("Error calculating CRC32 checksum of %s in PSRAM\n", selectdRom);
+                }
                 if (swapbytes)
                 {
                     // swap bytes in pMem
@@ -500,12 +664,15 @@ namespace Frens
                 }
                 ok = true;
                 printf("Read %d bytes from %s into PSRAM at %p\n", r, selectdRom, pMem);
+              
                 selectdRom[0] = 0; //
             }
             f_close(&fil);
         }
         if (ok)
         {
+
+            // Start emulator with rom in PSRAM
             printf("Starting emulator with rom in PSRAM at %p\n", pMem);
             // return pointer to pMem
             return pMem;
@@ -515,7 +682,7 @@ namespace Frens
             // return nullptr if error
             return nullptr;
         }
-#else 
+#else
         // PSRAM not enabled, return nullptr
         printf("PSRAM not enabled, cannot flash rom to PSRAM\n");
         selectdRom[0] = 0;
@@ -672,7 +839,7 @@ namespace Frens
             }
         }
     }
-
+#if !HSTX
     /// @brief Render function in core1 to render line by line
     /// @param
     /// @return
@@ -708,13 +875,14 @@ namespace Frens
         }
     }
 
-    static WORD buffer[320];
+    static WORD *buffer;
     /// @brief Render function in core1 to render the framebuffers
     /// @param
     /// @return
     void __not_in_flash_func(coreFB_main)()
     {
-        uint8_t *framebufferCore1 = framebuffer1;
+#if FRAMEBUFFERISPOSSIBLE
+        WORD *framebufferCore1 = framebuffer;
         dvi_->registerIRQThisCore();
         dvi_->start();
         int fb1 = 0;
@@ -723,80 +891,30 @@ namespace Frens
 
         while (true)
         {
-            bool may_render = false;
-            // Try to acquire the mutex to check for new frames
-            if (mutex_try_enter(&framebuffer_mutex, NULL))
+            vsync = false;
+            for (int line = 0; line < SCREENHEIGHT; ++line)
             {
-                // Check if the other framebuffer is ready
-                if (framebuffer1_ready && !framebuffer1_rendering)
+                // processScanLineFunction(line - startLine, framebufferCore1, buffer);
+                // point buffer to correct scanline
+                buffer = &framebufferCore1[line * SCREENWIDTH];
+                if (scaleMode8_7_)
                 {
-                    // printf("Core 1: Switching to framebuffer1\n");
-                    framebuffer1_rendering = true;
-                    may_render = true;
-                    framebufferCore1 = framebuffer1;
-                    fb1 = 0;
-                }
-                else if (framebuffer2_ready && !framebuffer2_rendering)
-                {
-                    // printf("Core 1: Switching to framebuffer2\n");
-                    framebuffer2_rendering = true;
-                    may_render = true;
-                    framebufferCore1 = framebuffer2;
-                    fb2 = 0;
-                }
-                mutex_exit(&framebuffer_mutex);
-            }
-            if (may_render)
-            {
-                auto startLine = dvi_->getBlankSettings().top / 2;
-                auto endLine = dvi_->getBlankSettings().bottom / 2;
-                // printf("Core 1: Rendering frame %s %d\n", current_framebuffer == framebuffer1 ? "framebuffer1" : "framebuffer2", frame++);
-                for (int line = startLine; line < SCREENHEIGHT - endLine; ++line)
-                {
-                    processScanLineFunction(line - startLine, framebufferCore1, buffer);
-                    if (scaleMode8_7_)
-                    {
-                        dvi_->convertScanBuffer12bppScaled16_7(34, 32, 288 * 2, line, buffer, 640);
-                        // 34 + 252 + 34
-                        // 32 + 576 + 32
-                    }
-                    else
-                    {
-                        // printf("line: %d\n", line);
-                        dvi_->convertScanBuffer12bpp(line, buffer, 640);
-                    }
-                }
-                // Mark the framebuffer as no longer being rendered
-                mutex_enter_blocking(&framebuffer_mutex);
-                if (framebufferCore1 == framebuffer1)
-                {
-                    framebuffer1_rendering = false;
-
-                    fb1++;
-                    fb2 = 0;
+                    // printf("8_7 Scaling\n");
+                    dvi_->convertScanBuffer12bppScaled16_7(34, 32, 288 * 2, line, buffer, 640);
+                    // 34 + 252 + 34
+                    // 32 + 576 + 32
                 }
                 else
                 {
-                    framebuffer2_rendering = false;
-
-                    fb2++;
-                    fb1 = 0;
-                }
-                mutex_exit(&framebuffer_mutex);
-                if (fb1 > 1)
-                {
-                    printf("fb1: %d\n", fb1);
-                    // printf("Framebuffer 1 ready: %d\n", framebuffer1_ready);
-                }
-                if (fb2 > 1)
-                {
-                    printf("fb2: %d\n", fb2);
-                    // printf("Framebuffer 2 ready: %d\n", framebuffer2_ready);
+                    // printf("line: %d\n", line);
+                    dvi_->convertScanBuffer12bpp(line, buffer, 640);
                 }
             }
+            vsync = true;
         }
+#endif
     }
-
+#if 0
     void SetFrameBufferProcessScanLineFunction(ProcessScanLineFunction processScanLineFunction)
     {
         if (isFrameBufferUsed())
@@ -808,6 +926,8 @@ namespace Frens
             mutex_exit(&framebuffer_mutex);
         }
     }
+#endif
+#endif // DVI
 
     void blinkLed(bool on)
     {
@@ -816,7 +936,8 @@ namespace Frens
         gpio_put(LED_GPIO_PIN, on);
 #elif defined(PICO_DEFAULT_LED_PIN)
         gpio_put(PICO_DEFAULT_LED_PIN, on);
-#elif defined(CYW43_WL_GPIO_LED_PIN)
+#elif defined(CYW43_WL_GPIO_LED_PIN) && !USE_I2S_AUDIO
+        // Because of a conflict with the i2s audio, there is no led support when using i2s audio
         cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, on);
 #else
         // No LED pin defined
@@ -844,8 +965,9 @@ namespace Frens
         gpio_init(PICO_DEFAULT_LED_PIN);
         gpio_set_dir(PICO_DEFAULT_LED_PIN, GPIO_OUT);
         gpio_put(PICO_DEFAULT_LED_PIN, 1);
-#elif defined(CYW43_WL_GPIO_LED_PIN)
+#elif defined(CYW43_WL_GPIO_LED_PIN) && !USE_I2S_AUDIO
         // For Pico W devices we need to initialize the driver
+        // Because of a conflict with the i2s audio, there is no led support when using i2s audio
         return cyw43_arch_init();
 #endif
 #endif
@@ -855,18 +977,33 @@ namespace Frens
     /// @brief Finds an unused DMA channel.
     /// This function iterates through the available DMA channels (0-11) and returns the first unused channel.
     /// If no unused channel is found, it will panic.
+    /// @param startChannel The channel to start searching from. If -1, it starts from 0.
     /// @return the number of the unused DMA channel (0-11).
-    int GetUnUsedDMAChan()
+    int GetUnUsedDMAChan(int startChannel)
     {
         // Get an unused DMA channel
         int dma_chan = -1;
-        printf("Searching for unused DMA channel...");
-        for (int i = 0; i < 12; i++)
+        int startChan;
+
+        if (startChannel == -1)
+        {
+#if !HSTX
+            startChan = 0;
+#else
+            startChan = 2; // HSTX uses DMA channel 0 (DMACHPING) and 1 (DMACHPONG) on core1, avoid this core claiming them
+#endif
+        }
+        else
+        {
+            startChan = startChannel; // Use the provided start channel
+        }
+        printf("Searching for unused DMA channel starting from %d...", startChan);
+        for (int i = startChan; i < 12; i++)
         {
             if (!dma_channel_is_claimed(i))
             {
                 dma_chan = i;
-                printf(" found unused DMA channel %d\n", dma_chan);
+                printf(" found DMA channel %d\n", dma_chan);
                 break;
             }
         }
@@ -907,7 +1044,7 @@ namespace Frens
         // Note: tuh_configure() must be called before tuh_init()
         pio_usb_configuration_t pio_cfg = PIO_USB_DEFAULT_CONFIG;
         // find an unused DMA channel
-        pio_cfg.tx_ch = GetUnUsedDMAChan();
+        pio_cfg.tx_ch = GetUnUsedDMAChan(-1); // -1 find the first unused DMA channel
         //
         pio_cfg.pio_rx_num = PIO_USB_USE_PIO;
         pio_cfg.pio_tx_num = PIO_USB_USE_PIO;
@@ -918,7 +1055,7 @@ namespace Frens
     }
     void initDVandAudio(int marginTop, int marginBottom, size_t audioBufferSize)
     {
-        //
+#if !HSTX
         dvi_ = std::make_unique<dvi::DVI>(pio0, &DVICONFIG,
                                           dvi::getTiming640x480p60Hz());
         //    dvi_->setAudioFreq(48000, 25200, 6144);
@@ -933,6 +1070,18 @@ namespace Frens
         // dvi_->setScanLine(true);
         // 空サンプル詰めとく
         dvi_->getAudioRingBuffer().advanceWritePointer(255);
+#else
+        hstx_init();
+#if 0
+        // For now use an MCP4822 DAC for audio output
+        // https://ww1.microchip.com/downloads/aemDocuments/documents/OTH/ProductDocuments/DataSheets/20002249B.pdf
+        // This is only used for HSTX, not for DVI.
+        // The MCP4822 is a dual channel 12-bit DAC.
+        // The DAC must be connected to the correct GPIO pins and must have an audio Jack connected.
+        // see drivers/pico_audio_mcp4822/mcp4822.h for the pin definitions.
+        mcp4822_init();
+#endif
+#endif
     }
 
     /// @brief Init dv and audio with default audio buffer size of 256
@@ -942,6 +1091,16 @@ namespace Frens
     {
         initDVandAudio(marginTop, marginBottom, 256);
     }
+
+    /// @brief Initialize SD Card, Audio, Video etc...
+    /// @param selectedRom   The user selected rom
+    /// @param CPUFreqKHz    Clock frequency in kHz of the cpu
+    /// @param marginTop     Top Margin in lines.    (ignored when framebuffer is used)
+    /// @param marginBottom  Bottom Margin in lines. (Ignored when framebuffer is used)
+    /// @param audiobufferSize Size of the audio buffer
+    /// @param swapbytes Swap bytes when loading Roms (Master System, Game Gear)
+    /// @param useFrameBuffer Use framebuffer when possible
+    /// @return
     bool initAll(char *selectedRom, uint32_t CPUFreqKHz, int marginTop, int marginBottom, size_t audiobufferSize, bool swapbytes, bool useFrameBuffer)
 
     {
@@ -952,13 +1111,16 @@ namespace Frens
             printf("Error initializing LED: %d\n", rc);
         }
         // Init PSRAM if available, otherwise use flash memory to store roms.
-        if (  initPsram() == false)
+        if (initPsram() == false)
         {
+            auto flashcap = storage_get_flash_capacity();
             // Calculate the address in flash where roms will be stored
             printf("Flash binary start    : 0x%08x\n", &__flash_binary_start);
             printf("Flash binary end      : 0x%08x\n", &__flash_binary_end);
-            printf("Flash size in bytes   :   %8d (%d)Kbytes\n", PICO_FLASH_SIZE_BYTES, PICO_FLASH_SIZE_BYTES / 1024);
-            uint8_t *flash_end = (uint8_t *)&__flash_binary_start + PICO_FLASH_SIZE_BYTES - 1;
+            // printf("Flash size in bytes   :   %8d (%d)Kbytes\n", PICO_FLASH_SIZE_BYTES, PICO_FLASH_SIZE_BYTES / 1024);
+            printf("Flash size in bytes   :   %8d (%d Kbytes)\n", flashcap, flashcap / 1024);
+            // uint8_t *flash_end = (uint8_t *)&__flash_binary_start + PICO_FLASH_SIZE_BYTES - 1;
+            uint8_t *flash_end = (uint8_t *)&__flash_binary_start + flashcap - 1;
             printf("Flash end             : 0x%08x\n", flash_end);
             printf("Size program in flash :   %8d bytes (%d) Kbytes\n", &__flash_binary_end - &__flash_binary_start, (&__flash_binary_end - &__flash_binary_start) / 1024);
             // round ROM_FILE_ADDRESS address up to 4k boundary of flash_binary_end
@@ -968,11 +1130,15 @@ namespace Frens
             maxRomSize = flash_end - (uint8_t *)ROM_FILE_ADDR;
             printf("ROM_FILE_ADDR         : 0x%08x\n", ROM_FILE_ADDR);
             printf("Max ROM size          :   %8d bytes (%d) KBytes\n", maxRomSize, maxRomSize / 1024);
-        } else {
+        }
+        else
+        {
             maxRomSize = psramMemorySize;
             printf("  PSRAM size            :   %8zu bytes (%zu) KBytes\n", psramMemorySize, psramMemorySize / 1024);
             printf("  Max ROM size          :   %8zu bytes (%zu) KBytes\n", maxRomSize, maxRomSize / 1024);
         }
+        // auto cap = storage_get_flash_capacity();
+        // printf("Total flash size: %d bytes (%d Kbytes)\n", cap,cap/ 1024);
         // reset settings to default in case SD card could not be mounted
         resetsettings();
         if (initSDCard())
@@ -992,19 +1158,16 @@ namespace Frens
                 flashrom(selectedRom, swapbytes);
             }
         }
+#if !HSTX && FRAMEBUFFERISPOSSIBLE
         usingFramebuffer = useFrameBuffer;
         if (usingFramebuffer)
         {
-            framebuffer1 = (uint8_t *)malloc(SCREENWIDTH * SCREENHEIGHT);
-            framebuffer2 = (uint8_t *)malloc(SCREENWIDTH * SCREENHEIGHT);
-            framebufferCore0 = framebuffer1;
-            if (framebuffer1 == NULL || framebuffer2 == NULL)
-            {
-                printf("Error allocating framebuffers\n");
-                ok = false;
-            }
-            mutex_init(&framebuffer_mutex);
+            // always allocate framebuffer in SRAM
+            framebuffer = (WORD *)malloc(SCREENWIDTH * SCREENHEIGHT * sizeof(WORD));
+            memset(framebuffer, 0, SCREENWIDTH * SCREENHEIGHT * sizeof(WORD));
+            marginTop = marginBottom = 0; // ignore margins when using framebuffer
         }
+#endif // DVI
         initDVandAudio(marginTop, marginBottom, audiobufferSize);
         // init USB driver
         // USB driver is initalized after display driver to prevent the display driver
@@ -1026,19 +1189,28 @@ namespace Frens
         printf("Using internal USB.\n");
         tusb_init();
 #endif
+#if !HSTX
+#if FRAMEBUFFERISPOSSIBLE
         if (usingFramebuffer)
         {
+
             multicore_launch_core1(coreFB_main);
         }
         else
         {
             multicore_launch_core1(core1_main);
         }
+#else
+        multicore_launch_core1(core1_main);
+#endif
+#endif // DVI
         initVintageControllers(CPUFreqKHz);
-        EXT_AUDIO_SETUP(DVIAUDIOFREQ); // Initialize external audio if needed
+        // TODO: DMA chan 1-3 are used for PIO0, chan 4-7 for PIO1, Assuming PIO1 is used for audio.
+        EXT_AUDIO_SETUP(USE_I2S_AUDIO, DVIAUDIOFREQ, GetUnUsedDMAChan(4)); // Initialize external audio if needed
+        srand(get_rand_32());                                              // Seed the random number generator with a random value
         return ok;
     }
-
+#if !HSTX && 0
     void markFrameReadyForReendering(bool waitForFrameReady)
     {
         // switch framebuffers
@@ -1074,7 +1246,7 @@ namespace Frens
 #endif
         // continue processing next frame while the other core renders the framebuffer
     }
-
+#endif // DVI
     void resetWifi()
     {
 #if defined(CYW43_WL_GPIO_LED_PIN)

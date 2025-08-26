@@ -8,15 +8,39 @@
 #include "hardware/pio.h"
 #include "hardware/clocks.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+#define PICO_AUDIO_I2S_DRIVER_NONE 0         // No I2S driver
+#define PICO_AUDIO_I2S_DRIVER_TLV320 1       // TLV320 DAC - Adafruit FruitJam
+#define PICO_AUDIO_I2S_DRIVER_PCM5000A 2     // PCM5000A DAC - Pimoroni Pico Dv Demo base
 #ifndef PICO_AUDIO_I2S_FREQ
 #define PICO_AUDIO_I2S_FREQ 44100
 #endif
 #ifndef PICO_AUDIO_I2S_COUNT
 #define PICO_AUDIO_I2S_COUNT 2
 #endif
+
+#ifndef PICO_AUDIO_I2S_DEBUG
+#define PICO_AUDIO_I2S_DEBUG 0 // Set to 1 to enable debug output
+#endif
+
+// Reset pin, when using TLV320 codec
+#ifndef PICO_AUDIO_I2S_RESET_PIN
+#define PICO_AUDIO_I2S_RESET_PIN 7
+#endif
+// Data pin, DIN or SDATA
 #ifndef PICO_AUDIO_I2S_DATA_PIN
 #define PICO_AUDIO_I2S_DATA_PIN 26
 #endif
+
+#ifndef PICO_AUDIO_I2S_CLOCK_PINS_SWAPPED
+#define PICO_AUDIO_I2S_CLOCK_PINS_SWAPPED 0
+#endif
+// Note:  BCK is also known as BCLK
+//        LRCLK is also known as WS (Word Select), WSEL, WCLK
+// PICO_AUDIO_I2S_CLOCK_PINS_SWAPPED == 0: BASE = BCK, BASE + 1 = LRCLK 
+// PICO_AUDIO_I2S_CLOCK_PINS_SWAPPED == 1: BASE = LRCLK, BASE + 1 = BCK
 #ifndef PICO_AUDIO_I2S_CLOCK_PIN_BASE
 #define PICO_AUDIO_I2S_CLOCK_PIN_BASE 27
 #endif
@@ -24,18 +48,27 @@
 #define PICO_AUDIO_I2S_PIO 0
 #endif
 
-#ifndef PICO_AUDIO_I2S_CLOCK_PINS_SWAPPED
-#define PICO_AUDIO_I2S_CLOCK_PINS_SWAPPED 0
+// headphone detect pin, when using TLV320 codec
+// #ifndef PICO_AUDIO_I2S_HP_DETECT_PIN
+// #define PICO_AUDIO_I2S_HP_DETECT_PIN -1
+// #endif
+
+#ifndef PICO_AUDIO_I2S_INTERRUPT_PIN
+#define PICO_AUDIO_I2S_INTERRUPT_PIN -1
+#endif
+#ifndef PICO_AUDIO_I2S_INTERRUPT_IS_BUTTON
+#define PICO_AUDIO_I2S_INTERRUPT_IS_BUTTON 0
 #endif
 
-
-#ifdef __cplusplus
-extern "C" {
-#endif
 
 
 #define AUDIO_RING_SIZE 1024 // Size of the audio ring buffer (must be a multiple of DMA_BLOCK_SIZE)
+#define AUDIO_RING_MASK (AUDIO_RING_SIZE - 1)
 #define DMA_BLOCK_SIZE 256 // Size of each DMA block transfer
+
+#define TLV320_HEADPHONE_NOTCONNECTED 0b00 // Headphone not connected
+#define TLV320_HEADPHONE_CONNECTED 0b01     // Headphone connected
+#define TLV320_HEADPHONE_CONNECTED_WITH_MIC 0b11 // Headphone connected with microphone
 
 typedef struct {
     int sm;      // State machine index
@@ -43,10 +76,12 @@ typedef struct {
     int dma_chan; // DMA channel for audio transfer
 } audio_i2s_hw_t;
 
-audio_i2s_hw_t *audio_i2s_setup(int freqHZ);
+audio_i2s_hw_t *audio_i2s_setup(int driver, int freqHZ, int dmachan);
 void audio_i2s_update_pio_frequency(uint32_t sample_freq);
 void audio_i2s_out_32(uint32_t sample32);
 void audio_i2s_enqueue_sample(uint32_t sample32);
+void audio_i2s_poll_headphone_status();
+int audio_i2s_get_freebuffer_size();
 #ifdef __cplusplus
 }
 #endif

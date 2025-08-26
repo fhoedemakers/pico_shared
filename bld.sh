@@ -18,7 +18,7 @@ function usage() {
 	echo "  -d: build in DEBUG configuration"
 	echo "  -2: build for Pico 2 board (RP2350)"
 	echo "  -r: build for Pico 2 board (RP2350) with riscv core"
-	echo "  -u: enable PIO USB support (default is disabled, RP2350 only)"
+	echo "  -u: enable PIO USB support (RP2350 only) disabled by default except for Waveshare RP2350-PiZero and Adafruit Fruit Jam."
 	echo "  -s <ps-ram-cs>: specify the GPIO pin for PSRAM chip select (default is 47 for RP2350 boards)"
 	echo "  -w: build for Pico_w or Pico2_w"
 	echo "  -t <path to riscv toolchain>: only needed for riscv, specify the path to the riscv toolchain bin folder"
@@ -32,6 +32,8 @@ function usage() {
 	echo "     4: Waveshare RP2040-PiZero"
 	echo "     5: Adafruit Metro RP2350 (latest branch of TinyUSB is required for this board)"
 	echo "     6: Waveshare RP2040-Zero/RP2350-Zero with custom PCB"
+	echo "     7: WaveShare RP2350-PiZero - PIO USB enabled,  -u implied."
+	echo "     8: Adafruit Fruit Jam - PIO USB enabled, -u implied."
 	echo "  -m: Run cmake only, do not build the project"
 	echo "  -h: display this help"
 	echo ""
@@ -70,7 +72,7 @@ if [ ! -d "$PICO_SDK_PATH" ] ; then
 	echo "Pico SDK not found. Please set the PICO_SDK_PATH environment variable to the location of the Pico SDK"
 	exit 1
 fi
-SDKVERSION=`cat $PICO_SDK_PATH/pico_sdk_version.cmake | grep "set(PICO_SDK_VERSION_MAJOR" | cut -f2  -d" " | cut -f1 -d\)`
+SDKVERSION=`cat $PICO_SDK_PATH/pico_sdk_version.cmake | grep "set(PICO_SDK_VERSION_MAJOR" | cut -f2  -d\( | cut -f2 -d" " | cut -f1 -d\)`
 TOOLCHAIN_PATH=
 picoarmIsSet=0
 picoRiscIsSet=0
@@ -78,6 +80,7 @@ USEPICOW=0
 USEPIOUSB=0
 CMAKEONLY=0
 PSRAM_CS_PIN=47 # default for RP2350 boards
+USESIMPLEFILENAMES=0
 while getopts "muwhd2rc:t:p:s:" opt; do
   case $opt in
     p)
@@ -93,6 +96,19 @@ while getopts "muwhd2rc:t:p:s:" opt; do
       ;;
     c)
       HWCONFIG=$OPTARG
+	  # imply pico2 for HWCONFIG 5, 7 and 8
+	  if [[ $HWCONFIG -eq 5 || $HWCONFIG -eq 7 || $HWCONFIG -eq 8 ]] ; then
+		  PICO_BOARD=pico2
+		  PICO_PLATFORM=rp2350-arm-s
+		  picoarmIsSet=0    # not set via command line argument
+		  echo "Using Pico 2 for HWCONFIG $HWCONFIG"
+		  USESIMPLEFILENAMES=1
+	  fi
+	  # imply PIO USB for 7 and 8
+	  if [[ $HWCONFIG -eq 7 || $HWCONFIG -eq 8 ]] ; then
+		  USEPIOUSB=1
+		  echo "Using PIO USB for HWCONFIG $HWCONFIG"
+	  fi
       ;;
 	2) 
 	  PICO_BOARD=pico2
@@ -175,9 +191,9 @@ if [[ $PICO_PLATFORM == rp2350* ]] ; then
 		echo "Please use -c 1 or -c 2 or -c 5"
 		exit 1
 	fi
-else 
-	# HWCONFIG 5 is not compatible with pico
-	if [[ $HWCONFIG -eq 5 ]] ; then
+else
+	# HWCONFIG 5, 7 and 8 is not compatible with pico
+	if [[ $HWCONFIG -eq 5 || $HWCONFIG -eq 7 || $HWCONFIG -eq 8 ]] ; then
 		echo "HWCONFIG $HWCONFIG is not compatible with Pico"
 		exit 1
 	fi
@@ -237,22 +253,38 @@ if [[ $USEPIOUSB -eq 1 && $PICO_PLATFORM != rp2350* ]] ; then
 fi
 case $HWCONFIG in
 	1)
-		UF2="${APP}PimoroniDV.uf2"
+		UF2="PimoroniDVI"
 		;;
 	2)
-		UF2="${APP}AdaFruitDVISD.uf2"
+		UF2="AdafruitDVISD"
 		;;
 	3) 
-		UF2="${APP}FeatherDVI.uf2"
+		UF2="AdafruitFeatherDVI"
+		USESIMPLEFILENAMES=1
 		;;
 	4)
-		UF2="${APP}WsRP2040PiZero.uf2"
+		UF2="WaveShareRP2040PiZero"
+		USESIMPLEFILENAMES=1
 		;;
 	5)
-		UF2="${APP}AdafruitMetroRP2350.uf2"
+		UF2="AdafruitMetroRP2350"
+		USESIMPLEFILENAMES=1
 		;;
 	6)
-		UF2="${APP}RP2XX0ZeroWithPCB.uf2"
+		USESIMPLEFILENAMES=1
+		if [[ $PICO_PLATFORM == rp2350* ]] ; then
+			UF2="WaveShareRP2350ZeroWithPCB"
+		else
+			UF2="WaveShareRP2040ZeroWithPCB"
+		fi
+		;;
+	7)
+		UF2="WaveShareRP2350PiZero"
+		USESIMPLEFILENAMES=1
+		;;
+	8)
+		UF2="AdafruitFruitJam"
+		USESIMPLEFILENAMES=1
 		;;
 	*)
 		echo "Invalid value: $HWCONFIG specified for option -c, must be 1, 2, 3 or 4"
@@ -269,13 +301,23 @@ fi
 # fi	
 PIOUSB=
 if [ $USEPIOUSB -eq 1 ] ; then
-	PIOUSB="_pio_usb"
+	PIOUSB="_piousb"
 fi	
-if [ "$PICO_PLATFORM" = "rp2350-riscv" ] ; then
-	UF2="${PICO_BOARD}${PIOUSB}_riscv_$UF2"
+# Only when SIMPLEFILENAMES=0
+if [ $USESIMPLEFILENAMES -eq 0 ] ; then
+	if [ "$PICO_PLATFORM" = "rp2350-riscv" ] ; then
+		UF2="${UF2}_${PICO_BOARD}_riscv${PIOUSB}"
+	else
+		UF2="${UF2}_${PICO_BOARD}_arm${PIOUSB}"
+	fi
 else
-	UF2="${PICO_BOARD}${PIOUSB}_$UF2"
+	if [ "$PICO_PLATFORM" = "rp2350-riscv" ] ; then
+		UF2="${UF2}_riscv${PIOUSB}"
+	else
+		UF2="${UF2}_arm${PIOUSB}"
+	fi
 fi
+UF2="${APP}_${UF2}.uf2"
 echo "Building $PROJECT"
 echo "Using Pico SDK version: $SDKVERSION"
 echo "Building for $PICO_BOARD, platform $PICO_PLATFORM with $BUILD configuration and HWCONFIG=$HWCONFIG"

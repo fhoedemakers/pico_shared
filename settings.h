@@ -7,7 +7,10 @@ extern struct settings settings;
 
 struct settings
 {
-    ScreenMode screenMode;
+    union {
+        ScreenMode screenMode;
+        int scanlineOn;
+    };
     int firstVisibleRowINDEX;
     int selectedRow;
     int horzontalScrollIndex;

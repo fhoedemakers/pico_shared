@@ -6,42 +6,6 @@ project(LwLibPROJECT)
 if(NOT PROJECT_IS_TOP_LEVEL)
     add_subdirectory(lwmem)
 else()
-    # Set as executable
-    add_executable(${PROJECT_NAME})
-
-    # Add key executable block
-    target_sources(${PROJECT_NAME} PUBLIC
-        ${CMAKE_CURRENT_LIST_DIR}/dev/main.cpp
-        ${CMAKE_CURRENT_LIST_DIR}/tests/lwmem_test.c
-
-        # win32 port
-        ${CMAKE_CURRENT_LIST_DIR}/lwmem/src/system/lwmem_sys_win32.c
-    )
-
-    # Add key include paths
-    target_include_directories(${PROJECT_NAME} PUBLIC
-        ${CMAKE_CURRENT_LIST_DIR}
-        ${CMAKE_CURRENT_LIST_DIR}/dev
-    )
-
-    # Compilation definition information
-    target_compile_definitions(${PROJECT_NAME} PUBLIC
-        WIN32
-        _DEBUG
-        CONSOLE
-        LWMEM_DEV
-    )
-
-    # Compiler options
-    target_compile_options(${PROJECT_NAME} PRIVATE
-        -Wall
-        -Wextra
-        -Wpedantic
-    )
-
-    # Add subdir with lwmem and link to the project
-    set(LWMEM_OPTS_FILE ${CMAKE_CURRENT_LIST_DIR}/dev/lwmem_opts.h)
-    add_subdirectory(lwmem)
-    target_link_libraries(${PROJECT_NAME} lwmem)
-    target_link_libraries(${PROJECT_NAME} lwmem_cpp)
+    set(TEST_CMAKE_FILE_NAME "test_simple_config/cmake.cmake")
+    add_subdirectory(tests)
 endif()

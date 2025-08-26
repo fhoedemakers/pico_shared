@@ -2,6 +2,24 @@
 
 ## Develop
 
+## v2.2.3
+
+- Fix the missing last entry `NULL` check which prevented the free/realloc once blocks are all full [#16](https://github.com/MaJerle/lwmem/issues/16)
+
+## v2.2.2
+
+- Fix the wrong stats function type -> regression
+
+## v2.2.1
+
+- Fix the wrong variable to reduce the size of the region in case of unaligned address or size
+
+## v2.2.0
+
+- Rework library CMake with removed INTERFACE type
+- Add `LWMEM_CFG_FULL` to allow control build configuration of the library
+- Implement support for simple (no realloc, no free, grow-only malloc) allocation mechanism
+
 ## v2.1.0
 
 - Split CMakeLists.txt files between library and executable
