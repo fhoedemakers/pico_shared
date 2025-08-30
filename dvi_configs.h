@@ -51,6 +51,12 @@ namespace {
         .pinClock = 6,
         .invert = true,
     };
+   // WaveShare RP2350 USBA
+    constexpr dvi::Config dviConfig_WaveShare2350USBA = {
+        .pinTMDS = {5, 7, 9},
+        .pinClock = 3,
+        .invert = true,
+    };
 }
 #ifndef DVICONFIG
 #define DVICONFIG dviConfig_PimoroniDemoDVSock

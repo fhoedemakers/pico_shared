@@ -339,6 +339,40 @@ elseif ( HW_CONFIG EQUAL 8 )
    set (PICO_DEFAULT_UART 0 CACHE STRING "Select the default UART for this board") # Adafruit Fruit Jam uses UART0
    set (PICO_DEFAULT_UART_TX_PIN 44 CACHE STRING "Select the GPIO pin for UART TX") # Adafruit Fruit Jam uses GPIO 44 for UART TX
    set (PICO_DEFAULT_UART_RX_PIN 45 CACHE STRING "Select the GPIO pin for UART RX") # Adafruit Fruit Jam uses GPIO 45 for UART RX
+elseif ( HW_CONFIG EQUAL 9 )
+    # --------------------------------------------------------------------
+	# WaveShare RP2350-USB-A
+	# --------------------------------------------------------------------
+	set(DVICONFIG "dviConfig_WaveShare2350USBA" CACHE STRING
+    "Select a default pin configuration from common_dvi_pin_configs.h")
+    set(LED_GPIO_PIN "-1" CACHE STRING "Select the GPIO pin for LED")  
+    set(SD_CS "26" CACHE STRING "Specify the Chip Select GPIO pin for the SD card")
+    set(SD_SCK "2" CACHE STRING "Specify de Clock GPIO pin for the SD card")
+    set(SD_MOSI "0" CACHE STRING "Select the Master Out Slave In GPIO pin for the SD card")
+    set(SD_MISO "1" CACHE STRING "Select the Master In Slave Out GPIO pin for the SD card")
+    set(SD_SPI "spi0" CACHE STRING "Select the SPI bus for SD card")
+    set(NES_CLK "-1" CACHE STRING "Select the Clock GPIO pin for NES controller")
+    set(NES_DATA "-1" CACHE STRING "Select the Data GPIO pin for NES controller")
+    set(NES_LAT "-1" CACHE STRING "Select the Latch GPIO pin for NES controller")
+    set(NES_PIO "pio1" CACHE STRING "Select the PIO for NES controller")
+    set(NES_CLK_1 "-1" CACHE STRING "Select the Clock GPIO pin for second NES controller")
+	set(NES_DATA_1 "-1" CACHE STRING "Select the Data GPIO pin for second NES controller")
+	set(NES_LAT_1 "-1" CACHE STRING "Select the Latch GPIO pin for second NES controller")
+    set(NES_PIO_1 "pio1" CACHE STRING "Select the PIO for second NES controller")
+    set(WII_SDA "-1" CACHE STRING "Select the SDA GPIO pin for Wii Classic controller")
+    set(WII_SCL "-1" CACHE STRING "Select the SCL GPIO pin for Wii Classic controller")
+    set(WIIPAD_I2C "i2c1" CACHE STRING "Select the I2C bus for Wii Classic controller")
+	set(UART_ENABLED 0 CACHE STRING "Enable UART output") 
+    set(USE_I2S_AUDIO 0 CACHE STRING "Enable I2S audio output") 
+    set(PICO_AUDIO_I2S_DATA_PIN -1 CACHE STRING "Select the GPIO pin for I2S data")
+    set(PICO_AUDIO_I2S_CLOCK_PIN_BASE -1 CACHE STRING "Select the GPIO pin for I2S clock")
+    set(PICO_AUDIO_I2S_PIO 1 CACHE STRING "Select the PIO for I2S audio output")
+    set(PICO_AUDIO_I2S_CLOCK_PINS_SWAPPED 0 CACHE STRING "Set to 1 if the I2S clock pins are swapped")
+    set(PICO_AUDIO_I2S_RESET_PIN -1 CACHE STRING "Select the GPIO pin for I2S reset")
+    set(ENABLE_PIO_USB 1 CACHE BOOL "Enable PIO USB support")
+    set(PIO_USB_USE_PIO 2 CACHE BOOL "Select the PIO used for PIO-USB")
+    set(PIO_DP_PLUS_PIN 12 CACHE STRING "PIO USB DP pin.")
+
 endif ( )
 if ( NOT DEFINED PICO_AUDIO_I2S_INTERRUPT_PIN )
     set(PICO_AUDIO_I2S_INTERRUPT_PIN -1 CACHE STRING "Select the GPIO pin for I2S interrupt")

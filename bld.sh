@@ -96,16 +96,16 @@ while getopts "muwhd2rc:t:p:s:" opt; do
       ;;
     c)
       HWCONFIG=$OPTARG
-	  # imply pico2 for HWCONFIG 5, 7 and 8
-	  if [[ $HWCONFIG -eq 5 || $HWCONFIG -eq 7 || $HWCONFIG -eq 8 ]] ; then
+	  # imply pico2 for HWCONFIG 5, 7, 8 and 9
+	  if [[ $HWCONFIG -eq 5 || $HWCONFIG -eq 7 || $HWCONFIG -eq 8 || $HWCONFIG -eq 9 ]] ; then
 		  PICO_BOARD=pico2
 		  PICO_PLATFORM=rp2350-arm-s
 		  picoarmIsSet=0    # not set via command line argument
 		  echo "Using Pico 2 for HWCONFIG $HWCONFIG"
 		  USESIMPLEFILENAMES=1
 	  fi
-	  # imply PIO USB for 7 and 8
-	  if [[ $HWCONFIG -eq 7 || $HWCONFIG -eq 8 ]] ; then
+	  # imply PIO USB for 7, 8 and 9
+	  if [[ $HWCONFIG -eq 7 || $HWCONFIG -eq 8 || $HWCONFIG -eq 9 ]] ; then
 		  USEPIOUSB=1
 		  echo "Using PIO USB for HWCONFIG $HWCONFIG"
 	  fi
@@ -192,8 +192,8 @@ if [[ $PICO_PLATFORM == rp2350* ]] ; then
 		exit 1
 	fi
 else
-	# HWCONFIG 5, 7 and 8 is not compatible with pico
-	if [[ $HWCONFIG -eq 5 || $HWCONFIG -eq 7 || $HWCONFIG -eq 8 ]] ; then
+	# HWCONFIG 5, 7, 8 and 9 is not compatible with pico
+	if [[ $HWCONFIG -eq 5 || $HWCONFIG -eq 7 || $HWCONFIG -eq 8 || $HWCONFIG -eq 9 ]] ; then
 		echo "HWCONFIG $HWCONFIG is not compatible with Pico"
 		exit 1
 	fi
@@ -284,6 +284,10 @@ case $HWCONFIG in
 		;;
 	8)
 		UF2="AdafruitFruitJam"
+		USESIMPLEFILENAMES=1
+		;;
+	9)
+		UF2="WaveShare2350USBA"
 		USESIMPLEFILENAMES=1
 		;;
 	*)
