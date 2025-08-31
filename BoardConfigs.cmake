@@ -327,6 +327,7 @@ elseif ( HW_CONFIG EQUAL 8 )
         set(GPIOHSTXCK 13 CACHE STRING "HSTX CK+ pin")
         set(GPIOHSTXINVERTED 1 CACHE STRING "Set to 1 if HSTX pins are inverted: D- = D+ - 1, not inverted (default): D- = D+ + 1")
    endif()
+   set(ENABLE_VU_METER 1 CACHE BOOL "Enable VU meter (fruitjam NeoPixel leds)")
    # Override default UART settings used for printf debugging on the Adafruit Fruit Jam board.
    # By default, the following UART configuration is set in:
    #   $PICO_SDK_PATH/lib/tinyusb/hw/bsp/rp2040/boards/adafruit_fruit_jam/adafruit_fruit_jam.h
@@ -374,6 +375,10 @@ elseif ( HW_CONFIG EQUAL 9 )
     set(PIO_DP_PLUS_PIN 12 CACHE STRING "PIO USB DP pin.")
 
 endif ( )
+
+if (NOT DEFINED ENABLE_VU_METER)
+    set(ENABLE_VU_METER 0 CACHE BOOL "Enable VU meter (fruitjam NeoPixel leds)")
+endif()
 if ( NOT DEFINED PICO_AUDIO_I2S_INTERRUPT_PIN )
     set(PICO_AUDIO_I2S_INTERRUPT_PIN -1 CACHE STRING "Select the GPIO pin for I2S interrupt")
 endif()

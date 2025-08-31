@@ -19,6 +19,7 @@
 #include "font_8x8.h"
 #include "settings.h"
 #include "ffwrappers.h"
+#include "vumeter.h"
 
 #if !HSTX
 #define CC(x) (((x >> 1) & 15) | (((x >> 6) & 15) << 4) | (((x >> 11) & 15) << 8))
@@ -1337,7 +1338,9 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
     FIL fil;
     DWORD PAD1_Latch;
     char curdir[FF_MAX_LFN];
-
+#if ENABLE_VU_METER
+    turnOffAllLeds();
+#endif
     strcpy(emulator, emulatorType);
     artworkEnabled = isArtWorkEnabled();
 #if !HSTX

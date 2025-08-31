@@ -14,6 +14,7 @@ wiipad.cpp
 FrensFonts.cpp
 ffwrappers.cpp
 crc32.cpp
+vumeter.cpp
 #PicoPlusPsram.cpp
 )
 add_subdirectory(drivers/pico_fatfs)     
@@ -26,6 +27,7 @@ add_subdirectory(drivers/pico_psram)
 target_include_directories(pico_shared INTERFACE
         .
 )
+pico_generate_pio_header(${projectname} ${CMAKE_CURRENT_LIST_DIR}/ws2812.pio)
 target_link_libraries(pico_shared 
                       INTERFACE 
                       pico_rand

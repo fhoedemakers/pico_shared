@@ -22,6 +22,7 @@
 #include "settings.h"
 
 #include "PicoPlusPsram.h"
+#include "vumeter.h"
 // Pico W devices use a GPIO on the WIFI chip for the LED,
 // so when building for Pico W, CYW43_WL_GPIO_LED_PIN will be defined
 // NOTE: Building for Pico2 W makes the emulator not work: ioctl timeouts and red flicker
@@ -664,7 +665,7 @@ namespace Frens
                 }
                 ok = true;
                 printf("Read %d bytes from %s into PSRAM at %p\n", r, selectdRom, pMem);
-              
+
                 selectdRom[0] = 0; //
             }
             f_close(&fil);
@@ -1208,6 +1209,9 @@ namespace Frens
         // TODO: DMA chan 1-3 are used for PIO0, chan 4-7 for PIO1, Assuming PIO1 is used for audio.
         EXT_AUDIO_SETUP(USE_I2S_AUDIO, DVIAUDIOFREQ, GetUnUsedDMAChan(4)); // Initialize external audio if needed
         srand(get_rand_32());                                              // Seed the random number generator with a random value
+#if ENABLE_VU_METER
+        initializeNeoPixelStrip();
+#endif
         return ok;
     }
 #if !HSTX && 0
