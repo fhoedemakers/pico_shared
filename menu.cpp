@@ -20,6 +20,7 @@
 #include "settings.h"
 #include "ffwrappers.h"
 #include "vumeter.h"
+#include "DefaultSS.h"
 
 #if !HSTX
 #define CC(x) (((x >> 1) & 15) | (((x >> 6) & 15) << 4) | (((x >> 11) & 15) << 8))
@@ -400,10 +401,11 @@ void drawline(int scanline, int selectedRow, int w = 0, int h = 0, uint16_t *ima
     auto offset = 0;
     bool validImage = (imagebuffer != nullptr) && (w > 0 && w <= SCREENWIDTH && h > 0 && h <= SCREENHEIGHT);
     if (validImage)
-    {   
+    {
         // avoid flicker on first line in metadata screen
         // clear line only when image is moving (screensaver)
-        if (imagex || imagey) {
+        if (imagex || imagey)
+        {
             memset(WorkLineRom, 0, SCREENWIDTH * sizeof(WORD));
         }
         if (scanline >= imagey && scanline < imagey + h)
@@ -721,17 +723,26 @@ void showSplashScreen()
 #endif
 static FRESULT pick_random_file_fullpath(const char *dirpath, char *out_path, size_t out_size)
 {
+    static const int MAX_ITER = 404;
     FRESULT fr;
     DIR dir;
     FILINFO fno;
     UINT file_count = 0;
-
+    int iter = 0;
+    *out_path = 0;
+ 
     fr = f_opendir(&dir, dirpath);
     if (fr != FR_OK)
         return fr;
 
     while (1)
     {
+         // Bail out if f_readdir loops too many. Can be caused by bad sd card?
+         if (++iter > MAX_ITER) {
+            printf("Error: Too many files in directory, aborting search.\n");
+            f_closedir(&dir);
+            return FR_INT_ERR;
+        }
         fr = f_readdir(&dir, &fno);
         if (fr != FR_OK || fno.fname[0] == 0)
             break; // End or error
@@ -755,20 +766,19 @@ static FRESULT pick_random_file_fullpath(const char *dirpath, char *out_path, si
             const char *name = fno.fname;
             // Build full path: "<dirpath>/<filename>"
             size_t dir_len = strlen(dirpath);
-            if (dir_len + 1 + strlen(name) + 1 <= out_size)
+            if (dir_len + 1 + strlen(name) + 1 > out_size)
             {
-                strcpy(out_path, dirpath);
-                if (dirpath[dir_len - 1] != '/' && dirpath[dir_len - 1] != '\\')
-                {
-                    strcat(out_path, "/");
-                }
-                strcat(out_path, name);
+                // Output buffer too small, skip this file and continue
+                printf("Output buffer too small for path: %s/%s\n", dirpath, name);
+                continue;
             }
-            else
+
+            strcpy(out_path, dirpath);
+            if (dirpath[dir_len - 1] != '/' && dirpath[dir_len - 1] != '\\')
             {
-                f_closedir(&dir);
-                return FR_INVALID_NAME; // Output buffer too small
+                strcat(out_path, "/");
             }
+            strcat(out_path, name);
         }
     }
     if (file_count > 0)
@@ -807,7 +817,7 @@ void screenSaverWithArt()
     DWORD PAD1_Latch;
     WORD frameCount = 0;
 
-    char fld = (char)(rand() % 15);
+    char fld;
     char *PATH = nullptr;
     char *CHOSEN = nullptr;
     FIL fil;
@@ -845,32 +855,37 @@ void screenSaverWithArt()
             fld = (char)(rand() % 15);
             snprintf(PATH, (FF_MAX_LFN + 1) * sizeof(char), "/metadata/%s/images/160/%X", emulator, fld);
             printf("Scanning random folder: %s\n", PATH);
-            pick_random_file_fullpath(PATH, CHOSEN, (FF_MAX_LFN + 1) * sizeof(char));
-            fr = f_open(&fil, CHOSEN, FA_READ);
-            FSIZE_t fsize;
+            fr = pick_random_file_fullpath(PATH, CHOSEN, (FF_MAX_LFN + 1) * sizeof(char));
             if (fr == FR_OK)
             {
-                fsize = f_size(&fil);
-                // printf("Reading %s, size: %d bytes\n", PATH, fsize);
-                buffer = (uint8_t *)Frens::f_malloc(fsize);
-                size_t r;
-                fr = f_read(&fil, buffer, fsize, &r);
-                if (fr != FR_OK || r != fsize)
+                fr = f_open(&fil, CHOSEN, FA_READ);              
+                FSIZE_t fsize;
+                if (fr == FR_OK)
                 {
-                    printf("Error reading %s: %d, read %d bytes\n", PATH, fr, r);
-                    Frens::f_free(buffer);
-                    buffer = nullptr;
-                }
+                    fsize = f_size(&fil);
+                    // printf("Reading %s, size: %d bytes\n", PATH, fsize);
+                    buffer = (uint8_t *)Frens::f_malloc(fsize);
+                    size_t r;
+                    fr = f_read(&fil, buffer, fsize, &r);
+                    if (fr != FR_OK || r != fsize)
+                    {
+                        printf("Error reading %s: %d, read %d bytes\n", PATH, fr, r);
+                        Frens::f_free(buffer);
+                        buffer = nullptr;
+                    }
 
-                f_close(&fil);
+                    f_close(&fil);
+                }
+                else
+                {
+                    printf("Error opening %s: %d\n", PATH, fr);
+                    printf("Loading built-in screensaver image\n");
+                }
             }
-            else
+            if ( fr != FR_OK || buffer == nullptr)
             {
-                printf("Error opening %s: %d\n", PATH, fr);
-                printf("Screensaver not started\n");
-                Frens::f_free(PATH);
-                Frens::f_free(CHOSEN);
-                return;
+                buffer = (uint8_t *)Frens::f_malloc(DEFAULT_SS_LEN);
+                memcpy(buffer, DEFAULT_SS, DEFAULT_SS_LEN);
             }
             // first two bytes of buffer is width
             width = buffer ? *((uint16_t *)buffer) : 0;
