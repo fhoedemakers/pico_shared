@@ -7,7 +7,8 @@ extern struct settings settings;
 
 struct settings
 {
-    union {
+    union
+    {
         ScreenMode screenMode;
         int scanlineOn;
     };
@@ -18,7 +19,12 @@ struct settings
     int bgcolor;
     // int reserved[3];
     char currentDir[FF_MAX_LFN];
-    int useExtAudio; // 0 = use DVIAudio, 1 = use external Audio
+    struct
+    {
+        unsigned short useExtAudio : 1; // 0 = use DVIAudio, 1 = use external Audio
+        unsigned short enableVUMeter : 1; // 0 = disable VU meter, 1 = enable VU meter
+        unsigned short reserved : 14;
+    } flags;
 };
 namespace Frens
 {
