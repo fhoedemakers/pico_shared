@@ -4,7 +4,7 @@
 #include "pico/stdlib.h"
 #include "hardware/pio.h"
 #include "ws2812.pio.h" // Generated PIO program for WS2812
-
+#include "vumeter.h"
 #if ENABLE_VU_METER
 #ifdef PICO_DEFAULT_WS2812_PIN
 #define LED_PIN 32    // Your data pin (GPIO32)
