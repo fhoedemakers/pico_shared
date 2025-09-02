@@ -730,15 +730,16 @@ static FRESULT pick_random_file_fullpath(const char *dirpath, char *out_path, si
     UINT file_count = 0;
     int iter = 0;
     *out_path = 0;
- 
+
     fr = f_opendir(&dir, dirpath);
     if (fr != FR_OK)
         return fr;
 
     while (1)
     {
-         // Bail out if f_readdir loops too many. Can be caused by bad sd card?
-         if (++iter > MAX_ITER) {
+        // Bail out if f_readdir loops too many. Can be caused by bad sd card?
+        if (++iter > MAX_ITER)
+        {
             printf("Error: Too many files in directory, aborting search.\n");
             f_closedir(&dir);
             return FR_INT_ERR;
@@ -812,7 +813,7 @@ void screenSaverWithBlocks()
     }
 }
 
-void screenSaverWithArt()
+void screenSaverWithArt(bool showdefault = false)
 {
     DWORD PAD1_Latch;
     WORD frameCount = 0;
@@ -851,14 +852,20 @@ void screenSaverWithArt()
                 buffer = nullptr;
             }
             ClearScreen(settings.bgcolor);
-
-            fld = (char)(rand() % 15);
-            snprintf(PATH, (FF_MAX_LFN + 1) * sizeof(char), "/metadata/%s/images/160/%X", emulator, fld);
-            printf("Scanning random folder: %s\n", PATH);
-            fr = pick_random_file_fullpath(PATH, CHOSEN, (FF_MAX_LFN + 1) * sizeof(char));
+            if (showdefault == false)
+            {
+                fld = (char)(rand() % 15);
+                snprintf(PATH, (FF_MAX_LFN + 1) * sizeof(char), "/metadata/%s/images/160/%X", emulator, fld);
+                printf("Scanning random folder: %s\n", PATH);
+                fr = pick_random_file_fullpath(PATH, CHOSEN, (FF_MAX_LFN + 1) * sizeof(char));
+            }
+            else
+            {
+                fr = FR_DENIED;
+            }
             if (fr == FR_OK)
             {
-                fr = f_open(&fil, CHOSEN, FA_READ);              
+                fr = f_open(&fil, CHOSEN, FA_READ);
                 FSIZE_t fsize;
                 if (fr == FR_OK)
                 {
@@ -882,7 +889,7 @@ void screenSaverWithArt()
                     printf("Loading built-in screensaver image\n");
                 }
             }
-            if ( fr != FR_OK || buffer == nullptr)
+            if (fr != FR_OK || buffer == nullptr)
             {
                 buffer = (uint8_t *)Frens::f_malloc(DEFAULT_SS_LEN);
                 memcpy(buffer, DEFAULT_SS, DEFAULT_SS_LEN);
@@ -961,6 +968,7 @@ void screenSaverWithArt()
 
 void screenSaver()
 {
+#if 0
     if (artworkEnabled)
     {
         screenSaverWithArt();
@@ -969,6 +977,8 @@ void screenSaver()
     {
         screenSaverWithBlocks();
     }
+#endif
+    screenSaverWithArt(!artworkEnabled);
 }
 
 #if !HSTX
