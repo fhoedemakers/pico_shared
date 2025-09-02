@@ -15,6 +15,8 @@ FrensFonts.cpp
 ffwrappers.cpp
 crc32.cpp
 vumeter.cpp
+DefaultSS444.c
+DefaultSS555.c
 #PicoPlusPsram.cpp
 )
 add_subdirectory(drivers/pico_fatfs)     
