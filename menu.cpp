@@ -869,7 +869,7 @@ void screenSaverWithArt()
                     fr = f_read(&fil, buffer, fsize, &r);
                     if (fr != FR_OK || r != fsize)
                     {
-                        printf("Error reading %s: %d, read %d bytes\n", PATH, fr, r);
+                        printf("Error reading %s: %d, read %d bytes, expected %d bytes\n", PATH, fr, r, fsize);
                         Frens::f_free(buffer);
                         buffer = nullptr;
                     }
