@@ -1,4 +1,13 @@
 # Release notes
+
+## 3/9/2025
+
+- Adafruit Fruit Jam:
+  - NeoPixel leds act as a VU meter. Can be toggled on or of via Button2 on the Fruit Jam, or SELECT + RIGHT on the controller.
+
+- Screensaver
+  - Block screensaver, which is shown when no metadata is available, is replaced by static floating image.
+
 ## 26/8/2025
 
 

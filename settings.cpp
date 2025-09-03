@@ -1,7 +1,7 @@
 #include "settings.h"
 #include <stdio.h>
 #include <string.h>
-
+#include "vumeter.h"
 struct settings settings;
 namespace Frens
 {
@@ -15,7 +15,8 @@ namespace Frens
         printf("currentDir: %s\n", settings.currentDir);
         printf("fgcolor: %d\n", settings.fgcolor);
         printf("bgcolor: %d\n", settings.bgcolor);
-        printf("useExtAudio: %d\n", settings.useExtAudio);
+        printf("useExtAudio: %d\n", settings.flags.useExtAudio);
+        printf("enableVUMeter: %d\n", settings.flags.enableVUMeter);
         printf("\n");
     }
     void resetsettings()
@@ -28,6 +29,10 @@ namespace Frens
         settings.horzontalScrollIndex = 0;
         settings.fgcolor = DEFAULT_FGCOLOR;
         settings.bgcolor = DEFAULT_BGCOLOR;
+        settings.flags.useExtAudio = 0; // default to use DVIAudio
+        settings.flags.enableVUMeter = ENABLE_VU_METER ? 1 : 0; // default to ENABLE_VU_METER
+        // clear all the reserved settings
+        settings.flags.reserved = 0;
         strcpy(settings.currentDir, "/");
     }
 
