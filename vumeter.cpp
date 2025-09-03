@@ -19,11 +19,11 @@ static PIO pio;
 static uint sm;
 static uint offset;
 static uint32_t led_colors[5] = {
-    ((uint32_t)255 << 16) | ((uint32_t)0   << 8) | (uint32_t)0,   // LED 1: (0,255,0)
-    ((uint32_t)191 << 16) | ((uint32_t)64  << 8) | (uint32_t)0,   // LED 2: (64,191,0)
-    ((uint32_t)128 << 16) | ((uint32_t)128 << 8) | (uint32_t)0,   // LED 3: (128,128,0)
-    ((uint32_t)64  << 16) | ((uint32_t)191 << 8) | (uint32_t)0,   // LED 4: (191,64,0)
-    ((uint32_t)0   << 16) | ((uint32_t)255 << 8) | (uint32_t)0    // LED 5: (255,0,0)
+    ((uint32_t)255 << 16) | ((uint32_t)0 << 8) | (uint32_t)0,   // LED 1: (0,255,0)
+    ((uint32_t)191 << 16) | ((uint32_t)64 << 8) | (uint32_t)0,  // LED 2: (64,191,0)
+    ((uint32_t)128 << 16) | ((uint32_t)128 << 8) | (uint32_t)0, // LED 3: (128,128,0)
+    ((uint32_t)64 << 16) | ((uint32_t)191 << 8) | (uint32_t)0,  // LED 4: (191,64,0)
+    ((uint32_t)0 << 16) | ((uint32_t)255 << 8) | (uint32_t)0    // LED 5: (255,0,0)
 };
 // Send one pixel color to the PIO state machine
 static inline void sendPixelToStrip(uint32_t pixel_grb)
@@ -73,9 +73,9 @@ void updateVUMeterFromAudioFrame(int16_t *buf, int count)
     {
         if (LED_COUNT - i - 1 < lit)
         {
-            //printf("LED %d: ON\n", LED_COUNT - i);
-           // sendPixelToStrip(packColorGRB(255, 0, 0)); // green
-           sendPixelToStrip(led_colors[LED_COUNT - i - 1]);
+            // printf("LED %d: ON\n", LED_COUNT - i);
+            // sendPixelToStrip(packColorGRB(255, 0, 0)); // green
+            sendPixelToStrip(led_colors[LED_COUNT - i - 1]);
             // printf("LED %d: ON\n", i);
         }
         else
@@ -103,6 +103,16 @@ void initializeNeoPixelStrip()
     hard_assert(success);
 
     ws2812_program_init(pio, sm, offset, LED_PIN, 800000, IS_RGBW);
+
+#if (VU_METER_TOGGLE_PIN >= 0)
+    gpio_init(VU_METER_TOGGLE_PIN);
+    gpio_set_dir(VU_METER_TOGGLE_PIN, GPIO_IN);
+#if VU_METER_TOGGLE_PIN_MUST_BE_PULLED_UP
+    gpio_pull_up(VU_METER_TOGGLE_PIN);
+#else
+    gpio_pull_down(VU_METER_TOGGLE_PIN);
+#endif
+#endif
 }
 
 void addSampleToVUMeter(int16_t sample)
@@ -115,6 +125,17 @@ void addSampleToVUMeter(int16_t sample)
         updateVUMeterFromAudioFrame(frame_buffer, sample_index);
         sample_index = 0;
     }
+}
+bool isVUMeterToggleButtonPressed()
+{
+#if VU_METER_TOGGLE_PIN >= 0
+    static bool last_state = false;
+    bool current_state = !gpio_get(VU_METER_TOGGLE_PIN); // true when button is pressed
+    bool pressed = current_state && !last_state;         // only true on push down
+    last_state = current_state;
+    return pressed;
+#endif
+    return false;
 }
 #endif
 #endif
