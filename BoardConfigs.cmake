@@ -373,7 +373,40 @@ elseif ( HW_CONFIG EQUAL 9 )
     set(ENABLE_PIO_USB 1 CACHE BOOL "Enable PIO USB support")
     set(PIO_USB_USE_PIO 2 CACHE BOOL "Select the PIO used for PIO-USB")
     set(PIO_DP_PLUS_PIN 12 CACHE STRING "PIO USB DP pin.")
-
+elseif ( HW_CONFIG EQUAL 10 )
+	# --------------------------------------------------------------------
+	# Spotpear - experimental
+	# --------------------------------------------------------------------
+	set(DVICONFIG "dviConfig_Spotpear" CACHE STRING
+	  "Select a default pin configuration from common_dvi_pin_configs.h")
+    set(LED_GPIO_PIN "0" CACHE STRING "Select the GPIO pin for LED")       # use 0 for onboard LED (PICO/PICO_W)
+	# Adafruit Micro-SD breakout board+ https://www.adafruit.com/product/254 
+	set(SD_CS "5" CACHE STRING "Specify the Chip Select GPIO pin for the SD card")
+	set(SD_SCK "2" CACHE STRING "Specify de Clock GPIO pin for the SD card")
+	set(SD_MOSI "3" CACHE STRING "Select the Master Out Slave In GPIO pin for the SD card")
+	set(SD_MISO "4" CACHE STRING "Select the Master In Slave Out GPIO pin for the SD card")
+    set(SD_SPI "spi0" CACHE STRING "Select the SPI bus for SD card") 
+	set(NES_CLK "-1" CACHE STRING "Select the Clock GPIO pin for NES controller")
+	set(NES_DATA "7" CACHE STRING "Select the Data GPIO pin for NES controller")
+	set(NES_LAT "8" CACHE STRING "Select the Latch GPIO pin for NES controller")
+    set(NES_PIO "pio1" CACHE STRING "Select the PIO for NES controller")
+    set(NES_CLK_1 "-1" CACHE STRING "Select the Clock GPIO pin for second NES controller")
+	set(NES_DATA_1 "10" CACHE STRING "Select the Data GPIO pin for second NES controller")
+	set(NES_LAT_1 "11" CACHE STRING "Select the Latch GPIO pin for second NES controller")
+    set(NES_PIO_1 "pio1" CACHE STRING "Select the PIO for second NES controller")
+	set(WII_SDA "-1" CACHE STRING "Select the SDA GPIO pin for Wii Classic controller")
+	set(WII_SCL "-1" CACHE STRING "Select the SCL GPIO pin for Wii Classic controller")
+    set(WIIPAD_I2C "i2c1" CACHE STRING "Select the I2C bus for Wii Classic controller")
+	set(UART_ENABLED 1 CACHE STRING "Enable UART output") 
+    set(USE_I2S_AUDIO 0 CACHE STRING "Enable I2S audio output") # Enable I2S audio output for Pimoroni Pico DV Demo Base
+    set(PICO_AUDIO_I2S_DATA_PIN -1 CACHE STRING "Select the GPIO pin for I2S data")
+    set(PICO_AUDIO_I2S_CLOCK_PIN_BASE -1 CACHE STRING "Select the GPIO pin for I2S clock")
+    set(PICO_AUDIO_I2S_PIO 1 CACHE STRING "Select the PIO for I2S audio output")
+    set(PICO_AUDIO_I2S_CLOCK_PINS_SWAPPED 0 CACHE STRING "Set to 1 if the I2S clock pins are swapped")
+    set(PICO_AUDIO_I2S_RESET_PIN -1 CACHE STRING "Select the GPIO pin for I2S reset")
+    set(PIO_USB_USE_PIO 2 CACHE BOOL "Select the PIO used for PIO-USB")
+    # connect the DP+ pin to GPIO 20, DP- will be GPIO 21
+    set(PIO_DP_PLUS_PIN 20 CACHE STRING "PIO USB DP pin.")
 endif ( )
 
 if (NOT DEFINED ENABLE_VU_METER)
