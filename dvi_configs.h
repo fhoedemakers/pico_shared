@@ -57,6 +57,14 @@ namespace {
         .pinClock = 3,
         .invert = true,
     };
+    // Spotpear DVI-board same as dviConfig_PicoDVI
+    // According to the schematic it should be
+    //   pinTMDS = {11, 13, 15}, pinClock = 9, invert = true
+    constexpr dvi::Config dviConfig_Spotpear = {
+        .pinTMDS = {10, 12, 14},
+        .pinClock = 8,
+        .invert = true,
+    };
 }
 #ifndef DVICONFIG
 #define DVICONFIG dviConfig_PimoroniDemoDVSock
