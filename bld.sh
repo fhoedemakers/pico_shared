@@ -34,6 +34,8 @@ function usage() {
 	echo "     6: Waveshare RP2040-Zero/RP2350-Zero with custom PCB"
 	echo "     7: WaveShare RP2350-PiZero - PIO USB enabled,  -u implied."
 	echo "     8: Adafruit Fruit Jam - PIO USB enabled, -u implied."
+	echo "     9: WaveShare RP2350-USBA - PIO USB enabled, -u implied."
+	echo "     10: Spotpear HDMI board. https://spotpear.com/index/product/detail/id/1207.html"
 	echo "  -m: Run cmake only, do not build the project"
 	echo "  -h: display this help"
 	echo ""
@@ -289,6 +291,9 @@ case $HWCONFIG in
 	9)
 		UF2="WaveShare2350USBA"
 		USESIMPLEFILENAMES=1
+		;;
+	10)
+		UF2="SpotpearHDMI"
 		;;
 	*)
 		echo "Invalid value: $HWCONFIG specified for option -c, must be 1, 2, 3 or 4"
