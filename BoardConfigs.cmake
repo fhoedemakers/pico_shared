@@ -375,7 +375,7 @@ elseif ( HW_CONFIG EQUAL 9 )
     set(PIO_DP_PLUS_PIN 12 CACHE STRING "PIO USB DP pin.")
 elseif ( HW_CONFIG EQUAL 10 )
 	# --------------------------------------------------------------------
-	# Spotpear - experimental
+	# Spotpear HDMI
 	# --------------------------------------------------------------------
 	set(DVICONFIG "dviConfig_Spotpear" CACHE STRING
 	  "Select a default pin configuration from common_dvi_pin_configs.h")
