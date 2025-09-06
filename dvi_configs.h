@@ -57,6 +57,16 @@ namespace {
         .pinClock = 3,
         .invert = true,
     };
+    // Spotpear DVI-board same as dviConfig_PicoDVI
+    // According to the schematic (https://cdn.static.spotpear.com/uploads/picture/learn/raspberry-pi/rpi-pico/pico-hdmi-board/pico-hdmi-board.jpg) 
+    // it should be this:
+    //          pinTMDS = {11, 13, 15}, pinClock = 9, invert = true
+    // but this is incorrect. Below the correct settings
+    constexpr dvi::Config dviConfig_Spotpear = {
+        .pinTMDS = {10, 12, 14},
+        .pinClock = 8,
+        .invert = true,
+    };
 }
 #ifndef DVICONFIG
 #define DVICONFIG dviConfig_PimoroniDemoDVSock
