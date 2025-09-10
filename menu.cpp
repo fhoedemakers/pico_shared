@@ -732,8 +732,10 @@ static FRESULT pick_random_file_fullpath(const char *dirpath, char *out_path, si
     *out_path = 0;
 
     fr = f_opendir(&dir, dirpath);
-    if (fr != FR_OK)
+    if (fr != FR_OK) {
+        printf("Error: Unable to open directory: %s, error code: %d\n", dirpath, fr);
         return fr;
+    }
 
     while (1)
     {
@@ -785,6 +787,8 @@ static FRESULT pick_random_file_fullpath(const char *dirpath, char *out_path, si
     if (file_count > 0)
     {
         printf("Picked random file: %s\n", out_path);
+    } else {
+        printf("No files found in directory: %s\n", dirpath);
     }
     f_closedir(&dir);
     return (file_count > 0) ? FR_OK : FR_NO_FILE;
@@ -885,7 +889,7 @@ void screenSaverWithArt(bool showdefault = false)
                 }
                 else
                 {
-                    printf("Error opening %s: %d\n", PATH, fr);
+                    printf("Error opening %s: %d\n", CHOSEN, fr);
                     printf("Loading built-in screensaver image\n");
                 }
             }
