@@ -1156,6 +1156,7 @@ if (isPsramEnabled())
         if (usingFramebuffer)
         {
             // always allocate framebuffer in SRAM
+            printf("Allocating %d bytes for framebuffer in SRAM\n", SCREENWIDTH * SCREENHEIGHT * sizeof(WORD)); 
             framebuffer = (WORD *)malloc(SCREENWIDTH * SCREENHEIGHT * sizeof(WORD));
             memset(framebuffer, 0, SCREENWIDTH * SCREENHEIGHT * sizeof(WORD));
             marginTop = marginBottom = 0; // ignore margins when using framebuffer
