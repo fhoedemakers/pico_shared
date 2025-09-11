@@ -221,23 +221,13 @@ namespace Frens
             return NULL;
         }
 
-        // Create a modifiable copy of the input string
-        char *str_copy = strdup(str);
-        if (str_copy == NULL)
-        {
-            *count = 0;
-            return NULL;
-        }
+        // Create a modifiable copy of the input string, panics when out of memory
+        char *str_copy = (char *) Frens::f_malloc(strlen(str) + 1);
+        strcpy(str_copy, str);
 
-        // Initial memory allocation for the result array
+        // Initial memory allocation for the result array, panics when out of memory
         int capacity = INITIAL_CAPACITY;
-        char **result = (char **)malloc(capacity * sizeof(char *));
-        if (result == NULL)
-        {
-            free(str_copy);
-            *count = 0;
-            return NULL;
-        }
+        char **result = (char **)Frens::f_malloc(capacity * sizeof(char *));
 
         *count = 0;
         char *token = strtok(str_copy, delimiters);
@@ -246,46 +236,22 @@ namespace Frens
             // Skip empty tokens
             if (*token != '\0')
             {
-                // Reallocate if necessary
+                // Reallocate if necessary, panics when out of memory
                 if (*count >= capacity)
                 {
                     capacity *= 2;
-                    char **temp = (char **)realloc(result, capacity * sizeof(char *));
-                    if (temp == NULL)
-                    {
-                        // Memory allocation failed, clean up
-                        for (int i = 0; i < *count; ++i)
-                        {
-                            free(result[i]);
-                        }
-                        free(result);
-                        free(str_copy);
-                        *count = 0;
-                        return NULL;
-                    }
+                    char **temp = (char **)Frens::f_realloc(result, capacity * sizeof(char *));
                     result = temp;
                 }
 
-                // Allocate memory for the token and copy it
-                result[*count] = strdup(token);
-                if (result[*count] == NULL)
-                {
-                    // Memory allocation failed, clean up
-                    for (int i = 0; i < *count; ++i)
-                    {
-                        free(result[i]);
-                    }
-                    free(result);
-                    free(str_copy);
-                    *count = 0;
-                    return NULL;
-                }
+                // Allocate memory for the token and copy it, panics when out of memory
+                result[*count] = (char *)Frens::f_malloc(strlen(token) + 1);
+                strcpy(result[*count], token);
                 (*count)++;
             }
             token = strtok(NULL, delimiters);
         }
-
-        free(str_copy);
+        Frens::f_free(str_copy);
         return result;
     }
 
@@ -586,7 +552,33 @@ namespace Frens
         }
     }
 
-    void *flashromtoPsram(char *selectdRom, bool swapbytes, uint32_t &crc)
+    void *f_realloc(void *pMem, const size_t newSize)
+    {
+        void *newMem = nullptr;
+        if (!pMem)
+        {
+            return nullptr;
+        }
+        #if PICO_RP2350 && PSRAM_CS_PIN
+if (isPsramEnabled())
+        {
+            PicoPlusPsram &psram_ = PicoPlusPsram::getInstance();
+            void *newMem = psram_.Realloc(pMem, newSize);
+            if (!newMem)
+            {
+                panic("Cannot allocate %zu bytes in PSRAM\n", newSize);
+            }
+            printf("re-Allocated %zu bytes in PSRAM at %p\n", newSize, newMem);
+            return newMem;
+        }
+#endif
+        // PSRAM not enabled, use realloc
+        newMem = realloc(pMem, newSize);
+        printf("Re-Allocated memory at %p to %zu bytes\n", pMem, newSize);
+        return newMem;
+    }
+
+    void *flashromtoPsram(char *selectdRom, bool swapbytes, uint32_t &crc, int crcOffset)
     {
 #if PICO_RP2350 && PSRAM_CS_PIN
         // Get filesize of rom
@@ -644,7 +636,7 @@ namespace Frens
             }
             else
             {
-                if ((crc = compute_crc32_buffer(pMem, filesize)) > 0)
+                if ((crc = compute_crc32_buffer(pMem, filesize, crcOffset)) > 0)
                 {
                     printf("CRC32 checksum of %s in PSRAM: %08X\n", selectdRom, crc);
                 }
@@ -738,7 +730,7 @@ namespace Frens
 #else
                 size_t bufsize = 128 * 1024;
 #endif
-                BYTE *buffer = (BYTE *)malloc(bufsize); // (BYTE *)InfoNes_GetPPURAM(&bufsize);
+                BYTE *buffer = (BYTE *)f_malloc(bufsize); // (BYTE *)InfoNes_GetPPURAM(&bufsize);
                 auto ofs = ROM_FILE_ADDR - XIP_BASE;
                 printf("Writing rom %s to flash %x\n", selectedRom, ofs);
                 UINT totalBytes = 0;
@@ -822,7 +814,7 @@ namespace Frens
                     printf("%s\n", ErrorMessage);
                     selectedRom[0] = 0;
                 }
-                free(buffer);
+                f_free(buffer);
                 printf("Flashing done\n");
             }
             else
@@ -1257,5 +1249,15 @@ namespace Frens
         printf("Deinitializing CYW43\n");
         cyw43_arch_deinit();
 #endif
+    }
+}
+// C-compatible wrappers
+extern "C" {
+    void *frens_f_malloc(size_t size) {
+        return Frens::f_malloc(size);
+    }
+
+    void frens_f_free(void *ptr) {
+        Frens::f_free(ptr);
     }
 }

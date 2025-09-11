@@ -115,6 +115,7 @@ namespace Frens
     void restoreScanlines();
     void *f_malloc(size_t size);
     void f_free(void *pMem);
+    void *f_realloc(void *pMem, const size_t newSize);
     int GetUnUsedDMAChan(int startChannel);
     char *get_tag_text(const char *xml, const char *tag, char *buffer, size_t bufsize);
     void waitForVSync();
