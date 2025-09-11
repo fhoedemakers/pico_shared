@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 #include "ff.h"
+#include "FrensHelpers.h"
 #define ROMLISTER_MAXPATH 80
 namespace Frens {
 
@@ -14,12 +15,18 @@ namespace Frens {
 			char Path[ROMLISTER_MAXPATH];  // Without dirname
 			bool IsDirectory;
 		};
-		RomLister( void *buffer, size_t buffersize, const char *allowedExtensions);
+		RomLister(size_t buffersize, const char *allowedExtensions);
 		~RomLister();
 		RomEntry* GetEntries();
 		char  *FolderName();
 		size_t Count();
 		void list(const char *directoryName);
+		void ClearMemory()
+		{
+			numberOfEntries = 0;
+			Frens::f_free(entries);
+			entries = nullptr;
+		}
 
 	private:
 		bool IsextensionAllowed(char *filename);
@@ -30,6 +37,7 @@ namespace Frens {
 		size_t numberOfEntries;
 		int numberOfExtensions;
 		char **extensions;
+		size_t buffersize;
 
 	};
 }
