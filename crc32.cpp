@@ -107,7 +107,7 @@ static uint32_t update_crc32(uint32_t crc, const uint8_t* data, UINT length) {
 /// @brief Computes the CRC32 checksum of a file.
 /// @param filename The name of the file to compute the CRC32 for.
 /// @return The computed CRC32 checksum, or 0 on error.
-uint32_t compute_crc32(const char* filename) {
+uint32_t compute_crc32(const char* filename, int offset) {
     FATFS fs;
     FIL file;
     FRESULT res;
@@ -123,7 +123,7 @@ uint32_t compute_crc32(const char* filename) {
     }
     auto fsize = f_size(&file);
     // Skip the first 16 bytes
-    res = f_lseek(&file, 16);
+    res = f_lseek(&file, offset);
     if (res != FR_OK) {
         printf("Failed to seek in file: %d\n", res);
         f_close(&file);
@@ -154,12 +154,12 @@ uint32_t compute_crc32(const char* filename) {
 /// @param data Pointer to the memory buffer.
 /// @param size Size of the memory buffer.
 /// @return The computed CRC32 checksum.
-uint32_t compute_crc32_buffer(const void* data, size_t size) {
-    if (size <= 16) {
+uint32_t compute_crc32_buffer(const void* data, size_t size, int offset) {
+    if (size <= offset) {
         return 0; // Not enough data to compute CRC
     }
-    const uint8_t* buf = (const uint8_t*)data + 16;
-    size_t len = size - 16;
+    const uint8_t* buf = (const uint8_t*)data + offset;
+    size_t len = size - offset;
     return update_crc32(0, buf, len);
 }
 /**
