@@ -109,7 +109,7 @@ namespace Frens
     void SetFrameBufferProcessScanLineFunction(ProcessScanLineFunction processScanLineFunction);
 #endif
     bool isPsramEnabled();
-    void *flashromtoPsram(char *selectdRom, bool swapbytes, uint32_t &crc);
+    void *flashromtoPsram(char *selectdRom, bool swapbytes, uint32_t &crc, int crcOffset);
     void PaceFrames60fps(bool init);
     void toggleScanLines();
     void restoreScanlines();
