@@ -85,9 +85,9 @@ class PicoPlusPsram
     }
 
     // Realloc psram memory
-    void Realloc(void * const pMem, const size_t uSize)
+    void *Realloc(void * const pMem, const size_t uSize)
     {
-      lwmem_realloc_ex(nullptr, nullptr, pMem, uSize);
+      return lwmem_realloc_ex(nullptr, nullptr, pMem, uSize);
     }
 
     // Free psram memory
