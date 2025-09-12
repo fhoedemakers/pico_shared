@@ -1,5 +1,10 @@
 # Release notes
 
+## 12/9/2025
+
+- Improved I2S audio quality.
+- RP2040 only: Release I2S audio resources when entering the menu to free up memory. This fixes out-of memory panics.
+
 ## 3/9/2025
 
 - Adafruit Fruit Jam:
