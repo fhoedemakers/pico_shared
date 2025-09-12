@@ -60,12 +60,8 @@ extern "C" {
 #define PICO_AUDIO_I2S_INTERRUPT_IS_BUTTON 0
 #endif
 
-
-#if PICO_RP2350
-#define AUDIO_RING_SIZE (1024 * 2) // size of the audio ring buffer (must be a multiple of DMA_BLOCK_SIZE)
-#else
 #define AUDIO_RING_SIZE (1024) // size of the audio ring buffer (must be a multiple of DMA_BLOCK_SIZE)
-#endif
+
 #define AUDIO_RING_MASK (AUDIO_RING_SIZE - 1)
 #define DMA_BLOCK_SIZE (128) // size of each DMA block transfer
 
