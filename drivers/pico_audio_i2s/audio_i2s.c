@@ -686,6 +686,7 @@ audio_i2s_hw_t *audio_i2s_setup(int driver, int freqHZ, int dmachan)
 	{
 		samplefreq = freqHZ;
 	}
+	printf("Allocating %d bytes for audio ring buffer\n", AUDIO_RING_SIZE * sizeof(uint32_t));
 	audio_ring = malloc(AUDIO_RING_SIZE * sizeof(uint32_t));   // Allocate memory for the audio ring buffer
 	memset(audio_ring, 0, AUDIO_RING_SIZE * sizeof(uint32_t)); // Initialize the audio ring buffer to zero
 	write_index = DMA_BLOCK_SIZE;							   // Start writing after the first block
@@ -766,7 +767,7 @@ audio_i2s_hw_t *audio_i2s_setup(int driver, int freqHZ, int dmachan)
  */
 void __not_in_flash_func(audio_i2s_enqueue_sample)(uint32_t sample32)
 {
-#if 0
+#if 1
 	static int droppedsamples = 0;
 #endif
 	// Ensure we don't write past the end of the buffer
@@ -805,4 +806,19 @@ void __not_in_flash_func(audio_i2s_enqueue_sample)(uint32_t sample32)
 int audio_i2s_get_freebuffer_size()
 {
 	return (read_index - write_index - 1) & AUDIO_RING_MASK;
+}
+
+void audio_i2s_disable() {
+	printf("Disabling I2S audio and release resources\n");
+	if (audio_i2s.dma_chan >= 4)
+	{
+		irq_set_enabled(DMA_IRQ_1, false);
+	}
+	else
+	{
+		irq_set_enabled(DMA_IRQ_0, false);
+	}
+	dma_channel_abort(audio_i2s.dma_chan);
+	free(audio_ring);
+	audio_ring = NULL;
 }
