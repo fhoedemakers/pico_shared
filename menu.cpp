@@ -1377,6 +1377,10 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
     FIL fil;
     DWORD PAD1_Latch;
     char curdir[FF_MAX_LFN];
+#if !PICO_RP2350 && EXT_AUDIO_IS_ENABLED
+    // disable audio on RP2040 to free up memory 
+    audio_i2s_disable();
+#endif
 #if ENABLE_VU_METER
     turnOffAllLeds();
 #endif
