@@ -555,6 +555,9 @@ void DrawScreen(int selectedRow, int w = 0, int h = 0, uint16_t *imagebuffer = n
 
     if (selectedRow != -1)
     {
+        if (EXT_AUDIO_DACERROR()) {
+            putText(1, ENDROW + 3, "Dac Initialisation Failed", CRED, CWHITE);
+        }
         putText(SCREEN_COLS / 2 - strlen(spaces) / 2, SCREEN_ROWS - 1, spaces, settings.bgcolor, settings.bgcolor);
         snprintf(tmpstr, sizeof(tmpstr), "- %s -", connectedGamePadName[0] != 0 ? connectedGamePadName : "No USB GamePad");
         putText(SCREEN_COLS / 2 - strlen(tmpstr) / 2, SCREEN_ROWS - 1, tmpstr, CBLUE, CWHITE);
@@ -1377,9 +1380,8 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
     FIL fil;
     DWORD PAD1_Latch;
     char curdir[FF_MAX_LFN];
-#if !PICO_RP2350 && EXT_AUDIO_IS_ENABLED
-    // disable audio on RP2040 to free up memory 
-    audio_i2s_disable();
+#if !PICO_RP2350
+    EXT_AUDIO_DISABLE();
 #endif
 #if ENABLE_VU_METER
     turnOffAllLeds();
