@@ -61,7 +61,7 @@ NPROC=$(nproc)
 BUILDPROC=$NPROC
 PICO_BOARD=pico
 PICO_PLATFORM=rp2040
-BUILD=RELEASE
+BUILD=Release
 HWCONFIG=1
 UF2="${APP}PimoroniDV.uf2"
 # check if var PICO_SDK is set and points to the SDK
@@ -94,7 +94,7 @@ while getopts "muwhd2rc:t:p:s:" opt; do
 	  echo "Using $BUILDPROC processors for the build"
 	  ;;
     d)
-      BUILD=DEBUG
+      BUILD=RelWithDebInfo
       ;;
     c)
       HWCONFIG=$OPTARG
