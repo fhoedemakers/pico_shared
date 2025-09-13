@@ -494,9 +494,13 @@ static void tlv320_init()
 	// Return to page 0
 
 	setPage(0);
-	printf("setup headphone detection interrupt.\n");
+
+	
 #if PICO_AUDIO_I2S_INTERRUPT_PIN != -1
-	setupHeadphoneDetectionInterrupt(PICO_AUDIO_I2S_INTERRUPT_PIN, PICO_AUDIO_I2S_INTERRUPT_IS_BUTTON);
+	if ( dacError == false ) {
+		printf("setup headphone detection interrupt.\n");
+		setupHeadphoneDetectionInterrupt(PICO_AUDIO_I2S_INTERRUPT_PIN, PICO_AUDIO_I2S_INTERRUPT_IS_BUTTON);
+	}
 #endif
 	printf("TLV320AIC3204 Initialization complete!\n");
 
