@@ -40,7 +40,7 @@ enum class ScreenMode
 
 #define CBLACK 15
 #define CWHITE 48
-#define CRED 6
+#define CRED 21
 #define CGREEN 0x2A
 #define CBLUE 2
 #define CLIGHTBLUE 0x11
