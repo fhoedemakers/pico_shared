@@ -38,6 +38,7 @@ static volatile size_t write_index = 0;
 static volatile size_t read_index = 0;
 static int _driver = 0;
 static volatile bool speakerIsMuted = false;
+bool dacError = false;
 // Audio I2S hardware structure that holds the state machine, PIO instance, and DMA channel.
 static audio_i2s_hw_t audio_i2s = {
 	.sm = -1,		  // State machine index, initialized to -1 (not set)
@@ -132,6 +133,7 @@ static void writeRegister(uint8_t reg, uint8_t value)
 	if (res != 2)
 	{
 		printf("!!!WARNING!!!: i2s_audio i2c_write_timeout failed: res=%d\n", res);
+		dacError = true;
 	}
 #if PICO_AUDIO_I2S_DEBUG
 	printf("Write Reg: %d = 0x%x\n", reg, value);
@@ -148,6 +150,7 @@ static uint8_t readRegister(uint8_t reg)
 
 		printf("res=%d\n", res);
 		printf("!!!WARNING!!!: i2s_audio i2c_write_timeout failed: res=%d\n", res);
+		dacError = true;
 	}
 	res = i2c_read_timeout_us(i2c0, DAC_I2C_ADDR, buf, sizeof(buf), /* nostop */ false, 1000);
 	if (res != 1)
@@ -155,6 +158,7 @@ static uint8_t readRegister(uint8_t reg)
 
 		printf("res=%d\n", res);
 		printf("!!!WARNING!!!: i2s_audio i2c_read_timeout failed: res=%d\n", res);
+		dacError = true;
 	}
 	uint8_t value = buf[0];
 #if PICO_AUDIO_I2S_DEBUG
@@ -182,9 +186,9 @@ static void modifyRegister(uint8_t reg, uint8_t mask, uint8_t value)
 
 static void setPage(uint8_t page)
 {
-//#if PICO_AUDIO_I2S_DEBUG
+	// #if PICO_AUDIO_I2S_DEBUG
 	printf("Set page %d\n", page);
-//#endif
+	// #endif
 	writeRegister(0x00, page);
 }
 
@@ -472,9 +476,9 @@ static void tlv320_init()
 	printf("HP Right Gain...\n");
 	modifyRegister(0x29, 0x04, 0x04); // HP Right Gain
 	printf("Left analog HP...\n");
-	writeRegister(0x24, 0x0A);		  // Left Analog HP
+	writeRegister(0x24, 0x0A); // Left Analog HP
 	printf("Right analog HP...\n");
-	writeRegister(0x25, 0x0A);		  // Right Analog HP
+	writeRegister(0x25, 0x0A); // Right Analog HP
 	printf("Left analog Speaker...\n");
 	modifyRegister(0x28, 0x78, 0x40); // HP Left Gain
 	printf("Right analog Speaker...\n");
@@ -488,7 +492,7 @@ static void tlv320_init()
 	writeRegister(0x26, 0x0A);
 
 	// Return to page 0
-	
+
 	setPage(0);
 	printf("setup headphone detection interrupt.\n");
 #if PICO_AUDIO_I2S_INTERRUPT_PIN != -1
@@ -577,7 +581,7 @@ static void tlv320_init()
 	sleep_ms(100);
 }
 
-	// Headphone status check, not working for now
+// Headphone status check, not working for now
 #if 0
 uint8_t last_status = -1;
 void tlv320_poll_headphone_status()
@@ -701,6 +705,7 @@ void __isr dma_handler()
 audio_i2s_hw_t *audio_i2s_setup(int driver, int freqHZ, int dmachan)
 {
 	_driver = driver; // Store the selected driver globally
+	dacError = false;
 	if (_driver == PICO_AUDIO_I2S_DRIVER_NONE)
 	{
 		printf("No I2S driver selected, skipping audio setup.\n");
@@ -708,8 +713,25 @@ audio_i2s_hw_t *audio_i2s_setup(int driver, int freqHZ, int dmachan)
 	}
 	if (_driver == PICO_AUDIO_I2S_DRIVER_TLV320)
 	{
-		tlv320_hardware_reset(); // Reset the TLV320 codec hardware
-		tlv320_init();			 // Initialize the TLV320 codec with default settings
+
+		int retries = 0;
+		printf("Init TLV320 DAC, max 5 retries...\n");
+		do
+		{
+			dacError = false;
+			tlv320_hardware_reset(); // Reset the TLV320 codec hardware
+			tlv320_init();			 // Initialize the TLV320 codec with default settings
+			if (!dacError)
+			{
+				break;
+			}
+			printf("TLV320 init failed, retrying (%d/5)...\n", retries + 1);
+			sleep_ms(500);
+		} while (dacError && ++retries < 5);
+		if (dacError)
+		{
+			printf("TLV320 initialization failed after 5 attempts.\n");
+		}
 	}
 	audio_i2s.dma_chan = dmachan;
 	if (freqHZ > 0)
@@ -797,7 +819,7 @@ audio_i2s_hw_t *audio_i2s_setup(int driver, int freqHZ, int dmachan)
  */
 void __not_in_flash_func(audio_i2s_enqueue_sample)(uint32_t sample32)
 {
-#if 1
+#if 0
 	static int droppedsamples = 0;
 #endif
 	// Ensure we don't write past the end of the buffer
@@ -838,7 +860,8 @@ int audio_i2s_get_freebuffer_size()
 	return (read_index - write_index - 1) & AUDIO_RING_MASK;
 }
 
-void audio_i2s_disable() {
+void audio_i2s_disable()
+{
 	printf("Disabling I2S audio and release resources\n");
 	if (audio_i2s.dma_chan >= 4)
 	{
@@ -851,4 +874,7 @@ void audio_i2s_disable() {
 	dma_channel_abort(audio_i2s.dma_chan);
 	free(audio_ring);
 	audio_ring = NULL;
+}
+bool audio_i2s_dacError() {
+	return dacError;
 }
