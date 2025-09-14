@@ -186,9 +186,9 @@ static void modifyRegister(uint8_t reg, uint8_t mask, uint8_t value)
 
 static void setPage(uint8_t page)
 {
-	// #if PICO_AUDIO_I2S_DEBUG
+#if PICO_AUDIO_I2S_DEBUG
 	printf("Set page %d\n", page);
-	// #endif
+#endif
 	writeRegister(0x00, page);
 }
 
@@ -385,107 +385,79 @@ static void tlv320_init()
 #endif
 	// Better setup, from https://github.com/jepler/fruitjam-doom/blob/adafruit-fruitjam/src/i_main.c
 	// Reset codec
-	printf("Resetting codec...\n");
 	writeRegister(0x01, 0x01);
 	sleep_ms(10);
 
 	// Interface Control
-	printf("Configuring interface...\n");
 	modifyRegister(0x1B, 0xC0, 0x00);
 	modifyRegister(0x1B, 0x30, 0x00);
 
 	// Clock MUX and PLL settings
-	printf("Setting up clocks...\n");
 	modifyRegister(0x04, 0x03, 0x03);
 	modifyRegister(0x04, 0x0C, 0x04);
 
-	printf("Configuring PLL...\n");
 	writeRegister(0x06, 0x20); // PLL J
-	printf("Setting PLL D...\n");
 	writeRegister(0x08, 0x00); // PLL D LSB
-	printf("Setting PLL D MSB...\n");
 	writeRegister(0x07, 0x00); // PLL D MSB
 
-	printf("Setting PLL P and R...\n");
 	modifyRegister(0x05, 0x0F, 0x02); // PLL P/R
 	modifyRegister(0x05, 0x70, 0x10);
 
 	// DAC/ADC Config
-	printf("Configuring NDAC...\n");
 	modifyRegister(0x0B, 0x7F, 0x08); // NDAC
 	modifyRegister(0x0B, 0x80, 0x80);
 
-	printf("Configuring MDAC...\n");
 	modifyRegister(0x0C, 0x7F, 0x02); // MDAC
 	modifyRegister(0x0C, 0x80, 0x80);
 
-	printf("Configuring NADC...\n");
 	modifyRegister(0x12, 0x7F, 0x08); // NADC
 	modifyRegister(0x12, 0x80, 0x80);
 
-	printf("Configuring MADC...\n");
 	modifyRegister(0x13, 0x7F, 0x02); // MADC
 	modifyRegister(0x13, 0x80, 0x80);
 
 	// PLL Power Up
-	printf("Powering up PLL...\n");
 	modifyRegister(0x05, 0x80, 0x80);
 
 	// Headset and GPIO Config
 	setPage(1);
-	printf("Configuring Headset and GPIO...\n");
 	modifyRegister(0x2e, 0xFF, 0x0b);
 	setPage(0);
-	printf("Setting up Headphone detection...\n");
+	
 	modifyRegister(0x43, 0x80, 0x80); // Headset Detect
-	printf("Setting up INT1 Control.\n");
 	modifyRegister(0x30, 0x80, 0x80); // INT1 Control
-	printf("Setting up GPIO1 as input.\n");
 	modifyRegister(0x33, 0x3C, 0x14); // GPIO1
 
 	// DAC Setup
-	printf("Setting up DAC...\n");
 	modifyRegister(0x3F, 0xC0, 0xC0);
 
 	// DAC Routing
 	setPage(1);
-	printf("Routing DAC to outputs...\n");
 	modifyRegister(0x23, 0xC0, 0x40);
 	modifyRegister(0x23, 0x0C, 0x04);
 
 	// DAC Volume Control
-	printf("Configuring DAC Volume Control...\n");
 	setPage(0);
 	modifyRegister(0x40, 0x0C, 0x00);
 	writeRegister(0x41, 0x28); // Left DAC Vol
 	writeRegister(0x42, 0x28); // Right DAC Vol
 
 	// ADC Setup
-	printf("Setting up ADC...\n");
 	modifyRegister(0x51, 0x80, 0x80);
 	modifyRegister(0x52, 0x80, 0x00);
 	writeRegister(0x53, 0x68); // ADC Volume
 
 	// Headphone and Speaker Setup
 	setPage(1);
-	printf("Setting up Headphone and Speaker...\n");
-	printf("Configuring Headphone Driver...\n");
 	modifyRegister(0x1F, 0xC0, 0xC0); // HP Driver
-	printf("HP Left Gain...\n");
 	modifyRegister(0x28, 0x04, 0x04); // HP Left Gain
-	printf("HP Right Gain...\n");
 	modifyRegister(0x29, 0x04, 0x04); // HP Right Gain
-	printf("Left analog HP...\n");
-	writeRegister(0x24, 0x0A); // Left Analog HP
-	printf("Right analog HP...\n");
+	writeRegister(0x24, 0x0A); // Left Analog HP		
 	writeRegister(0x25, 0x0A); // Right Analog HP
-	printf("Left analog Speaker...\n");
 	modifyRegister(0x28, 0x78, 0x40); // HP Left Gain
-	printf("Right analog Speaker...\n");
 	modifyRegister(0x29, 0x78, 0x40); // HP Right Gain
 
 	// Speaker Amp
-	printf("Configuring Speaker Amp...\n");
 	modifyRegister(0x20, 0x80, 0x80);
 	modifyRegister(0x2A, 0x04, 0x04);
 	modifyRegister(0x2A, 0x18, 0x08);
