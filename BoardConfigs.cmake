@@ -344,13 +344,13 @@ elseif ( HW_CONFIG EQUAL 9 )
     # --------------------------------------------------------------------
 	# WaveShare RP2350-USB-A
 	# --------------------------------------------------------------------
-	set(DVICONFIG "dviConfig_WaveShare2350USBA" CACHE STRING
+		set(DVICONFIG "dviConfig_WaveShare2350USBA" CACHE STRING
     "Select a default pin configuration from common_dvi_pin_configs.h")
     set(LED_GPIO_PIN "-1" CACHE STRING "Select the GPIO pin for LED")  
-    set(SD_CS "26" CACHE STRING "Specify the Chip Select GPIO pin for the SD card")
-    set(SD_SCK "2" CACHE STRING "Specify de Clock GPIO pin for the SD card")
-    set(SD_MOSI "0" CACHE STRING "Select the Master Out Slave In GPIO pin for the SD card")
-    set(SD_MISO "1" CACHE STRING "Select the Master In Slave Out GPIO pin for the SD card")
+    set(SD_CS "5" CACHE STRING "Specify the Chip Select GPIO pin for the SD card")
+    set(SD_SCK "6" CACHE STRING "Specify de Clock GPIO pin for the SD card")
+    set(SD_MOSI "3" CACHE STRING "Select the Master Out Slave In GPIO pin for the SD card")
+    set(SD_MISO "4" CACHE STRING "Select the Master In Slave Out GPIO pin for the SD card")
     set(SD_SPI "spi0" CACHE STRING "Select the SPI bus for SD card")
     set(NES_CLK "-1" CACHE STRING "Select the Clock GPIO pin for NES controller")
     set(NES_DATA "-1" CACHE STRING "Select the Data GPIO pin for NES controller")
@@ -363,7 +363,7 @@ elseif ( HW_CONFIG EQUAL 9 )
     set(WII_SDA "-1" CACHE STRING "Select the SDA GPIO pin for Wii Classic controller")
     set(WII_SCL "-1" CACHE STRING "Select the SCL GPIO pin for Wii Classic controller")
     set(WIIPAD_I2C "i2c1" CACHE STRING "Select the I2C bus for Wii Classic controller")
-	set(UART_ENABLED 0 CACHE STRING "Enable UART output") 
+	set(UART_ENABLED 1 CACHE STRING "Enable UART output") 
     set(USE_I2S_AUDIO 0 CACHE STRING "Enable I2S audio output") 
     set(PICO_AUDIO_I2S_DATA_PIN -1 CACHE STRING "Select the GPIO pin for I2S data")
     set(PICO_AUDIO_I2S_CLOCK_PIN_BASE -1 CACHE STRING "Select the GPIO pin for I2S clock")

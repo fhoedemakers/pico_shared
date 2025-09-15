@@ -51,11 +51,11 @@ namespace {
         .pinClock = 6,
         .invert = true,
     };
-   // WaveShare RP2350 USBA
+     // WaveShare RP2350 USBA
     constexpr dvi::Config dviConfig_WaveShare2350USBA = {
-        .pinTMDS = {5, 7, 9},
-        .pinClock = 3,
-        .invert = true,
+        .pinTMDS = {7, 9, 26},
+        .pinClock = 28,
+        .invert = false,
     };
     // Spotpear DVI-board same as dviConfig_PicoDVI
     // According to the schematic (https://cdn.static.spotpear.com/uploads/picture/learn/raspberry-pi/rpi-pico/pico-hdmi-board/pico-hdmi-board.jpg) 
