@@ -559,8 +559,8 @@ namespace Frens
         {
             return nullptr;
         }
-        #if PICO_RP2350 && PSRAM_CS_PIN
-if (isPsramEnabled())
+#if PICO_RP2350 && PSRAM_CS_PIN
+        if (isPsramEnabled())
         {
             PicoPlusPsram &psram_ = PicoPlusPsram::getInstance();
             void *newMem = psram_.Realloc(pMem, newSize);
