@@ -129,6 +129,9 @@ static bool isArtWorkEnabled()
     } else if (strcmp(emulator, "SMS") == 0)
     {
         sprintf(PATH, "/Metadata/%s/Images/160/6/6A5A1E39.444", emulator);
+    } else if (strcmp(emulator, "MD") == 0)
+    {
+        sprintf(PATH, "/Metadata/%s/Images/160/5/56976261.444", emulator);
     }
     else
     {
@@ -1646,6 +1649,10 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
 
                 if (!entries[index].IsDirectory && selectedRomOrFolder)
                 {
+                    if (strcmp(emulator, "MD") == 0)
+                    {
+                          showLoadingScreen();
+                    }
                     //romlister.ClearMemory();
                     fr = my_getcwd(curdir, sizeof(curdir)); // f_getcwd(curdir, sizeof(curdir));
                     // printf("Current dir: %s\n", curdir);
