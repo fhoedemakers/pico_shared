@@ -1052,7 +1052,11 @@ namespace Frens
         dvi_ = std::make_unique<dvi::DVI>(pio0, &DVICONFIG,
                                           dvi::getTiming640x480p60Hz());
         //    dvi_->setAudioFreq(48000, 25200, 6144);
+#if DVIAUDIOFREQ == 53280
+        dvi_->setAudioFreq(DVIAUDIOFREQ, 22708, 6144);
+#else 
         dvi_->setAudioFreq(DVIAUDIOFREQ, 28000, 6272);
+#endif
         // dvi_->setAudioFreq(53267, 28000, 6272);
 
         dvi_->allocateAudioBuffer(audioBufferSize);
