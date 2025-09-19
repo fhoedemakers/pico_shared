@@ -1229,7 +1229,7 @@ int showartwork(uint32_t crc)
     // }
     return startGame;
 }
-static void showLoadingScreen()
+static void showLoadingScreen(const char *message = nullptr)
 {
 #if !HSTX
     if (Frens::isFrameBufferUsed())
@@ -1308,7 +1308,14 @@ static void showLoadingScreen()
 #endif // 0
 #endif // HSTX
         ClearScreen(settings.bgcolor);
-        putText(SCREEN_COLS / 2 - 5, SCREEN_ROWS / 2, "Loading...", settings.fgcolor, settings.bgcolor);
+        if (message)
+        {
+            putText(SCREEN_COLS / 2 - strlen(message) / 2, SCREEN_ROWS / 2, message, settings.fgcolor, settings.bgcolor);
+        }
+        else
+        {
+            putText(SCREEN_COLS / 2 - 5, SCREEN_ROWS / 2, "Loading...", settings.fgcolor, settings.bgcolor);
+        }
         DrawScreen(-1);
         Menu_LoadFrame();
         DrawScreen(-1);
@@ -1651,7 +1658,7 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
                 {
                     if (strcmp(emulator, "MD") == 0)
                     {
-                          showLoadingScreen();
+                          showLoadingScreen("Metadata loading...");
                     }
                     //romlister.ClearMemory();
                     fr = my_getcwd(curdir, sizeof(curdir)); // f_getcwd(curdir, sizeof(curdir));
