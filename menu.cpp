@@ -77,7 +77,7 @@ static char *globalErrorMessage;
 
 static char emulator[32];
 static bool artworkEnabled = false;
-
+static uint8_t crcOffset = 0; // Default offset for CRC calculation
 #define LONG_PRESS_TRESHOLD (500)
 #define REPEAT_DELAY (40)
 
@@ -126,6 +126,16 @@ static bool isArtWorkEnabled()
     if (strcmp(emulator, "NES") == 0)
     {
         sprintf(PATH, "/Metadata/%s/Images/320/D/D0E96F6B.444", emulator);
+    } else if (strcmp(emulator, "SMS") == 0)
+    {
+        sprintf(PATH, "/Metadata/%s/Images/160/6/6A5A1E39.444", emulator);
+    } else if (strcmp(emulator, "MD") == 0)
+    {
+        sprintf(PATH, "/Metadata/%s/Images/160/5/56976261.444", emulator);
+    }
+    else
+    {
+        return false;
     }
     if (strlen(PATH) > 0)
     {
@@ -548,6 +558,9 @@ void DrawScreen(int selectedRow, int w = 0, int h = 0, uint16_t *imagebuffer = n
 
     if (selectedRow != -1)
     {
+        if (EXT_AUDIO_DACERROR()) {
+            putText(1, ENDROW + 3, "Dac Initialisation Failed", CRED, CWHITE);
+        }
         putText(SCREEN_COLS / 2 - strlen(spaces) / 2, SCREEN_ROWS - 1, spaces, settings.bgcolor, settings.bgcolor);
         snprintf(tmpstr, sizeof(tmpstr), "- %s -", connectedGamePadName[0] != 0 ? connectedGamePadName : "No USB GamePad");
         putText(SCREEN_COLS / 2 - strlen(tmpstr) / 2, SCREEN_ROWS - 1, tmpstr, CBLUE, CWHITE);
@@ -595,7 +608,7 @@ void ClearScreen(int color)
 
 char *menutitle = nullptr;
 
-void displayRoms(Frens::RomLister romlister, int startIndex)
+void displayRoms(Frens::RomLister &romlister, int startIndex)
 {
     char buffer[ROMLISTER_MAXPATH + 4];
     char s[SCREEN_COLS + 1];
@@ -732,8 +745,10 @@ static FRESULT pick_random_file_fullpath(const char *dirpath, char *out_path, si
     *out_path = 0;
 
     fr = f_opendir(&dir, dirpath);
-    if (fr != FR_OK)
+    if (fr != FR_OK) {
+        printf("Error: Unable to open directory: %s, error code: %d\n", dirpath, fr);
         return fr;
+    }
 
     while (1)
     {
@@ -784,9 +799,14 @@ static FRESULT pick_random_file_fullpath(const char *dirpath, char *out_path, si
     }
     if (file_count > 0)
     {
+        //strcpy(out_path, "/Metadata/SMS/Images/160/0/00C34D94.444"); // For testing only
+        //strcpy(out_path, "/Metadata/SMS/Images/160/0/0B1BA87F.444"); //
         printf("Picked random file: %s\n", out_path);
+    } else {
+        printf("No files found in directory: %s\n", dirpath);
     }
     f_closedir(&dir);
+   
     return (file_count > 0) ? FR_OK : FR_NO_FILE;
 }
 
@@ -885,7 +905,7 @@ void screenSaverWithArt(bool showdefault = false)
                 }
                 else
                 {
-                    printf("Error opening %s: %d\n", PATH, fr);
+                    printf("Error opening %s: %d\n", CHOSEN, fr);
                     printf("Loading built-in screensaver image\n");
                 }
             }
@@ -1209,7 +1229,7 @@ int showartwork(uint32_t crc)
     // }
     return startGame;
 }
-static void showLoadingScreen()
+static void showLoadingScreen(const char *message = nullptr)
 {
 #if !HSTX
     if (Frens::isFrameBufferUsed())
@@ -1288,7 +1308,14 @@ static void showLoadingScreen()
 #endif // 0
 #endif // HSTX
         ClearScreen(settings.bgcolor);
-        putText(SCREEN_COLS / 2 - 5, SCREEN_ROWS / 2, "Loading...", settings.fgcolor, settings.bgcolor);
+        if (message)
+        {
+            putText(SCREEN_COLS / 2 - strlen(message) / 2, SCREEN_ROWS / 2, message, settings.fgcolor, settings.bgcolor);
+        }
+        else
+        {
+            putText(SCREEN_COLS / 2 - 5, SCREEN_ROWS / 2, "Loading...", settings.fgcolor, settings.bgcolor);
+        }
         DrawScreen(-1);
         Menu_LoadFrame();
         DrawScreen(-1);
@@ -1314,7 +1341,7 @@ uint32_t GetCRCOfRomFile(char *curdir, char *selectedRomOrFolder, char *rompath)
         snprintf(fullPath, FF_MAX_LFN, "%s/%s", curdir, selectedRomOrFolder);
         printf("Full path: %s\n", fullPath);
     }
-    crc = compute_crc32(fullPath);
+    crc = compute_crc32(fullPath, crcOffset);
     if (crc != 0)
     {
         printf("CRC32 Checksum: 0x%08X\n", crc);
@@ -1350,7 +1377,7 @@ uint32_t loadRomInPsRam(char *curdir, char *selectedRomOrFolder, char *rompath, 
         printf("Loading rom to PSRAM: %s\n", fullPath);
         strcpy(rompath, fullPath);
 
-        ROM_FILE_ADDR = (uintptr_t)Frens::flashromtoPsram(fullPath, false, crc);
+        ROM_FILE_ADDR = (uintptr_t)Frens::flashromtoPsram(fullPath, false, crc, crcOffset);
     }
     return crc;
 #else
@@ -1363,11 +1390,16 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
     FIL fil;
     DWORD PAD1_Latch;
     char curdir[FF_MAX_LFN];
+#if !PICO_RP2350
+    EXT_AUDIO_DISABLE();
+#endif
 #if ENABLE_VU_METER
     turnOffAllLeds();
 #endif
     strcpy(emulator, emulatorType);
     artworkEnabled = isArtWorkEnabled();
+    crcOffset = strcmp(emulator, "NES") == 0 ? 16 : 0; // for sms the crc is at offset 0x1E, for nes it is at offset 0x0C
+    printf("Emulator: %s, crcOffset: %d\n", emulator, crcOffset);
 #if !HSTX
     int margintop = dvi_->getBlankSettings().top;
     int marginbottom = dvi_->getBlankSettings().bottom;
@@ -1398,9 +1430,8 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
     printf("Allocating %d bytes for screenbuffer\n", screenbufferSize);
     screenBuffer = (charCell *)Frens::f_malloc(screenbufferSize); // (charCell *)InfoNes_GetRAM(&ramsize);
     size_t directoryContentsBufferSize = 32768;
-    printf("Allocating %d bytes for directory contents.\n", directoryContentsBufferSize);
-    void *buffer = (void *)Frens::f_malloc(directoryContentsBufferSize); // InfoNes_GetChrBuf(&chr_size);
-    Frens::RomLister romlister(buffer, directoryContentsBufferSize, allowedExtensions);
+    // void *buffer = (void *)Frens::f_malloc(directoryContentsBufferSize); // InfoNes_GetChrBuf(&chr_size);
+    Frens::RomLister romlister(directoryContentsBufferSize, allowedExtensions);
 
     if (strlen(errorMessage) > 0)
     {
@@ -1625,6 +1656,11 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
 
                 if (!entries[index].IsDirectory && selectedRomOrFolder)
                 {
+                    if (strcmp(emulator, "MD") == 0)
+                    {
+                          showLoadingScreen("Metadata loading...");
+                    }
+                    //romlister.ClearMemory();
                     fr = my_getcwd(curdir, sizeof(curdir)); // f_getcwd(curdir, sizeof(curdir));
                     // printf("Current dir: %s\n", curdir);
                     uint32_t crc = GetCRCOfRomFile(curdir, selectedRomOrFolder, rompath);
@@ -1637,11 +1673,14 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
                         startGame = true;
                         break;
                     case 2:
+                      
                         screenSaver();
+                      
                         break;
                     default:
                         break;
                     }
+                    romlister.list(curdir);
                     displayRoms(romlister, settings.firstVisibleRowINDEX);
                 }
 
@@ -1751,7 +1790,9 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
         {
             // printf("Starting screensaver\n");
             totalFrames = -1;
+            //romlister.ClearMemory();
             screenSaver();
+            romlister.list(".");
             displayRoms(romlister, settings.firstVisibleRowINDEX);
         }
     } // while 1
@@ -1769,7 +1810,7 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
         }
     }
     Frens::f_free(screenBuffer);
-    Frens::f_free(buffer);
+    //Frens::f_free(buffer);
 
     Frens::savesettings();
 #if !HSTX

@@ -24,6 +24,8 @@
 // The macro takes the driver, frequency, and a DMA channel as parameters. -1 means find the first unused DMA channel
 // If the driver is PICO_AUDIO_I2S_DRIVER_NONE, it will skip the setup
 #define EXT_AUDIO_SETUP(driver, freq, dmachannelstart) audio_i2s_setup(driver, freq, dmachannelstart)
+#define EXT_AUDIO_DACERROR() audio_i2s_dacError()
+#define EXT_AUDIO_DISABLE() audio_i2s_disable()
 #endif
 
 // SPI audio is not supported in the current version of the code, but we keep the definition for future use.
@@ -32,6 +34,9 @@
 extern audio_spi_hw_t *spi_audio_hw;
 #define EXT_AUDIO_ENQUEUE_SAMPLE(l, r) audio_spi_enqueue_sample(l, r)   
 #define EXT_AUDIO_SETUP(driver, freq, dmachan) audio_spi_setup(driver, freq, dmachan)
+#define EXT_AUDIO_DACERROR() (false)
+#define EXT_AUDIO_DISABLE() (0)
+
 #endif
 // If neither I2S nor SPI audio is enabled, define the functions as no-ops
 #if !EXT_AUDIO_IS_ENABLED
@@ -41,5 +46,7 @@ extern audio_spi_hw_t *spi_audio_hw;
 #ifndef EXT_AUDIO_SETUP
 #define EXT_AUDIO_SETUP(driver, freq, dmachan) (driver, freq, dmachan)
 #endif
+#define EXT_AUDIO_DACERROR() (false)
+#define EXT_AUDIO_DISABLE() (0)
 #endif
 #endif // __EXTERNAL_AUDIO_H__

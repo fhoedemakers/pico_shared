@@ -68,7 +68,7 @@ volatile int scanlineMode = 0;
     MODE_V_FRONT_PORCH + MODE_V_SYNC_WIDTH + \
     MODE_V_BACK_PORCH + MODE_V_ACTIVE_LINES)
 volatile int HDMImode = 0;
-volatile uint32_t frame_counter = 0; // Frame counter
+volatile uint32_t HSTX_frame_counter = 0; // Frame counter
 #define HSTX_CMD_RAW (0x0u << 12)
 #define HSTX_CMD_RAW_REPEAT (0x1u << 12)
 #define HSTX_CMD_TMDS (0x2u << 12)
@@ -153,7 +153,7 @@ volatile uint v_scanline = 2;
 // During the vertical active period, we take two IRQs per scanline: one to
 // post the command list, and another to post the pixels.
 static bool vactive_cmdlist_posted = false;
-volatile uint vblank = 0;
+volatile uint HSTX_vblank = 0;
 
 /// @brief DMA IRQ handler for HSTX
 /// This function is called when a DMA transfer completes.
@@ -178,20 +178,20 @@ void __not_in_flash_func(dma_irq_handler)()
     {
         ch->read_addr = (uintptr_t)vblank_line_vsync_on;
         ch->transfer_count = count_of(vblank_line_vsync_on);
-        vblank = 1;
+        HSTX_vblank = 1;
     }
     else if (v_scanline < MODE_V_FRONT_PORCH + MODE_V_SYNC_WIDTH + MODE_V_BACK_PORCH)
     {
         ch->read_addr = (uintptr_t)vblank_line_vsync_off;
         ch->transfer_count = count_of(vblank_line_vsync_off);
-        vblank = 1;
+        HSTX_vblank = 1;
     }
     else if (!vactive_cmdlist_posted)
     {
         ch->read_addr = (uintptr_t)vactive_line;
         ch->transfer_count = count_of(vactive_line);
         vactive_cmdlist_posted = true;
-        vblank = 0;
+        HSTX_vblank = 0;
     }
     else
     {
@@ -206,7 +206,7 @@ void __not_in_flash_func(dma_irq_handler)()
         v_scanline = (v_scanline + 1) % MODE_V_TOTAL_LINES;
         if (v_scanline == 0)
         {
-            frame_counter++; // Increment frame counter at end of frame
+            HSTX_frame_counter++; // Increment frame counter at end of frame
         }
     }
 }
@@ -491,18 +491,18 @@ uint16_t *__not_in_flash_func(hstx_getlineFromFramebuffer)(int scanline)
 uint32_t hstx_getframecounter(void)
 {
     // Return the current frame counter
-    return frame_counter;
+    return HSTX_frame_counter;
 }
 
 /// @brief Wait for the vertical sync signal
 /// @param
 void hstx_waitForVSync(void)
 {
-    while (vblank)
+    while (HSTX_vblank)
     {
         tight_loop_contents();
     }
-    while (!vblank)
+    while (!HSTX_vblank)
     {
         tight_loop_contents();
     }

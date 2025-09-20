@@ -2,7 +2,6 @@
 #include <string.h>
 #include "pico.h"
 #include "RomLister.h"
-#include "FrensHelpers.h"
 #include "ff.h"
 #include "ffwrappers.h"
 
@@ -10,9 +9,10 @@
 namespace Frens
 {
 	// Buffer must have sufficient bytes to contain directory contents
-	RomLister::RomLister(void *buffer, size_t buffersize, const char *allowedExtensions)
+	RomLister::RomLister(size_t _buffersize, const char *allowedExtensions)
 	{
-		entries = (RomEntry *)buffer;
+		buffersize = _buffersize;
+		entries = nullptr;
 		max_entries = buffersize / sizeof(RomEntry);
 		const char *delimiters = ", ";
 		extensions = cstr_split(allowedExtensions, delimiters, &numberOfExtensions);
@@ -20,6 +20,18 @@ namespace Frens
 
 	RomLister::~RomLister()
 	{
+		printf("Deconstructor RomLister\n");
+		if (entries) {
+			Frens::f_free(entries);
+		}
+		if (extensions)
+		{
+			for (int i = 0; i < numberOfExtensions; i++)
+			{
+				Frens::f_free(extensions[i]);
+			}
+			Frens::f_free(extensions);
+		}
 	}
 
 	RomLister::RomEntry *RomLister::GetEntries()
@@ -62,6 +74,12 @@ namespace Frens
 		{
 			return;
 		}
+		if ( entries == nullptr)
+		{
+			printf("Allocating %d bytes for directory contents\n", buffersize);
+			entries = (RomEntry *)Frens::f_malloc(buffersize);
+		}
+		// Clear previous entries
 		DIR dir;
 		printf("chdir(%s)\n", directoryName);
 		// for f_getcwd to work, set

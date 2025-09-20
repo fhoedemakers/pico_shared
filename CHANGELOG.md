@@ -1,4 +1,14 @@
 # Release notes
+## 20/9/2025
+
+- Waveshare RP2350-USBA support
+- Spotpear HDMI support
+- Several fixes and improvements needed for smsPlus and GenesisPlus
+
+## 12/9/2025
+
+- Improved I2S audio quality.
+- RP2040 only: Release I2S audio resources when entering the menu to free up memory. This fixes out-of memory panics.
 
 ## 3/9/2025
 

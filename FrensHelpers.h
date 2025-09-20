@@ -40,7 +40,7 @@ enum class ScreenMode
 
 #define CBLACK 15
 #define CWHITE 48
-#define CRED 6
+#define CRED 21
 #define CGREEN 0x2A
 #define CBLUE 2
 #define CLIGHTBLUE 0x11
@@ -109,12 +109,13 @@ namespace Frens
     void SetFrameBufferProcessScanLineFunction(ProcessScanLineFunction processScanLineFunction);
 #endif
     bool isPsramEnabled();
-    void *flashromtoPsram(char *selectdRom, bool swapbytes, uint32_t &crc);
+    void *flashromtoPsram(char *selectdRom, bool swapbytes, uint32_t &crc, int crcOffset);
     void PaceFrames60fps(bool init);
     void toggleScanLines();
     void restoreScanlines();
     void *f_malloc(size_t size);
     void f_free(void *pMem);
+    void *f_realloc(void *pMem, const size_t newSize);
     int GetUnUsedDMAChan(int startChannel);
     char *get_tag_text(const char *xml, const char *tag, char *buffer, size_t bufsize);
     void waitForVSync();
