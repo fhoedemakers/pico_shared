@@ -396,7 +396,7 @@ static void tlv320_init()
 	// Bits 7-6 = 00 → I²S mode
 	// Bits 5-4 = 11 → 32-bit word length
 	// Bits 3-0 = 0000 → no offset
-	writeRegister(0x1B, 0x03);
+	writeRegister(0x1B, 0x30);
 
 	// Optional: Interface Control 2 (0x1C)
 	// Make sure data is left-aligned with I²S expectations
@@ -434,7 +434,7 @@ static void tlv320_init()
 	setPage(1);
 	modifyRegister(0x2e, 0xFF, 0x0b);
 	setPage(0);
-	
+
 	modifyRegister(0x43, 0x80, 0x80); // Headset Detect
 	modifyRegister(0x30, 0x80, 0x80); // INT1 Control
 	modifyRegister(0x33, 0x3C, 0x14); // GPIO1
@@ -463,8 +463,8 @@ static void tlv320_init()
 	modifyRegister(0x1F, 0xC0, 0xC0); // HP Driver
 	modifyRegister(0x28, 0x04, 0x04); // HP Left Gain
 	modifyRegister(0x29, 0x04, 0x04); // HP Right Gain
-	writeRegister(0x24, 0x0A); // Left Analog HP		
-	writeRegister(0x25, 0x0A); // Right Analog HP
+	writeRegister(0x24, 0x0A);		  // Left Analog HP
+	writeRegister(0x25, 0x0A);		  // Right Analog HP
 	modifyRegister(0x28, 0x78, 0x40); // HP Left Gain
 	modifyRegister(0x29, 0x78, 0x40); // HP Right Gain
 
@@ -478,12 +478,17 @@ static void tlv320_init()
 
 	setPage(0);
 
-	
 #if PICO_AUDIO_I2S_INTERRUPT_PIN != -1
-	if ( dacError == false ) {
+	if (dacError == false)
+	{
 		printf("setup headphone detection interrupt.\n");
 		setupHeadphoneDetectionInterrupt(PICO_AUDIO_I2S_INTERRUPT_PIN, PICO_AUDIO_I2S_INTERRUPT_IS_BUTTON);
 	}
+#endif
+#if 0
+	uint8_t v1b = readRegister(0x1B);
+	uint8_t v1c = readRegister(0x1C);
+	printf("IFACE1=0x%02X (expect 0x30), IFACE2=0x%02X (expect 0x00)\n", v1b, v1c);
 #endif
 	printf("TLV320AIC3204 Initialization complete!\n");
 
@@ -862,6 +867,7 @@ void audio_i2s_disable()
 	free(audio_ring);
 	audio_ring = NULL;
 }
-bool audio_i2s_dacError() {
+bool audio_i2s_dacError()
+{
 	return dacError;
 }
