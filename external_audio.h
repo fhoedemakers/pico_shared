@@ -19,7 +19,7 @@
 
 #if USE_I2S_AUDIO
 #include "audio_i2s.h"
-#define EXT_AUDIO_ENQUEUE_SAMPLE(l, r) audio_i2s_enqueue_sample((uint32_t) ((l << 16) | (r & 0xFFFF)))
+#define EXT_AUDIO_ENQUEUE_SAMPLE(l, r)  audio_i2s_enqueue_sample( ((uint32_t)(uint16_t)(l) << 16) | (uint16_t)(r) )
 // Define a macro for setting up the I2S audio hardware
 // The macro takes the driver, frequency, and a DMA channel as parameters. -1 means find the first unused DMA channel
 // If the driver is PICO_AUDIO_I2S_DRIVER_NONE, it will skip the setup

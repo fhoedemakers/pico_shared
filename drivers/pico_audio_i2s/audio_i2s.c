@@ -387,11 +387,22 @@ static void tlv320_init()
 	// Reset codec
 	writeRegister(0x01, 0x01);
 	sleep_ms(10);
-
+#if 0
 	// Interface Control
 	modifyRegister(0x1B, 0xC0, 0x00);
 	modifyRegister(0x1B, 0x30, 0x00);
+#else
+	// Set Interface Control 1 (0x1B)
+	// Bits 7-6 = 00 → I²S mode
+	// Bits 5-4 = 11 → 32-bit word length
+	// Bits 3-0 = 0000 → no offset
+	writeRegister(0x1B, 0x03);
 
+	// Optional: Interface Control 2 (0x1C)
+	// Make sure data is left-aligned with I²S expectations
+	// 0x00 = defaults (no invert, normal polarity)
+	writeRegister(0x1C, 0x00);
+#endif
 	// Clock MUX and PLL settings
 	modifyRegister(0x04, 0x03, 0x03);
 	modifyRegister(0x04, 0x0C, 0x04);
