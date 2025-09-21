@@ -1377,7 +1377,7 @@ uint32_t loadRomInPsRam(char *curdir, char *selectedRomOrFolder, char *rompath, 
         printf("Loading rom to PSRAM: %s\n", fullPath);
         strcpy(rompath, fullPath);
 
-        ROM_FILE_ADDR = (uintptr_t)Frens::flashromtoPsram(fullPath, false, crc, crcOffset);
+        ROM_FILE_ADDR = (uintptr_t)Frens::flashromtoPsram(fullPath, Frens::romIsByteSwapped(), crc, crcOffset);
     }
     return crc;
 #else
