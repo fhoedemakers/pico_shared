@@ -119,6 +119,7 @@ namespace Frens
     int GetUnUsedDMAChan(int startChannel);
     char *get_tag_text(const char *xml, const char *tag, char *buffer, size_t bufsize);
     void waitForVSync();
+    bool romIsByteSwapped();
     //extern volatile ProcessScanLineFunction processScanLineFunction;
    
 } // namespace Frens

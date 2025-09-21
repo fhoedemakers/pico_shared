@@ -61,10 +61,15 @@ namespace Frens
     // // Mutex for synchronization
 
 #endif
+    
     WORD *framebuffer;
     static bool usingFramebuffer = false;
     bool psRamEnabled = false;
     size_t psramMemorySize = 0;
+    static bool byteSwapped = false;
+    bool romIsByteSwapped() {
+        return byteSwapped;
+    }
     bool isPsramEnabled()
     {
         return psRamEnabled;
@@ -646,6 +651,7 @@ namespace Frens
                 }
                 if (swapbytes)
                 {
+                    printf("Rom is byte swapped: Swapping bytes of rom in PSRAM\n");
                     // swap bytes in pMem
                     for (size_t i = 0; i < filesize; i += 2)
                     {
@@ -1101,6 +1107,7 @@ namespace Frens
     bool initAll(char *selectedRom, uint32_t CPUFreqKHz, int marginTop, int marginBottom, size_t audiobufferSize, bool swapbytes, bool useFrameBuffer)
 
     {
+        byteSwapped = swapbytes;
         bool ok = false;
         int rc = initLed();
         if (rc != PICO_OK)
