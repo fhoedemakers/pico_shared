@@ -120,6 +120,7 @@ namespace Frens
     char *get_tag_text(const char *xml, const char *tag, char *buffer, size_t bufsize);
     void waitForVSync();
     bool romIsByteSwapped();
+    uint32_t getFrameCount();
     //extern volatile ProcessScanLineFunction processScanLineFunction;
    
 } // namespace Frens
