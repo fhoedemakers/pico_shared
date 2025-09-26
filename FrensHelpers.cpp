@@ -223,6 +223,39 @@ namespace Frens
         return to_ms_since_boot(t);
     }
 
+    const char* ms_to_d_hhmmss(uint64_t ms, char* buf, size_t bufSize)
+    {
+        if (!buf || bufSize < 9) return nullptr; // at least space for "HH:MM:SS"
+        uint64_t total_sec = ms / 1000;
+        uint64_t s = total_sec % 60;
+        uint64_t total_min = total_sec / 60;
+        uint64_t m = total_min % 60;
+        uint64_t total_hours = total_min / 60;
+        uint64_t h = total_hours % 24;
+        uint64_t d = total_hours / 24;
+
+        if (d == 0)
+        {
+            // HH:MM:SS
+            if (snprintf(buf, bufSize, "%02llu:%02llu:%02llu",
+                         (unsigned long long)h,
+                         (unsigned long long)m,
+                         (unsigned long long)s) >= (int)bufSize)
+                return nullptr;
+        }
+        else
+        {
+            // D:HH:MM:SS (days not zero-padded, hours still zero-padded)
+            if (snprintf(buf, bufSize, "%llu:%02llu:%02llu:%02llu",
+                         (unsigned long long)d,
+                         (unsigned long long)h,
+                         (unsigned long long)m,
+                         (unsigned long long)s) >= (int)bufSize)
+                return nullptr;
+        }
+        return buf;
+    }
+
 #define INITIAL_CAPACITY 10
     // Split a string into tokens using the specified delimiters
     // The result is an array of dynamically allocated strings
@@ -591,6 +624,18 @@ namespace Frens
         return newMem;
     }
 
+    uint GetAvailableMemory()
+    {
+#if PICO_RP2350 && PSRAM_CS_PIN
+        if (isPsramEnabled())
+        {
+            PicoPlusPsram &psram_ = PicoPlusPsram::getInstance();
+            return psram_.GetAvailableBytes();
+        }
+#endif
+        return maxRomSize; // return maxRomSize as a fallback
+    }
+
     void *flashromtoPsram(char *selectdRom, bool swapbytes, uint32_t &crc, int crcOffset)
     {
 #if PICO_RP2350 && PSRAM_CS_PIN
@@ -622,12 +667,17 @@ namespace Frens
         void *pMem = Frens::f_malloc(filesize);
         if (!pMem)
         {
-            snprintf(ErrorMessage, 40, "Cannot allocate %d bytes in PSRAM\n", filesize);
+            snprintf(ErrorMessage, 40, "Cannot allocate %llu bytes in PSRAM\n", filesize);
             printf("%s\n", ErrorMessage);
             selectdRom[0] = 0;
             f_close(&fil);
             return nullptr;
         }
+        uint availMem = Frens::GetAvailableMemory();
+        printf("Available memory: %zu bytes\n", availMem);
+        printf("Filesize: %llu bytes (%llu KB)\n",
+               (unsigned long long)filesize,
+               (unsigned long long)(filesize / 1024));
         // write contents of file into pMem
         size_t r;
         fr = f_read(&fil, pMem, filesize, &r);
@@ -756,8 +806,10 @@ namespace Frens
                 UINT bytesRead;
                 if (fr == FR_OK)
                 {
-                    UINT filesize = f_size(&fil);
-                    printf("Filesize: %d bytes (%dKB)\n", filesize, filesize / 1024);
+                    FSIZE_t filesize = f_size(&fil);
+                    printf("Filesize: %llu bytes (%llu KB)\n",
+                           (unsigned long long)filesize,
+                           (unsigned long long)(filesize / 1024));
                     if (filesize < maxRomSize)
                     {
                         bool readError = false;

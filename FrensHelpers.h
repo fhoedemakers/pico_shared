@@ -116,11 +116,13 @@ namespace Frens
     void *f_malloc(size_t size);
     void f_free(void *pMem);
     void *f_realloc(void *pMem, const size_t newSize);
+    uint GetAvailableMemory();
     int GetUnUsedDMAChan(int startChannel);
     char *get_tag_text(const char *xml, const char *tag, char *buffer, size_t bufsize);
     void waitForVSync();
     bool romIsByteSwapped();
     uint32_t getFrameCount();
+    const char* ms_to_d_hhmmss(uint64_t ms, char* buf, size_t bufSize);
     //extern volatile ProcessScanLineFunction processScanLineFunction;
    
 } // namespace Frens
