@@ -92,7 +92,8 @@ namespace Frens
 			return;
 		}
 		printf("Listing current directory, reading maximum %d entries.\n", max_entries);
-
+		uint availMem = Frens::GetAvailableMemory();
+		printf("Available memory: %d bytes\n", availMem);
 		f_opendir(&dir, ".");
 		while (f_readdir(&dir, &file) == FR_OK && file.fname[0])
 		{
@@ -106,7 +107,7 @@ namespace Frens
 					// if (!romInfo.IsDirectory && Frens::cstr_endswith(romInfo.Path, ".nes"))
 					if (!romInfo.IsDirectory && IsextensionAllowed(romInfo.Path))
 					{
-						if (file.fsize < maxRomSize)
+						if (file.fsize < availMem)
 						{
 							entries[numberOfEntries++] = romInfo;
 						}
