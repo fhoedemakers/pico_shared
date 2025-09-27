@@ -107,7 +107,7 @@ static uint32_t update_crc32(uint32_t crc, const uint8_t* data, UINT length) {
 /// @brief Computes the CRC32 checksum of a file.
 /// @param filename The name of the file to compute the CRC32 for.
 /// @return The computed CRC32 checksum, or 0 on error.
-uint32_t compute_crc32(const char* filename, int offset) {
+uint32_t compute_crc32(const char* filename, int offset, FSIZE_t &romsize) {
     FATFS fs;
     FIL file;
     FRESULT res;
@@ -122,6 +122,7 @@ uint32_t compute_crc32(const char* filename, int offset) {
         return 0;
     }
     auto fsize = f_size(&file);
+    romsize = fsize;
     // Skip the first 16 bytes
     res = f_lseek(&file, offset);
     if (res != FR_OK) {
