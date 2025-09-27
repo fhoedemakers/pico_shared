@@ -1001,19 +1001,6 @@ void screenSaver()
     screenSaverWithArt(!artworkEnabled);
 }
 
-#if !HSTX
-void __not_in_flash_func(processMenuScanLine)(int line, uint8_t *framebuffer, uint16_t *dvibuffer)
-{
-    auto current_line = &framebuffer[line * SCREENWIDTH];
-    for (int kol = 0; kol < SCREENWIDTH; kol += 4)
-    {
-        dvibuffer[kol] = NesMenuPalette[current_line[kol]];
-        dvibuffer[kol + 1] = NesMenuPalette[current_line[kol + 1]];
-        dvibuffer[kol + 2] = NesMenuPalette[current_line[kol + 2]];
-        dvibuffer[kol + 3] = NesMenuPalette[current_line[kol + 3]];
-    }
-}
-#endif
 // #define ARTFILE "/ART/output_RGB555.raw"
 // #define ARTFILERGB "/ART/output_RGB555.rgb"
 
@@ -1408,8 +1395,6 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
     scaleMode8_7_ = Frens::applyScreenMode(ScreenMode::NOSCANLINE_1_1);
     dvi_->getBlankSettings().top = 0;
     dvi_->getBlankSettings().bottom = 0;
-
-    // Frens::SetFrameBufferProcessScanLineFunction(processMenuScanLine);
 #else
     hstx_setScanLines(false);
 #endif
