@@ -21,7 +21,8 @@ namespace Frens
 	RomLister::~RomLister()
 	{
 		printf("Deconstructor RomLister\n");
-		if (entries) {
+		if (entries)
+		{
 			Frens::f_free(entries);
 		}
 		if (extensions)
@@ -74,7 +75,7 @@ namespace Frens
 		{
 			return;
 		}
-		if ( entries == nullptr)
+		if (entries == nullptr)
 		{
 			printf("Allocating %d bytes for directory contents\n", buffersize);
 			entries = (RomEntry *)Frens::f_malloc(buffersize);
@@ -85,7 +86,7 @@ namespace Frens
 		// for f_getcwd to work, set
 		//   #define FF_FS_RPATH		2
 		// in ffconf.c
-		fr = my_chdir(directoryName);     // f_chdir(directoryName);
+		fr = my_chdir(directoryName); // f_chdir(directoryName);
 		if (fr != FR_OK)
 		{
 			printf("Error changing dir: %d\n", fr);
@@ -105,31 +106,44 @@ namespace Frens
 					strcpy(romInfo.Path, file.fname);
 					romInfo.IsDirectory = file.fattrib & AM_DIR;
 					// if (!romInfo.IsDirectory && Frens::cstr_endswith(romInfo.Path, ".nes"))
-					if (!romInfo.IsDirectory && IsextensionAllowed(romInfo.Path))
+					if (!romInfo.IsDirectory)
 					{
-						if (file.fsize < availMem)
+						if (IsextensionAllowed(romInfo.Path))
+						{
+							if (file.fsize < availMem)
+							{
+								entries[numberOfEntries++] = romInfo;
+							}
+							else
+							{
+								printf("Skipping %s, %d KBytes too large.\n", file.fname, (file.fsize - maxRomSize) / 1024);
+							}
+						}
+					}
+					else
+					{
+						if (romInfo.Path[0] != '.' && // skip hidden dirs like .git, .config, .Trash, also "." and ".."
+							strcasecmp(romInfo.Path, "System Volume Information") != 0 &&
+							strcasecmp(romInfo.Path, "SAVES") != 0 &&
+							strcasecmp(romInfo.Path, "EDFC") != 0 &&
+							strcasecmp(romInfo.Path, "Metadata") != 0)
 						{
 							entries[numberOfEntries++] = romInfo;
 						}
 						else
 						{
-							printf("Skipping %s, %d KBytes too large.\n", file.fname, (file.fsize - maxRomSize) / 1024);
+							printf("Skipping invalid directory %s\n", romInfo.Path);
 						}
 					}
-					else
-					{
-						if (romInfo.IsDirectory && strcmp(romInfo.Path, "System Volume Information") != 0 && strcmp(romInfo.Path, "SAVES") != 0 && strcmp(romInfo.Path, "EDFC") != 0)
-						{
-							entries[numberOfEntries++] = romInfo;
-						}
-					}
-				} else {
+				}
+				else
+				{
 					printf("Filename too long: %s\n", file.fname);
 				}
 			}
 			else
 			{
-				if ( numberOfEntries == max_entries)
+				if (numberOfEntries == max_entries)
 				{
 					printf("Max entries reached.\n");
 				}
