@@ -1008,7 +1008,7 @@ void screenSaver()
 /// @brief Show artwork for a given game
 /// @param crc The CRC32 checksum of the game
 /// @return 0: Do nothing, 1: start game, 2: start screensaver
-int showartwork(uint32_t crc)
+int showartwork(uint32_t crc, FSIZE_t romsize)
 {
     char info[SCREEN_COLS + 1];
     char gamename[64];
@@ -1152,6 +1152,10 @@ int showartwork(uint32_t crc)
             putText(firstCharColumnIndex + 8 + i, 12, "*", settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex + 7 + i);
         }
     }
+    int sizeInKB = (int)(romsize / 1024);
+    snprintf(info, sizeof(info), "%d KB", sizeInKB);
+    putText(firstCharColumnIndex, 14, "Size:", settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex);
+    putText(firstCharColumnIndex + 6, 14, info, settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex + 6);
     putText(firstCharColumnIndex, 16, "SELECT: Full description", settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex);
     putText(firstCharColumnIndex, 17, "START or A: Start game", settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex);
     putText(firstCharColumnIndex, 18, "B: Back to rom list", settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex);
@@ -1312,7 +1316,7 @@ static void showLoadingScreen(const char *message = nullptr)
 #endif
 }
 
-uint32_t GetCRCOfRomFile(char *curdir, char *selectedRomOrFolder, char *rompath)
+uint32_t GetCRCOfRomFile(char *curdir, char *selectedRomOrFolder, char *rompath, FSIZE_t &romsize)
 {
     char fullPath[FF_MAX_LFN];
     uint32_t crc = 0;
@@ -1328,7 +1332,7 @@ uint32_t GetCRCOfRomFile(char *curdir, char *selectedRomOrFolder, char *rompath)
         snprintf(fullPath, FF_MAX_LFN, "%s/%s", curdir, selectedRomOrFolder);
         printf("Full path: %s\n", fullPath);
     }
-    crc = compute_crc32(fullPath, crcOffset);
+    crc = compute_crc32(fullPath, crcOffset, romsize);
     if (crc != 0)
     {
         printf("CRC32 Checksum: 0x%08X\n", crc);
@@ -1647,9 +1651,10 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
                     }
                     //romlister.ClearMemory();
                     fr = my_getcwd(curdir, sizeof(curdir)); // f_getcwd(curdir, sizeof(curdir));
+                    FSIZE_t romsize = 0;
                     // printf("Current dir: %s\n", curdir);
-                    uint32_t crc = GetCRCOfRomFile(curdir, selectedRomOrFolder, rompath);
-                    int startAction = showartwork(crc);
+                    uint32_t crc = GetCRCOfRomFile(curdir, selectedRomOrFolder, rompath, romsize);
+                    int startAction = showartwork(crc, romsize);
                     switch (startAction)
                     {
                     case 0:
