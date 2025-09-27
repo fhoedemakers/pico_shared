@@ -37,7 +37,6 @@
 std::unique_ptr<dvi::DVI> dvi_;
 util::ExclusiveProc exclProc_;
 static volatile bool vsync = false;
-static volatile u_int32_t frameCountDVI = 0;
 #endif
 char ErrorMessage[ERRORMESSAGESIZE];
 bool scaleMode8_7_ = true;
@@ -121,13 +120,6 @@ namespace Frens
         return 1 << rxbuf[3];
     }
 
-    uint32_t getFrameCount() {
-#if !HSTX
-        return frameCountDVI;
-#else
-        return hstx_getframecounter();
-#endif
-    }
     /// @brief Wait for vertical sync
     void waitForVSync()
     {
@@ -969,7 +961,6 @@ namespace Frens
                 }
             }
             vsync = true;
-            frameCountDVI++;
         }
 #endif
     }
