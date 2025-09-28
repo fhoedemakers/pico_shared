@@ -1125,7 +1125,8 @@ namespace Frens
         // If DVIAUDIOFREQ macro differs we still advertise/clock 48k to keep sinks happy.
         (void)DVIAUDIOFREQ; // we intentionally ignore non-standard compile-time overrides now.
         // Pass CTS=0 to auto compute correct CTS for current (possibly overclocked) pixel clock
-        dvi_->setAudioFreq(48000, 0, 6144);
+        //dvi_->setAudioFreq(48000, 0, 6144);
+        dvi_->setAudioFreq(DVIAUDIOFREQ, 0, 6144);
 #endif
         dvi_->allocateAudioBuffer(audioBufferSize);
         //    dvi_->setExclusiveProc(&exclProc_);
