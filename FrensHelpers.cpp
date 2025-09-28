@@ -30,6 +30,10 @@
 #include "pico/cyw43_arch.h"
 #endif
 
+
+// Valid values arr:
+//  44100
+//  48000
 #ifndef DVIAUDIOFREQ
 #define DVIAUDIOFREQ 44100
 #endif
