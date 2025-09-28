@@ -12,6 +12,7 @@
 #endif
 int abSwapped = ABSWAPPED;
 int isManta = 0; // 1 NES, 2 SNES
+int isMantaVariant = 0; // SNES pad (0810:e501 Personal Communication Systems, Inc. SNES Gamepad)
 #ifdef __cplusplus
 extern "C"
 {
@@ -53,6 +54,11 @@ extern "C"
         bool isMantaPad(uint16_t vid, uint16_t pid)
         {
             return vid == 0x081f && pid == 0xe401;
+        }
+        // Is MantaPad Variant detected? Cheap Aliexpress SNES controller (0810:e501)
+        bool isMantaPadVariant(uint16_t vid, uint16_t pid)
+        {
+            return vid == 0x0810 && pid == 0xe501;
         }
 
         struct DS4Report
@@ -229,6 +235,7 @@ extern "C"
     {
         uint16_t vid, pid;
         isManta = 0;
+        isMantaVariant = 0;
         auto &gp = io::getCurrentGamePadState(0);
         tuh_vid_pid_get(dev_addr, &vid, &pid);
 
@@ -248,6 +255,13 @@ extern "C"
             printf("Press Y to activate SNES mode\n");
             isManta = 1;
             strcpy(gp.GamePadName, "Manta NES");
+        }
+        else if (isMantaPadVariant(vid, pid))
+        {
+            printf("MantaPad Variant detected - device address = %d, instance = %d is mounted - ", dev_addr, instance);
+            isManta = 2;
+            isMantaVariant = 1;
+            strcpy(gp.GamePadName, "Manta Variant SNES");
         }
         else if (isGenesisMini(vid, pid))
         {
@@ -390,12 +404,15 @@ extern "C"
                 return;
             }
         }
-        else if (isMantaPad(vid, pid))
+        else if (isMantaPad(vid, pid) || isMantaPadVariant(vid, pid))
         {
             if (sizeof(MantaPadReport) == len)
             {
                 auto r = reinterpret_cast<const MantaPadReport *>(report);
                 auto &gp = io::getCurrentGamePadState(0);
+                uint8_t udb = r->byte2;
+                uint8_t lrb = r->byte1;
+
                 // When using AlieExpress SNES usb controller, activate SNES mode by pressing Y
                 if (r->byte6 & MantaPadReport::Button::Y)
                 {
@@ -405,6 +422,12 @@ extern "C"
                 }
                 // printf("MantaPad report: %02x %02x %02x %02x %02x %02x %02x %02x\n",
                 //        r->byte1, r->byte2, r->byte3, r->byte4, r->byte5, r->byte6, r->byte7, r->byte8);
+
+                if (isMantaVariant)
+                {
+                    udb = r->byte5; // UP / DOWN
+                    lrb = r->byte4; // LEFT / RIGHT
+                }
                 if (abSwapped)
                 {
                     gp.buttons =
@@ -414,10 +437,10 @@ extern "C"
                         ((isManta == 2 && r->byte6 & MantaPadReport::Button::X) ? io::GamePadState::Button::X : 0) |
                         (r->byte7 & MantaPadReport::Button::START ? io::GamePadState::Button::START : 0) |
                         (r->byte7 & MantaPadReport::Button::SELECT ? io::GamePadState::Button::SELECT : 0) |
-                        (r->byte2 == MantaPadReport::Button::UP ? io::GamePadState::Button::UP : 0) |
-                        (r->byte2 == MantaPadReport::Button::DOWN ? io::GamePadState::Button::DOWN : 0) |
-                        (r->byte1 == MantaPadReport::Button::LEFT ? io::GamePadState::Button::LEFT : 0) |
-                        (r->byte1 == MantaPadReport::Button::RIGHT ? io::GamePadState::Button::RIGHT : 0);
+                        (udb == MantaPadReport::Button::UP ? io::GamePadState::Button::UP : 0) |
+                        (udb == MantaPadReport::Button::DOWN ? io::GamePadState::Button::DOWN : 0) |
+                        (lrb == MantaPadReport::Button::LEFT ? io::GamePadState::Button::LEFT : 0) |
+                        (lrb == MantaPadReport::Button::RIGHT ? io::GamePadState::Button::RIGHT : 0);
                 }
                 else
                 {
@@ -428,10 +451,10 @@ extern "C"
                         ((isManta == 2 && r->byte6 & MantaPadReport::Button::X) ? io::GamePadState::Button::X : 0) |
                         (r->byte7 & MantaPadReport::Button::START ? io::GamePadState::Button::START : 0) |
                         (r->byte7 & MantaPadReport::Button::SELECT ? io::GamePadState::Button::SELECT : 0) |
-                        (r->byte2 == MantaPadReport::Button::UP ? io::GamePadState::Button::UP : 0) |
-                        (r->byte2 == MantaPadReport::Button::DOWN ? io::GamePadState::Button::DOWN : 0) |
-                        (r->byte1 == MantaPadReport::Button::LEFT ? io::GamePadState::Button::LEFT : 0) |
-                        (r->byte1 == MantaPadReport::Button::RIGHT ? io::GamePadState::Button::RIGHT : 0);
+                        (udb == MantaPadReport::Button::UP ? io::GamePadState::Button::UP : 0) |
+                        (udb == MantaPadReport::Button::DOWN ? io::GamePadState::Button::DOWN : 0) |
+                        (lrb == MantaPadReport::Button::LEFT ? io::GamePadState::Button::LEFT : 0) |
+                        (lrb == MantaPadReport::Button::RIGHT ? io::GamePadState::Button::RIGHT : 0);
                 }
                 gp.flagConnected(true);
             }
