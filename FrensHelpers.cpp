@@ -61,13 +61,14 @@ namespace Frens
     // // Mutex for synchronization
 
 #endif
-    
+
     WORD *framebuffer;
     static bool usingFramebuffer = false;
     bool psRamEnabled = false;
     size_t psramMemorySize = 0;
     static bool byteSwapped = false;
-    bool romIsByteSwapped() {
+    bool romIsByteSwapped()
+    {
         return byteSwapped;
     }
     bool isPsramEnabled()
@@ -215,9 +216,10 @@ namespace Frens
         return to_ms_since_boot(t);
     }
 
-    const char* ms_to_d_hhmmss(uint64_t ms, char* buf, size_t bufSize)
+    const char *ms_to_d_hhmmss(uint64_t ms, char *buf, size_t bufSize)
     {
-        if (!buf || bufSize < 9) return nullptr; // at least space for "HH:MM:SS"
+        if (!buf || bufSize < 9)
+            return nullptr; // at least space for "HH:MM:SS"
         uint64_t total_sec = ms / 1000;
         uint64_t s = total_sec % 60;
         uint64_t total_min = total_sec / 60;
@@ -260,7 +262,7 @@ namespace Frens
         }
 
         // Create a modifiable copy of the input string, panics when out of memory
-        char *str_copy = (char *) Frens::f_malloc(strlen(str) + 1);
+        char *str_copy = (char *)Frens::f_malloc(strlen(str) + 1);
         strcpy(str_copy, str);
 
         // Initial memory allocation for the result array, panics when out of memory
@@ -1108,14 +1110,23 @@ namespace Frens
 #if !HSTX
         dvi_ = std::make_unique<dvi::DVI>(pio0, &DVICONFIG,
                                           dvi::getTiming640x480p60Hz());
-        //    dvi_->setAudioFreq(48000, 25200, 6144);
+
+//    dvi_->setAudioFreq(48000, 25200, 6144);
+#if 0
 #if DVIAUDIOFREQ == 53280
         dvi_->setAudioFreq(DVIAUDIOFREQ, 22708, 6144);
-#else 
+#else
         dvi_->setAudioFreq(DVIAUDIOFREQ, 28000, 6272);
+         //    dvi_->setAudioFreq(48000, 25200, 6144);
 #endif
-        // dvi_->setAudioFreq(53267, 28000, 6272);
-
+#else
+        // Switch to standard 48 kHz HDMI audio timing.
+        // For 25.2 MHz pixel clock (640x480p60), a common standard tuple is N=6144, CTS=25200 giving exactly 48 kHz.
+        // If DVIAUDIOFREQ macro differs we still advertise/clock 48k to keep sinks happy.
+        (void)DVIAUDIOFREQ; // we intentionally ignore non-standard compile-time overrides now.
+        // Pass CTS=0 to auto compute correct CTS for current (possibly overclocked) pixel clock
+        dvi_->setAudioFreq(48000, 0, 6144);
+#endif
         dvi_->allocateAudioBuffer(audioBufferSize);
         //    dvi_->setExclusiveProc(&exclProc_);
 
@@ -1218,7 +1229,7 @@ namespace Frens
         if (usingFramebuffer)
         {
             // always allocate framebuffer in SRAM
-            printf("Allocating %d bytes for framebuffer in SRAM\n", SCREENWIDTH * SCREENHEIGHT * sizeof(WORD)); 
+            printf("Allocating %d bytes for framebuffer in SRAM\n", SCREENWIDTH * SCREENHEIGHT * sizeof(WORD));
             framebuffer = (WORD *)malloc(SCREENWIDTH * SCREENHEIGHT * sizeof(WORD));
             memset(framebuffer, 0, SCREENWIDTH * SCREENHEIGHT * sizeof(WORD));
             marginTop = marginBottom = 0; // ignore margins when using framebuffer
@@ -1315,12 +1326,15 @@ namespace Frens
     }
 }
 // C-compatible wrappers
-extern "C" {
-    void *frens_f_malloc(size_t size) {
+extern "C"
+{
+    void *frens_f_malloc(size_t size)
+    {
         return Frens::f_malloc(size);
     }
 
-    void frens_f_free(void *ptr) {
+    void frens_f_free(void *ptr)
+    {
         Frens::f_free(ptr);
     }
 }
