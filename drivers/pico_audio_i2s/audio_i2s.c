@@ -669,12 +669,12 @@ void __isr dma_handler()
 	// Clear the interrupt
 	dma_hw->ints0 = 1u << audio_i2s.dma_chan;
 	// Advance read_index by block size
-	read_index = (read_index + DMA_BLOCK_SIZE) % AUDIO_RING_SIZE;
+	read_index = (read_index + DMA_BLOCK_SIZE) % I2S_AUDIO_RING_SIZE;
 	// Check if we have enough data to continue DMA transfer
 	// If write_index is ahead of read_index, we have data to send
 	size_t available = (write_index >= read_index)
 						   ? (write_index - read_index)
-						   : (AUDIO_RING_SIZE - read_index + write_index);
+						   : (I2S_AUDIO_RING_SIZE - read_index + write_index);
 	// printf("DMA handler: read_index=%zu, write_index=%zu, available=%zu\n", read_index, write_index, available);
 	if (available >= DMA_BLOCK_SIZE)
 	{
@@ -730,10 +730,10 @@ audio_i2s_hw_t *audio_i2s_setup(int driver, int freqHZ, int dmachan)
 	{
 		samplefreq = freqHZ;
 	}
-	printf("Allocating %d bytes for audio ring buffer\n", AUDIO_RING_SIZE * sizeof(uint32_t));
-	audio_ring = malloc(AUDIO_RING_SIZE * sizeof(uint32_t));   // Allocate memory for the audio ring buffer
-	memset(audio_ring, 0, AUDIO_RING_SIZE * sizeof(uint32_t)); // Initialize the audio ring buffer to zero
-	write_index = DMA_BLOCK_SIZE;							   // Start writing after the first block
+	printf("Allocating %d bytes for audio ring buffer\n", I2S_AUDIO_RING_SIZE * sizeof(uint32_t));
+	audio_ring = malloc(I2S_AUDIO_RING_SIZE * sizeof(uint32_t));   // Allocate memory for the audio ring buffer
+	memset(audio_ring, 0, I2S_AUDIO_RING_SIZE * sizeof(uint32_t)); // Initialize the audio ring buffer to zero
+	write_index = 0; //DMA_BLOCK_SIZE;							   // Start writing after the first block
 	read_index = 0;											   // Reset read index
 	// Set up the PIO and GPIO pins for I2S audio output
 	gpio_set_function(PICO_AUDIO_I2S_DATA_PIN, GPIO_FUNC_PIOx);
@@ -816,7 +816,7 @@ void __not_in_flash_func(audio_i2s_enqueue_sample)(uint32_t sample32)
 #endif
 	// Ensure we don't write past the end of the buffer
 
-	size_t next_write = (write_index + 1) % AUDIO_RING_SIZE;
+	size_t next_write = (write_index + 1) % I2S_AUDIO_RING_SIZE;
 	if (next_write != read_index)
 	{
 		audio_ring[write_index] = sample32;
@@ -827,7 +827,7 @@ void __not_in_flash_func(audio_i2s_enqueue_sample)(uint32_t sample32)
 		{
 			size_t available = (write_index >= read_index)
 								   ? (write_index - read_index)
-								   : (AUDIO_RING_SIZE - read_index + write_index);
+								   : (I2S_AUDIO_RING_SIZE - read_index + write_index);
 			if (available >= DMA_BLOCK_SIZE)
 			{
 				dma_channel_set_read_addr(audio_i2s.dma_chan, &audio_ring[read_index], false);

@@ -701,12 +701,12 @@ void __isr dma_handler()
 	// Clear the interrupt
 	dma_hw->ints0 = 1u << audio_i2s.dma_chan;
 	// Advance read_index to next block
-	read_index = (read_index + DMA_BLOCK_SIZE) % AUDIO_RING_SIZE;
+	read_index = (read_index + DMA_BLOCK_SIZE) % I2S_AUDIO_RING_SIZE;
 	// Check if we have enough data to continue DMA transfer
 	// If write_index is ahead of read_index, we have data to send
 	size_t available = (write_index >= read_index)
 						   ? (write_index - read_index)
-						   : (AUDIO_RING_SIZE - read_index + write_index);
+						   : (I2S_AUDIO_RING_SIZE - read_index + write_index);
 	// printf("DMA handler: read_index=%zu, write_index=%zu, available=%zu\n", read_index, write_index, available);
 	if (available >= DMA_BLOCK_SIZE)
 	{
