@@ -752,6 +752,16 @@ static FRESULT pick_random_file_fullpath(const char *dirpath, char *out_path, si
 
     while (1)
     {
+       
+        fr = f_readdir(&dir, &fno);
+        if (fr != FR_OK || fno.fname[0] == 0)
+            break; // End or error
+        if (fno.fattrib & AM_DIR)
+            continue; // Skip directories
+                      // skip files with wrong extension
+        // skip hidden files
+        if (fno.fattrib & AM_HID || fno.fname[0] == '.')
+            continue;
         // Bail out if f_readdir loops too many. Can be caused by bad sd card?
         if (++iter > MAX_ITER)
         {
@@ -759,12 +769,7 @@ static FRESULT pick_random_file_fullpath(const char *dirpath, char *out_path, si
             f_closedir(&dir);
             return FR_INT_ERR;
         }
-        fr = f_readdir(&dir, &fno);
-        if (fr != FR_OK || fno.fname[0] == 0)
-            break; // End or error
-        if (fno.fattrib & AM_DIR)
-            continue; // Skip directories
-                      // skip files with wrong extension
+        // Check file extension
         int l = strlen(fno.fname);
         if (l > 4 && strcmp(&fno.fname[l - 4], FILEXTFORSEARCH) == 0)
         {
