@@ -1643,7 +1643,7 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
 
                 // show screen with ArtWork
 
-                if (!entries[index].IsDirectory && selectedRomOrFolder)
+                if (!entries[index].IsDirectory && selectedRomOrFolder && artworkEnabled)
                 {
                     if (strcmp(emulator, "MD") == 0)
                     {
