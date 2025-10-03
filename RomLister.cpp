@@ -100,6 +100,16 @@ namespace Frens
 		{
 			if (numberOfEntries < max_entries)
 			{
+				if (file.fname[0] == '.' ||
+					strcasecmp(file.fname, "System Volume Information") == 0 ||
+					strcasecmp(file.fname, "SAVES") == 0 ||
+					strcasecmp(file.fname, "EDFC") == 0 ||
+					strcasecmp(file.fname, "Metadata") == 0)
+				{
+					// skip hidden files and directories like .git, .config, .Trash, also "." and ".."
+					// printf("Skipping hidden file or directory %s\n", file.fname);
+					continue;
+				}
 				if (strlen(file.fname) < ROMLISTER_MAXPATH)
 				{
 					struct RomEntry romInfo;
@@ -122,18 +132,7 @@ namespace Frens
 					}
 					else
 					{
-						if (romInfo.Path[0] != '.' && // skip hidden dirs like .git, .config, .Trash, also "." and ".."
-							strcasecmp(romInfo.Path, "System Volume Information") != 0 &&
-							strcasecmp(romInfo.Path, "SAVES") != 0 &&
-							strcasecmp(romInfo.Path, "EDFC") != 0 &&
-							strcasecmp(romInfo.Path, "Metadata") != 0)
-						{
-							entries[numberOfEntries++] = romInfo;
-						}
-						else
-						{
-							printf("Skipping invalid directory %s\n", romInfo.Path);
-						}
+						entries[numberOfEntries++] = romInfo;
 					}
 				}
 				else
