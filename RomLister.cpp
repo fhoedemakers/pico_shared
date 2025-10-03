@@ -100,7 +100,7 @@ namespace Frens
 		{
 			if (numberOfEntries < max_entries)
 			{
-				if (file.fname[0] == '.' ||
+				if (file.fattrib & AM_HID || file.fname[0] == '.' ||
 					strcasecmp(file.fname, "System Volume Information") == 0 ||
 					strcasecmp(file.fname, "SAVES") == 0 ||
 					strcasecmp(file.fname, "EDFC") == 0 ||
