@@ -426,6 +426,7 @@ void __not_in_flash_func(HSTXCore)(void)
 /// It also initializes the GPIO pins used for HSTX output.
 void hstx_init()
 {
+// NOTE: Clocks must be setup at the start of main() before calling this function
 // #if 0  
 //     // Messes up stdio, so we need to reinitialize it. Also breaks SDcard access. Not sure this is needed anyhow
 //     clockspeed = clock_get_hz(clk_sys) / 1000; // Get current clock speed in kHz
