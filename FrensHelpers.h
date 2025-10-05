@@ -11,6 +11,8 @@
 #include <algorithm>
 #include <memory>
 #include <pico/mutex.h>
+#include "hardware/vreg.h"
+#include "hardware/pll.h"
 #include "ff.h"
 #include "ffwrappers.h"
 #include "tf_card.h"
@@ -123,6 +125,7 @@ namespace Frens
     bool romIsByteSwapped();
     uint32_t getFrameCount();
     const char* ms_to_d_hhmmss(uint64_t ms, char* buf, size_t bufSize);
+    void setClocksAndStartStdio(uint32_t cpuFreqKHz, vreg_voltage voltage);
     //extern volatile ProcessScanLineFunction processScanLineFunction;
    
 } // namespace Frens

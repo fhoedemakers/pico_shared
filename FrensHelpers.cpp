@@ -30,7 +30,6 @@
 #include "pico/cyw43_arch.h"
 #endif
 
-
 // Valid values arr:
 //  44100
 //  48000
@@ -1129,7 +1128,7 @@ namespace Frens
         // If DVIAUDIOFREQ macro differs we still advertise/clock 48k to keep sinks happy.
         (void)DVIAUDIOFREQ; // we intentionally ignore non-standard compile-time overrides now.
         // Pass CTS=0 to auto compute correct CTS for current (possibly overclocked) pixel clock
-        //dvi_->setAudioFreq(48000, 0, 6144);
+        // dvi_->setAudioFreq(48000, 0, 6144);
         dvi_->setAudioFreq(DVIAUDIOFREQ, 0, 6144);
 #endif
         dvi_->allocateAudioBuffer(audioBufferSize);
@@ -1327,6 +1326,47 @@ namespace Frens
 #if defined(CYW43_WL_GPIO_LED_PIN)
         printf("Deinitializing CYW43\n");
         cyw43_arch_deinit();
+#endif
+    }
+
+    // Set CPU clock to desired speed
+    // Set HSTX clock to 126 MHz if HSTX is used so the HSTX driver can output at 60Hz
+    void setClocksAndStartStdio(uint32_t cpuFreqKHz, vreg_voltage voltage)
+    {
+        // Set voltage and clock frequency
+        vreg_set_voltage(voltage); 
+        sleep_ms(10);
+        set_sys_clock_khz(cpuFreqKHz, true); 
+        
+#if HSTX
+        bool hstx_ok = true;
+        // (Re)configure PLL_USB for 126 MHz HSTX source
+        pll_deinit(pll_usb);
+        pll_init(pll_usb, 1, 756000000, 6, 1); // 756 / (6*1) = 126 MHz
+
+        const uint32_t target_hstx_hz = 126000000u;
+        uint32_t chosen_hstx_hz = target_hstx_hz;
+        hstx_ok = clock_configure(
+            clk_hstx,
+            0,
+            CLOCKS_CLK_HSTX_CTRL_AUXSRC_VALUE_CLKSRC_PLL_USB,
+            target_hstx_hz,
+            target_hstx_hz);
+
+        clock_configure(clk_peri,
+                        0, // no GLMUX
+                        CLOCKS_CLK_PERI_CTRL_AUXSRC_VALUE_CLKSRC_PLL_SYS,
+                        cpuFreqKHz * 1000,  // input freq (PLL SYS)
+                        cpuFreqKHz * 1000); // target clk_peri
+#endif
+
+        stdio_init_all();
+        sleep_ms(50); // wait for UART to settle
+#if HSTX
+        if (!hstx_ok)
+        {
+            printf("HSTX clock configure failed\n");
+        }
 #endif
     }
 }
