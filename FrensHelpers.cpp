@@ -1340,7 +1340,7 @@ namespace Frens
         
 #if HSTX
         bool hstx_ok = true;
-        // (Re)configure PLL_USB for 126 MHz HSTX source
+        // (Re)configure PLL_USB for 126 MHz HSTX source, so that we can get a 60Hz display output.
         pll_deinit(pll_usb);
         pll_init(pll_usb, 1, 756000000, 6, 1); // 756 / (6*1) = 126 MHz
 
@@ -1353,6 +1353,7 @@ namespace Frens
             target_hstx_hz,
             target_hstx_hz);
 
+        // configure clk_peri to be same as clk_sys. This makes stdio over UART work correctly.
         clock_configure(clk_peri,
                         0, // no GLMUX
                         CLOCKS_CLK_PERI_CTRL_AUXSRC_VALUE_CLKSRC_PLL_SYS,
