@@ -1330,7 +1330,7 @@ namespace Frens
     }
 
     // Set CPU clock to desired speed
-    // Set HSTX clock to 126 MHz if HSTX is used so the HSTX driver can output at 60Hz
+    // Set HSTX clock to 126 MHz if HSTX is used so the HSTX display driver can output at 60Hz
     void setClocksAndStartStdio(uint32_t cpuFreqKHz, vreg_voltage voltage)
     {
         // Set voltage and clock frequency
