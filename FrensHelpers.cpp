@@ -1339,7 +1339,9 @@ namespace Frens
         set_sys_clock_khz(cpuFreqKHz, true); 
         
 #if HSTX
+#if 0
         bool hstx_ok = true;
+
         // (Re)configure PLL_USB for 126 MHz HSTX source, so that we can get a 60Hz display output.
         pll_deinit(pll_usb);
         pll_init(pll_usb, 1, 756000000, 6, 1); // 756 / (6*1) = 126 MHz
@@ -1359,6 +1361,29 @@ namespace Frens
                         CLOCKS_CLK_PERI_CTRL_AUXSRC_VALUE_CLKSRC_PLL_SYS,
                         cpuFreqKHz * 1000,  // input freq (PLL SYS)
                         cpuFreqKHz * 1000); // target clk_peri
+#else
+        bool hstx_ok = true;
+
+        // DO NOT touch pll_usb: keep its 48 MHz for USB.
+        // Derive 126 MHz HSTX from clk_sys (cpuFreqKHz * 1000 input).
+        const uint32_t sys_hz = cpuFreqKHz * 1000;
+        const uint32_t target_hstx_hz = 126000000u;
+
+        // Select clk_sys as AUX source and let clock framework set divider.
+        hstx_ok = clock_configure(
+            clk_hstx,
+            0,
+            CLOCKS_CLK_HSTX_CTRL_AUXSRC_VALUE_CLK_SYS,
+            sys_hz,
+            target_hstx_hz);
+
+        // Keep clk_peri in sync with clk_sys
+        clock_configure(clk_peri,
+                        0,
+                        CLOCKS_CLK_PERI_CTRL_AUXSRC_VALUE_CLKSRC_PLL_SYS,
+                        sys_hz,
+                        sys_hz);
+#endif
 #endif
 
         stdio_init_all();
