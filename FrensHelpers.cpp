@@ -1334,58 +1334,59 @@ namespace Frens
     void setClocksAndStartStdio(uint32_t cpuFreqKHz, vreg_voltage voltage)
     {
         // Set voltage and clock frequency
-        vreg_set_voltage(voltage); 
+        vreg_set_voltage(voltage);
         sleep_ms(10);
-        set_sys_clock_khz(cpuFreqKHz, true); 
-        
+        set_sys_clock_khz(cpuFreqKHz, true);
+
 #if HSTX
-#if 1
         bool hstx_ok = true;
+        if ((cpuFreqKHz / 1000) % 126 != 0)
+        {
+            // (Re)configure PLL_USB for 126 MHz HSTX source, so that we can get a 60Hz display output.
+            // This will break tinyusb, but PIO USB will still work.
+            pll_deinit(pll_usb);
+            pll_init(pll_usb, 1, 756000000, 6, 1); // 756 / (6*1) = 126 MHz
 
-        // (Re)configure PLL_USB for 126 MHz HSTX source, so that we can get a 60Hz display output.
-        // This will break tinyusb, but PIO USB will still work.
-        pll_deinit(pll_usb);
-        pll_init(pll_usb, 1, 756000000, 6, 1); // 756 / (6*1) = 126 MHz
+            const uint32_t target_hstx_hz = 126000000u;
+            uint32_t chosen_hstx_hz = target_hstx_hz;
+            hstx_ok = clock_configure(
+                clk_hstx,
+                0,
+                CLOCKS_CLK_HSTX_CTRL_AUXSRC_VALUE_CLKSRC_PLL_USB,
+                target_hstx_hz,
+                target_hstx_hz);
 
-        const uint32_t target_hstx_hz = 126000000u;
-        uint32_t chosen_hstx_hz = target_hstx_hz;
-        hstx_ok = clock_configure(
-            clk_hstx,
-            0,
-            CLOCKS_CLK_HSTX_CTRL_AUXSRC_VALUE_CLKSRC_PLL_USB,
-            target_hstx_hz,
-            target_hstx_hz);
+            // configure clk_peri to be same as clk_sys. This makes stdio over UART work correctly.
+            clock_configure(clk_peri,
+                            0, // no GLMUX
+                            CLOCKS_CLK_PERI_CTRL_AUXSRC_VALUE_CLKSRC_PLL_SYS,
+                            cpuFreqKHz * 1000,  // input freq (PLL SYS)
+                            cpuFreqKHz * 1000); // target clk_peri
+        }
+        else
+        {
+            // DO NOT touch pll_usb: keep its 48 MHz for USB.
+            // Derive 126 MHz HSTX from clk_sys (cpuFreqKHz * 1000 input).
+            // This works only when clock is set to 126, 252 or 378 MHz.
+            // 252 Mhz is too slow for the emulator, 378 MHz causes stability issues.
+            const uint32_t sys_hz = cpuFreqKHz * 1000;
+            const uint32_t target_hstx_hz = 126000000u;
 
-        // configure clk_peri to be same as clk_sys. This makes stdio over UART work correctly.
-        clock_configure(clk_peri,
-                        0, // no GLMUX
-                        CLOCKS_CLK_PERI_CTRL_AUXSRC_VALUE_CLKSRC_PLL_SYS,
-                        cpuFreqKHz * 1000,  // input freq (PLL SYS)
-                        cpuFreqKHz * 1000); // target clk_peri
-#else
-        bool hstx_ok = true;
-        // DO NOT touch pll_usb: keep its 48 MHz for USB.
-        // Derive 126 MHz HSTX from clk_sys (cpuFreqKHz * 1000 input).
-        // This works only when clock is set to 126, 252 or 378 MHz.
-        // 252 Mhz is too slow for the emulator, 378 MHz causes stability issues.
-        const uint32_t sys_hz = cpuFreqKHz * 1000;
-        const uint32_t target_hstx_hz = 126000000u;
+            // Select clk_sys as AUX source and let clock framework set divider.
+            hstx_ok = clock_configure(
+                clk_hstx,
+                0,
+                CLOCKS_CLK_HSTX_CTRL_AUXSRC_VALUE_CLK_SYS,
+                sys_hz,
+                target_hstx_hz);
 
-        // Select clk_sys as AUX source and let clock framework set divider.
-        hstx_ok = clock_configure(
-            clk_hstx,
-            0,
-            CLOCKS_CLK_HSTX_CTRL_AUXSRC_VALUE_CLK_SYS,
-            sys_hz,
-            target_hstx_hz);
-
-        // Keep clk_peri in sync with clk_sys
-        clock_configure(clk_peri,
-                        0,
-                        CLOCKS_CLK_PERI_CTRL_AUXSRC_VALUE_CLKSRC_PLL_SYS,
-                        sys_hz,
-                        sys_hz);
-#endif
+            // Keep clk_peri in sync with clk_sys
+            clock_configure(clk_peri,
+                            0,
+                            CLOCKS_CLK_PERI_CTRL_AUXSRC_VALUE_CLKSRC_PLL_SYS,
+                            sys_hz,
+                            sys_hz);
+        }
 #endif
 
         stdio_init_all();
