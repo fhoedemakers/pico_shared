@@ -1339,11 +1339,13 @@ namespace Frens
         set_sys_clock_khz(cpuFreqKHz, true);
 
 #if HSTX
+        // Reconfigure HSTX clock to 126 Mhz, so display can run at 60Hz.
         bool hstx_ok = true;
         if ((cpuFreqKHz / 1000) % 126 != 0)
         {
             // (Re)configure PLL_USB for 126 MHz HSTX source, so that we can get a 60Hz display output.
             // This will break tinyusb, but PIO USB will still work.
+            // Used by Pico-GenesisPlus which runs at 340Mhz.
             pll_deinit(pll_usb);
             pll_init(pll_usb, 1, 756000000, 6, 1); // 756 / (6*1) = 126 MHz
 
@@ -1368,7 +1370,7 @@ namespace Frens
             // DO NOT touch pll_usb: keep its 48 MHz for USB.
             // Derive 126 MHz HSTX from clk_sys (cpuFreqKHz * 1000 input).
             // This works only when clock is set to 126, 252 or 378 MHz.
-            // 252 Mhz is too slow for the emulator, 378 MHz causes stability issues.
+            // 252 Mhz is too slow for the Pico-GenesisPlus emulator, 378 MHz causes stability issues.
             const uint32_t sys_hz = cpuFreqKHz * 1000;
             const uint32_t target_hstx_hz = 126000000u;
 
