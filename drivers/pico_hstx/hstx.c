@@ -426,30 +426,32 @@ void __not_in_flash_func(HSTXCore)(void)
 /// It also initializes the GPIO pins used for HSTX output.
 void hstx_init()
 {
-#if 0  
-    // Messes up stdio, so we need to reinitialize it. Also breaks SDcard access. Not sure this is needed anyhow
-    clockspeed = clock_get_hz(clk_sys) / 1000; // Get current clock speed in kHz
-    clock_configure(
-        clk_peri,
-        0,                                                // No glitchless mux
-        CLOCKS_CLK_PERI_CTRL_AUXSRC_VALUE_CLKSRC_PLL_SYS, // System PLL on AUX mux
-        clockspeed * 1000,                                // Input frequency
-        clockspeed * 1000                                 // Output (must be same as no divider)
-    );
+// NOTE: Clocks must be setup at the start of main() before calling this function
+// #if 0  
+//     // Messes up stdio, so we need to reinitialize it. Also breaks SDcard access. Not sure this is needed anyhow
+//     clockspeed = clock_get_hz(clk_sys) / 1000; // Get current clock speed in kHz
+//     clock_configure(
+//         clk_peri,
+//         0,                                                // No glitchless mux
+//         CLOCKS_CLK_PERI_CTRL_AUXSRC_VALUE_CLKSRC_PLL_SYS, // System PLL on AUX mux
+//         clockspeed * 1000,                                // Input frequency
+//         clockspeed * 1000                                 // Output (must be same as no divider)
+//     );
 
-    // The above settings mess up the stdio, so we need to reinitialize it
-    // This is a workaround to avoid stdio issues after changing the clock
-    // settings.
-    stdio_deinit_all();
-    stdio_init_all();
-#endif
-    clock_configure(
-        clk_hstx,
-        0,                                                // No glitchless mux
-        CLOCKS_CLK_PERI_CTRL_AUXSRC_VALUE_CLKSRC_PLL_SYS, // System PLL on AUX mux
-        150000 * 1000,                                    // Input frequency
-        150000 / clockdivisor * 1000                      // Output (must be same as no divider)
-    );
+//     // The above settings mess up the stdio, so we need to reinitialize it
+//     // This is a workaround to avoid stdio issues after changing the clock
+//     // settings.
+//     stdio_deinit_all();
+//     stdio_init_all();
+
+//     clock_configure(
+//         clk_hstx,
+//         0,                                                // No glitchless mux
+//         CLOCKS_CLK_PERI_CTRL_AUXSRC_VALUE_CLKSRC_PLL_SYS, // System PLL on AUX mux
+//         150000 * 1000,                                    // Input frequency
+//         150000 / clockdivisor * 1000                      // Output (must be same as no divider)
+//     );
+// #endif
     multicore_launch_core1_with_stack(HSTXCore, core1stack, 512);
     core1stack[0] = 0x12345678;
     printf("HSTX initialized\n");

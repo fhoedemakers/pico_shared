@@ -387,11 +387,22 @@ static void tlv320_init()
 	// Reset codec
 	writeRegister(0x01, 0x01);
 	sleep_ms(10);
-
+#if 0
 	// Interface Control
 	modifyRegister(0x1B, 0xC0, 0x00);
 	modifyRegister(0x1B, 0x30, 0x00);
+#else
+	// Set Interface Control 1 (0x1B)
+	// Bits 7-6 = 00 → I²S mode
+	// Bits 5-4 = 11 → 32-bit word length
+	// Bits 3-0 = 0000 → no offset
+	writeRegister(0x1B, 0x30);
 
+	// Optional: Interface Control 2 (0x1C)
+	// Make sure data is left-aligned with I²S expectations
+	// 0x00 = defaults (no invert, normal polarity)
+	writeRegister(0x1C, 0x00);
+#endif
 	// Clock MUX and PLL settings
 	modifyRegister(0x04, 0x03, 0x03);
 	modifyRegister(0x04, 0x0C, 0x04);
@@ -423,7 +434,7 @@ static void tlv320_init()
 	setPage(1);
 	modifyRegister(0x2e, 0xFF, 0x0b);
 	setPage(0);
-	
+
 	modifyRegister(0x43, 0x80, 0x80); // Headset Detect
 	modifyRegister(0x30, 0x80, 0x80); // INT1 Control
 	modifyRegister(0x33, 0x3C, 0x14); // GPIO1
@@ -452,8 +463,8 @@ static void tlv320_init()
 	modifyRegister(0x1F, 0xC0, 0xC0); // HP Driver
 	modifyRegister(0x28, 0x04, 0x04); // HP Left Gain
 	modifyRegister(0x29, 0x04, 0x04); // HP Right Gain
-	writeRegister(0x24, 0x0A); // Left Analog HP		
-	writeRegister(0x25, 0x0A); // Right Analog HP
+	writeRegister(0x24, 0x0A);		  // Left Analog HP
+	writeRegister(0x25, 0x0A);		  // Right Analog HP
 	modifyRegister(0x28, 0x78, 0x40); // HP Left Gain
 	modifyRegister(0x29, 0x78, 0x40); // HP Right Gain
 
@@ -467,12 +478,17 @@ static void tlv320_init()
 
 	setPage(0);
 
-	
 #if PICO_AUDIO_I2S_INTERRUPT_PIN != -1
-	if ( dacError == false ) {
+	if (dacError == false)
+	{
 		printf("setup headphone detection interrupt.\n");
 		setupHeadphoneDetectionInterrupt(PICO_AUDIO_I2S_INTERRUPT_PIN, PICO_AUDIO_I2S_INTERRUPT_IS_BUTTON);
 	}
+#endif
+#if 0
+	uint8_t v1b = readRegister(0x1B);
+	uint8_t v1c = readRegister(0x1C);
+	printf("IFACE1=0x%02X (expect 0x30), IFACE2=0x%02X (expect 0x00)\n", v1b, v1c);
 #endif
 	printf("TLV320AIC3204 Initialization complete!\n");
 
@@ -653,12 +669,12 @@ void __isr dma_handler()
 	// Clear the interrupt
 	dma_hw->ints0 = 1u << audio_i2s.dma_chan;
 	// Advance read_index by block size
-	read_index = (read_index + DMA_BLOCK_SIZE) % AUDIO_RING_SIZE;
+	read_index = (read_index + DMA_BLOCK_SIZE) % I2S_AUDIO_RING_SIZE;
 	// Check if we have enough data to continue DMA transfer
 	// If write_index is ahead of read_index, we have data to send
 	size_t available = (write_index >= read_index)
 						   ? (write_index - read_index)
-						   : (AUDIO_RING_SIZE - read_index + write_index);
+						   : (I2S_AUDIO_RING_SIZE - read_index + write_index);
 	// printf("DMA handler: read_index=%zu, write_index=%zu, available=%zu\n", read_index, write_index, available);
 	if (available >= DMA_BLOCK_SIZE)
 	{
@@ -714,10 +730,10 @@ audio_i2s_hw_t *audio_i2s_setup(int driver, int freqHZ, int dmachan)
 	{
 		samplefreq = freqHZ;
 	}
-	printf("Allocating %d bytes for audio ring buffer\n", AUDIO_RING_SIZE * sizeof(uint32_t));
-	audio_ring = malloc(AUDIO_RING_SIZE * sizeof(uint32_t));   // Allocate memory for the audio ring buffer
-	memset(audio_ring, 0, AUDIO_RING_SIZE * sizeof(uint32_t)); // Initialize the audio ring buffer to zero
-	write_index = DMA_BLOCK_SIZE;							   // Start writing after the first block
+	printf("Allocating %d bytes for audio ring buffer\n", I2S_AUDIO_RING_SIZE * sizeof(uint32_t));
+	audio_ring = malloc(I2S_AUDIO_RING_SIZE * sizeof(uint32_t));   // Allocate memory for the audio ring buffer
+	memset(audio_ring, 0, I2S_AUDIO_RING_SIZE * sizeof(uint32_t)); // Initialize the audio ring buffer to zero
+	write_index = 0; //DMA_BLOCK_SIZE;							   // Start writing after the first block
 	read_index = 0;											   // Reset read index
 	// Set up the PIO and GPIO pins for I2S audio output
 	gpio_set_function(PICO_AUDIO_I2S_DATA_PIN, GPIO_FUNC_PIOx);
@@ -800,7 +816,7 @@ void __not_in_flash_func(audio_i2s_enqueue_sample)(uint32_t sample32)
 #endif
 	// Ensure we don't write past the end of the buffer
 
-	size_t next_write = (write_index + 1) % AUDIO_RING_SIZE;
+	size_t next_write = (write_index + 1) % I2S_AUDIO_RING_SIZE;
 	if (next_write != read_index)
 	{
 		audio_ring[write_index] = sample32;
@@ -811,7 +827,7 @@ void __not_in_flash_func(audio_i2s_enqueue_sample)(uint32_t sample32)
 		{
 			size_t available = (write_index >= read_index)
 								   ? (write_index - read_index)
-								   : (AUDIO_RING_SIZE - read_index + write_index);
+								   : (I2S_AUDIO_RING_SIZE - read_index + write_index);
 			if (available >= DMA_BLOCK_SIZE)
 			{
 				dma_channel_set_read_addr(audio_i2s.dma_chan, &audio_ring[read_index], false);
@@ -851,6 +867,7 @@ void audio_i2s_disable()
 	free(audio_ring);
 	audio_ring = NULL;
 }
-bool audio_i2s_dacError() {
+bool audio_i2s_dacError()
+{
 	return dacError;
 }

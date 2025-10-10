@@ -30,13 +30,16 @@
 #include "pico/cyw43_arch.h"
 #endif
 
+// Valid values arr:
+//  44100
+//  48000
 #ifndef DVIAUDIOFREQ
 #define DVIAUDIOFREQ 44100
 #endif
 #if !HSTX
 std::unique_ptr<dvi::DVI> dvi_;
 util::ExclusiveProc exclProc_;
-volatile bool vsync = false;
+static volatile bool vsync = false;
 #endif
 char ErrorMessage[ERRORMESSAGESIZE];
 bool scaleMode8_7_ = true;
@@ -61,10 +64,16 @@ namespace Frens
     // // Mutex for synchronization
 
 #endif
+
     WORD *framebuffer;
     static bool usingFramebuffer = false;
     bool psRamEnabled = false;
     size_t psramMemorySize = 0;
+    static bool byteSwapped = false;
+    bool romIsByteSwapped()
+    {
+        return byteSwapped;
+    }
     bool isPsramEnabled()
     {
         return psRamEnabled;
@@ -210,6 +219,40 @@ namespace Frens
         return to_ms_since_boot(t);
     }
 
+    const char *ms_to_d_hhmmss(uint64_t ms, char *buf, size_t bufSize)
+    {
+        if (!buf || bufSize < 9)
+            return nullptr; // at least space for "HH:MM:SS"
+        uint64_t total_sec = ms / 1000;
+        uint64_t s = total_sec % 60;
+        uint64_t total_min = total_sec / 60;
+        uint64_t m = total_min % 60;
+        uint64_t total_hours = total_min / 60;
+        uint64_t h = total_hours % 24;
+        uint64_t d = total_hours / 24;
+
+        if (d == 0)
+        {
+            // HH:MM:SS
+            if (snprintf(buf, bufSize, "%02llu:%02llu:%02llu",
+                         (unsigned long long)h,
+                         (unsigned long long)m,
+                         (unsigned long long)s) >= (int)bufSize)
+                return nullptr;
+        }
+        else
+        {
+            // D:HH:MM:SS (days not zero-padded, hours still zero-padded)
+            if (snprintf(buf, bufSize, "%llu:%02llu:%02llu:%02llu",
+                         (unsigned long long)d,
+                         (unsigned long long)h,
+                         (unsigned long long)m,
+                         (unsigned long long)s) >= (int)bufSize)
+                return nullptr;
+        }
+        return buf;
+    }
+
 #define INITIAL_CAPACITY 10
     // Split a string into tokens using the specified delimiters
     // The result is an array of dynamically allocated strings
@@ -222,7 +265,7 @@ namespace Frens
         }
 
         // Create a modifiable copy of the input string, panics when out of memory
-        char *str_copy = (char *) Frens::f_malloc(strlen(str) + 1);
+        char *str_copy = (char *)Frens::f_malloc(strlen(str) + 1);
         strcpy(str_copy, str);
 
         // Initial memory allocation for the result array, panics when out of memory
@@ -578,6 +621,18 @@ namespace Frens
         return newMem;
     }
 
+    uint GetAvailableMemory()
+    {
+#if PICO_RP2350 && PSRAM_CS_PIN
+        if (isPsramEnabled())
+        {
+            PicoPlusPsram &psram_ = PicoPlusPsram::getInstance();
+            return psram_.GetAvailableBytes();
+        }
+#endif
+        return maxRomSize; // return maxRomSize as a fallback
+    }
+
     void *flashromtoPsram(char *selectdRom, bool swapbytes, uint32_t &crc, int crcOffset)
     {
 #if PICO_RP2350 && PSRAM_CS_PIN
@@ -609,12 +664,17 @@ namespace Frens
         void *pMem = Frens::f_malloc(filesize);
         if (!pMem)
         {
-            snprintf(ErrorMessage, 40, "Cannot allocate %d bytes in PSRAM\n", filesize);
+            snprintf(ErrorMessage, 40, "Cannot allocate %llu bytes in PSRAM\n", filesize);
             printf("%s\n", ErrorMessage);
             selectdRom[0] = 0;
             f_close(&fil);
             return nullptr;
         }
+        uint availMem = Frens::GetAvailableMemory();
+        printf("Available memory: %zu bytes\n", availMem);
+        printf("Filesize: %llu bytes (%llu KB)\n",
+               (unsigned long long)filesize,
+               (unsigned long long)(filesize / 1024));
         // write contents of file into pMem
         size_t r;
         fr = f_read(&fil, pMem, filesize, &r);
@@ -646,6 +706,7 @@ namespace Frens
                 }
                 if (swapbytes)
                 {
+                    printf("Rom is byte swapped: Swapping bytes of rom in PSRAM\n");
                     // swap bytes in pMem
                     for (size_t i = 0; i < filesize; i += 2)
                     {
@@ -742,8 +803,10 @@ namespace Frens
                 UINT bytesRead;
                 if (fr == FR_OK)
                 {
-                    UINT filesize = f_size(&fil);
-                    printf("Filesize: %d bytes (%dKB)\n", filesize, filesize / 1024);
+                    FSIZE_t filesize = f_size(&fil);
+                    printf("Filesize: %llu bytes (%llu KB)\n",
+                           (unsigned long long)filesize,
+                           (unsigned long long)(filesize / 1024));
                     if (filesize < maxRomSize)
                     {
                         bool readError = false;
@@ -880,7 +943,6 @@ namespace Frens
         dvi_->start();
         int fb1 = 0;
         int fb2 = 0;
-        int frame = 0;
 
         while (true)
         {
@@ -1051,14 +1113,21 @@ namespace Frens
 #if !HSTX
         dvi_ = std::make_unique<dvi::DVI>(pio0, &DVICONFIG,
                                           dvi::getTiming640x480p60Hz());
-        //    dvi_->setAudioFreq(48000, 25200, 6144);
+
+//    dvi_->setAudioFreq(48000, 25200, 6144);
+#if 0
 #if DVIAUDIOFREQ == 53280
         dvi_->setAudioFreq(DVIAUDIOFREQ, 22708, 6144);
-#else 
+#else
         dvi_->setAudioFreq(DVIAUDIOFREQ, 28000, 6272);
+         //    dvi_->setAudioFreq(48000, 25200, 6144);
 #endif
-        // dvi_->setAudioFreq(53267, 28000, 6272);
-
+#else
+        // Switch to standard 48 kHz HDMI audio timing.
+        // For 25.2 MHz pixel clock (640x480p60), a common standard tuple is N=6144, CTS=25200 giving exactly 48 kHz.
+        // Pass CTS=0 to auto compute correct CTS for current (possibly overclocked) pixel clock
+        dvi_->setAudioFreq(DVIAUDIOFREQ, 0, 6144);
+#endif
         dvi_->allocateAudioBuffer(audioBufferSize);
         //    dvi_->setExclusiveProc(&exclProc_);
 
@@ -1101,6 +1170,7 @@ namespace Frens
     bool initAll(char *selectedRom, uint32_t CPUFreqKHz, int marginTop, int marginBottom, size_t audiobufferSize, bool swapbytes, bool useFrameBuffer)
 
     {
+        byteSwapped = swapbytes;
         bool ok = false;
         int rc = initLed();
         if (rc != PICO_OK)
@@ -1160,7 +1230,7 @@ namespace Frens
         if (usingFramebuffer)
         {
             // always allocate framebuffer in SRAM
-            printf("Allocating %d bytes for framebuffer in SRAM\n", SCREENWIDTH * SCREENHEIGHT * sizeof(WORD)); 
+            printf("Allocating %d bytes for framebuffer in SRAM\n", SCREENWIDTH * SCREENHEIGHT * sizeof(WORD));
             framebuffer = (WORD *)malloc(SCREENWIDTH * SCREENHEIGHT * sizeof(WORD));
             memset(framebuffer, 0, SCREENWIDTH * SCREENHEIGHT * sizeof(WORD));
             marginTop = marginBottom = 0; // ignore margins when using framebuffer
@@ -1255,14 +1325,89 @@ namespace Frens
         cyw43_arch_deinit();
 #endif
     }
+
+    // Set CPU clock to desired speed
+    // Set HSTX clock to 126 MHz if HSTX is used so the HSTX display driver can output at no more than 60Hz
+    void setClocksAndStartStdio(uint32_t cpuFreqKHz, vreg_voltage voltage)
+    {
+        // Set voltage and clock frequency
+        vreg_set_voltage(voltage);
+        sleep_ms(10);
+        set_sys_clock_khz(cpuFreqKHz, true);
+
+#if HSTX
+        // Reconfigure HSTX clock to 126 Mhz, so display can run at 60Hz.
+        bool hstx_ok = true;
+        if ((cpuFreqKHz / 1000) % 126 != 0)
+        {
+            // (Re)configure PLL_USB for 126 MHz HSTX source, so that we can get a 60Hz display output.
+            // This will break tinyusb, but PIO USB will still work.
+            // Used by Pico-GenesisPlus which runs at 340Mhz.
+            pll_deinit(pll_usb);
+            pll_init(pll_usb, 1, 756000000, 6, 1); // 756 / (6*1) = 126 MHz
+
+            const uint32_t target_hstx_hz = 126000000u;
+            uint32_t chosen_hstx_hz = target_hstx_hz;
+            hstx_ok = clock_configure(
+                clk_hstx,
+                0,
+                CLOCKS_CLK_HSTX_CTRL_AUXSRC_VALUE_CLKSRC_PLL_USB,
+                target_hstx_hz,
+                target_hstx_hz);
+
+            // configure clk_peri to be same as clk_sys. This makes stdio over UART work correctly.
+            clock_configure(clk_peri,
+                            0, // no GLMUX
+                            CLOCKS_CLK_PERI_CTRL_AUXSRC_VALUE_CLKSRC_PLL_SYS,
+                            cpuFreqKHz * 1000,  // input freq (PLL SYS)
+                            cpuFreqKHz * 1000); // target clk_peri
+        }
+        else
+        {
+            // DO NOT touch pll_usb: keep its 48 MHz for USB.
+            // Derive 126 MHz HSTX from clk_sys (cpuFreqKHz * 1000 input).
+            // This works only when clock is set to 126, 252 or 378 MHz.
+            // 252 Mhz is too slow for the Pico-GenesisPlus emulator, 378 MHz causes stability issues.
+            const uint32_t sys_hz = cpuFreqKHz * 1000;
+            const uint32_t target_hstx_hz = 126000000u;
+
+            // Select clk_sys as AUX source and let clock framework set divider.
+            hstx_ok = clock_configure(
+                clk_hstx,
+                0,
+                CLOCKS_CLK_HSTX_CTRL_AUXSRC_VALUE_CLK_SYS,
+                sys_hz,
+                target_hstx_hz);
+
+            // Keep clk_peri in sync with clk_sys
+            clock_configure(clk_peri,
+                            0,
+                            CLOCKS_CLK_PERI_CTRL_AUXSRC_VALUE_CLKSRC_PLL_SYS,
+                            sys_hz,
+                            sys_hz);
+        }
+#endif
+
+        stdio_init_all();
+        sleep_ms(50); // wait for UART to settle
+#if HSTX
+        if (!hstx_ok)
+        {
+            printf("HSTX clock configure failed\n");
+        }
+#endif
+    }
 }
 // C-compatible wrappers
-extern "C" {
-    void *frens_f_malloc(size_t size) {
+extern "C"
+{
+    void *frens_f_malloc(size_t size)
+    {
         return Frens::f_malloc(size);
     }
 
-    void frens_f_free(void *ptr) {
+    void frens_f_free(void *ptr)
+    {
         Frens::f_free(ptr);
     }
 }

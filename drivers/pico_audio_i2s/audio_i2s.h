@@ -60,9 +60,10 @@ extern "C" {
 #define PICO_AUDIO_I2S_INTERRUPT_IS_BUTTON 0
 #endif
 
-#define AUDIO_RING_SIZE (1024) // size of the audio ring buffer (must be a multiple of DMA_BLOCK_SIZE)
-
-#define AUDIO_RING_MASK (AUDIO_RING_SIZE - 1)
+#ifndef I2S_AUDIO_RING_SIZE
+#define I2S_AUDIO_RING_SIZE (1024) // size of the audio ring buffer (must be a multiple of DMA_BLOCK_SIZE)
+#endif
+#define AUDIO_RING_MASK (I2S_AUDIO_RING_SIZE - 1)
 #define DMA_BLOCK_SIZE (128) // size of each DMA block transfer
 
 #define TLV320_HEADPHONE_NOTCONNECTED 0b00 // Headphone not connected

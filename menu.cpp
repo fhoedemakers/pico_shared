@@ -752,6 +752,16 @@ static FRESULT pick_random_file_fullpath(const char *dirpath, char *out_path, si
 
     while (1)
     {
+       
+        fr = f_readdir(&dir, &fno);
+        if (fr != FR_OK || fno.fname[0] == 0)
+            break; // End or error
+        if (fno.fattrib & AM_DIR)
+            continue; // Skip directories
+                      // skip files with wrong extension
+        // skip hidden files
+        if (fno.fattrib & AM_HID || fno.fname[0] == '.')
+            continue;
         // Bail out if f_readdir loops too many. Can be caused by bad sd card?
         if (++iter > MAX_ITER)
         {
@@ -759,12 +769,7 @@ static FRESULT pick_random_file_fullpath(const char *dirpath, char *out_path, si
             f_closedir(&dir);
             return FR_INT_ERR;
         }
-        fr = f_readdir(&dir, &fno);
-        if (fr != FR_OK || fno.fname[0] == 0)
-            break; // End or error
-        if (fno.fattrib & AM_DIR)
-            continue; // Skip directories
-                      // skip files with wrong extension
+        // Check file extension
         int l = strlen(fno.fname);
         if (l > 4 && strcmp(&fno.fname[l - 4], FILEXTFORSEARCH) == 0)
         {
@@ -1001,19 +1006,6 @@ void screenSaver()
     screenSaverWithArt(!artworkEnabled);
 }
 
-#if !HSTX
-void __not_in_flash_func(processMenuScanLine)(int line, uint8_t *framebuffer, uint16_t *dvibuffer)
-{
-    auto current_line = &framebuffer[line * SCREENWIDTH];
-    for (int kol = 0; kol < SCREENWIDTH; kol += 4)
-    {
-        dvibuffer[kol] = NesMenuPalette[current_line[kol]];
-        dvibuffer[kol + 1] = NesMenuPalette[current_line[kol + 1]];
-        dvibuffer[kol + 2] = NesMenuPalette[current_line[kol + 2]];
-        dvibuffer[kol + 3] = NesMenuPalette[current_line[kol + 3]];
-    }
-}
-#endif
 // #define ARTFILE "/ART/output_RGB555.raw"
 // #define ARTFILERGB "/ART/output_RGB555.rgb"
 
@@ -1021,7 +1013,7 @@ void __not_in_flash_func(processMenuScanLine)(int line, uint8_t *framebuffer, ui
 /// @brief Show artwork for a given game
 /// @param crc The CRC32 checksum of the game
 /// @return 0: Do nothing, 1: start game, 2: start screensaver
-int showartwork(uint32_t crc)
+int showartwork(uint32_t crc, FSIZE_t romsize)
 {
     char info[SCREEN_COLS + 1];
     char gamename[64];
@@ -1165,6 +1157,10 @@ int showartwork(uint32_t crc)
             putText(firstCharColumnIndex + 8 + i, 12, "*", settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex + 7 + i);
         }
     }
+    int sizeInKB = (int)(romsize / 1024);
+    snprintf(info, sizeof(info), "%d KB", sizeInKB);
+    putText(firstCharColumnIndex, 14, "Size:", settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex);
+    putText(firstCharColumnIndex + 6, 14, info, settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex + 6);
     putText(firstCharColumnIndex, 16, "SELECT: Full description", settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex);
     putText(firstCharColumnIndex, 17, "START or A: Start game", settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex);
     putText(firstCharColumnIndex, 18, "B: Back to rom list", settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex);
@@ -1325,7 +1321,7 @@ static void showLoadingScreen(const char *message = nullptr)
 #endif
 }
 
-uint32_t GetCRCOfRomFile(char *curdir, char *selectedRomOrFolder, char *rompath)
+uint32_t GetCRCOfRomFile(char *curdir, char *selectedRomOrFolder, char *rompath, FSIZE_t &romsize)
 {
     char fullPath[FF_MAX_LFN];
     uint32_t crc = 0;
@@ -1341,7 +1337,7 @@ uint32_t GetCRCOfRomFile(char *curdir, char *selectedRomOrFolder, char *rompath)
         snprintf(fullPath, FF_MAX_LFN, "%s/%s", curdir, selectedRomOrFolder);
         printf("Full path: %s\n", fullPath);
     }
-    crc = compute_crc32(fullPath, crcOffset);
+    crc = compute_crc32(fullPath, crcOffset, romsize);
     if (crc != 0)
     {
         printf("CRC32 Checksum: 0x%08X\n", crc);
@@ -1377,7 +1373,7 @@ uint32_t loadRomInPsRam(char *curdir, char *selectedRomOrFolder, char *rompath, 
         printf("Loading rom to PSRAM: %s\n", fullPath);
         strcpy(rompath, fullPath);
 
-        ROM_FILE_ADDR = (uintptr_t)Frens::flashromtoPsram(fullPath, false, crc, crcOffset);
+        ROM_FILE_ADDR = (uintptr_t)Frens::flashromtoPsram(fullPath, Frens::romIsByteSwapped(), crc, crcOffset);
     }
     return crc;
 #else
@@ -1408,8 +1404,6 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
     scaleMode8_7_ = Frens::applyScreenMode(ScreenMode::NOSCANLINE_1_1);
     dvi_->getBlankSettings().top = 0;
     dvi_->getBlankSettings().bottom = 0;
-
-    // Frens::SetFrameBufferProcessScanLineFunction(processMenuScanLine);
 #else
     hstx_setScanLines(false);
 #endif
@@ -1654,7 +1648,7 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
 
                 // show screen with ArtWork
 
-                if (!entries[index].IsDirectory && selectedRomOrFolder)
+                if (!entries[index].IsDirectory && selectedRomOrFolder && artworkEnabled)
                 {
                     if (strcmp(emulator, "MD") == 0)
                     {
@@ -1662,9 +1656,10 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
                     }
                     //romlister.ClearMemory();
                     fr = my_getcwd(curdir, sizeof(curdir)); // f_getcwd(curdir, sizeof(curdir));
+                    FSIZE_t romsize = 0;
                     // printf("Current dir: %s\n", curdir);
-                    uint32_t crc = GetCRCOfRomFile(curdir, selectedRomOrFolder, rompath);
-                    int startAction = showartwork(crc);
+                    uint32_t crc = GetCRCOfRomFile(curdir, selectedRomOrFolder, rompath, romsize);
+                    int startAction = showartwork(crc, romsize);
                     switch (startAction)
                     {
                     case 0:
