@@ -739,7 +739,7 @@ void showSplashScreen()
 #endif
 static FRESULT pick_random_file_fullpath(const char *dirpath, char *out_path, size_t out_size)
 {
-    static const int MAX_ITER = 404;
+    static const int MAX_ITER = 504;
     FRESULT fr;
     DIR dir;
     FILINFO fno;
