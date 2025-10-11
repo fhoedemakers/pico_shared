@@ -428,8 +428,16 @@ void drawline(int scanline, int selectedRow, int w = 0, int h = 0, uint16_t *ima
             auto rowOffset = (scanline - imagey) * w;
             memcpy(WorkLineRom + imagex, imagebuffer + rowOffset, w * sizeof(uint16_t));
             offset = w;
-        }
+         } else {
+            // avoid garbeled text when image is smaller than 120 pixels high
+            if (scanline < 120 ) {
+                offset = w;
+            }
+         }
+         
+        
     }
+    // Only show text when not in screensaver mode (imagex and imagey are 0)
     if (imagex == 0 && imagey == 0)
     {
         RomSelect_DrawLine(scanline, selectedRow, offset);
