@@ -132,6 +132,9 @@ static bool isArtWorkEnabled()
     } else if (strcmp(emulator, "MD") == 0)
     {
         sprintf(PATH, "/Metadata/%s/Images/160/5/56976261.444", emulator);
+    } else if (strcmp(emulator, "GB") == 0)
+    {
+        sprintf(PATH, "/Metadata/%s/Images/160/0/00A9001E.444", emulator);
     }
     else
     {
