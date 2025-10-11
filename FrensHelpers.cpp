@@ -104,12 +104,16 @@ namespace Frens
 #endif
         return psRamEnabled;
     }
-#if !HSTX
+
     bool __not_in_flash_func(isFrameBufferUsed)()
     {
+#if !HSTX
         return usingFramebuffer;
-    }
+#else
+        return true;
 #endif
+    }
+
 #define STORAGE_CMD_DUMMY_BYTES 1
 #define STORAGE_CMD_DATA_BYTES 3
 #define STORAGE_CMD_TOTAL_BYTES (STORAGE_CMD_DUMMY_BYTES + STORAGE_CMD_DATA_BYTES)
@@ -1396,6 +1400,34 @@ namespace Frens
             printf("HSTX clock configure failed\n");
         }
 #endif
+    }
+
+    void loadOverLay(const char *fileName)
+    {
+        if (!Frens::isFrameBufferUsed())
+        {
+            return;
+        }
+        if (fileName == nullptr)
+        {
+            char *overlay =
+#if !HSTX
+                (char *)GBOverlay_444;
+#else
+                (char *)GBOverlay_555;
+#endif
+            ;
+            uint16_t width = *((uint16_t *)overlay);
+            // next two bytes is height
+            uint16_t height = *((uint16_t *)(overlay + 2));
+
+            printf("Loading default overlay %dx%d\n", width, height);
+#if !HSTX
+            memcpy(framebuffer, overlay + 4, width * height * sizeof(WORD));
+#else
+            memcpy(hstx_getframebuffer(), overlay + 4, width * height * sizeof(WORD));
+#endif
+        }
     }
 }
 // C-compatible wrappers
