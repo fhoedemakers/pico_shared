@@ -66,8 +66,7 @@ extern char __flash_binary_start;  // defined in linker script
 extern char __flash_binary_end; 
 extern int abSwapped;      // defined in hid_app.cpp
 extern int isManta;        // defined in hid_app.cpp
-extern const unsigned char GBOverlay_444[];
-extern const unsigned char GBOverlay_555[];
+
 namespace Frens
 {
 #if !HSTX && FRAMEBUFFERISPOSSIBLE
@@ -129,7 +128,7 @@ namespace Frens
     const char* ms_to_d_hhmmss(uint64_t ms, char* buf, size_t bufSize);
     void setClocksAndStartStdio(uint32_t cpuFreqKHz, vreg_voltage voltage);
     //extern volatile ProcessScanLineFunction processScanLineFunction;
-    void loadOverLay(const char *fileName = nullptr);
+    void loadOverLay(const char *overlay);
 } // namespace Frens
 
 

@@ -1402,33 +1402,34 @@ namespace Frens
 #endif
     }
 
-    void loadOverLay(const char *fileName)
+    /// @brief Loads an overlay image into the framebuffer.
+    /// The overlay image must be in the format:
+    /// [2 bytes width][2 bytes height][width * height * 2 bytes pixel data]
+    /// The pixel data is in 16-bit RGB555 or RGB444 format.
+    /// The width and height must match the screen dimensions (SCREENWIDTH and SCREENHEIGHT).
+    /// @param overlay 
+    void loadOverLay(const char *overlay)
     {
         if (!Frens::isFrameBufferUsed())
         {
             return;
         }
-        if (fileName == nullptr)
+        uint16_t width = *((uint16_t *)overlay);
+        // next two bytes is height
+        uint16_t height = *((uint16_t *)(overlay + 2));
+        if (width != SCREENWIDTH || height != SCREENHEIGHT)
         {
-            char *overlay =
-#if !HSTX
-                (char *)GBOverlay_444;
-#else
-                (char *)GBOverlay_555;
-#endif
-            ;
-            uint16_t width = *((uint16_t *)overlay);
-            // next two bytes is height
-            uint16_t height = *((uint16_t *)(overlay + 2));
-
-            printf("Loading default overlay %dx%d\n", width, height);
-#if !HSTX
-            memcpy(framebuffer, overlay + 4, width * height * sizeof(WORD));
-#else
-            memcpy(hstx_getframebuffer(), overlay + 4, width * height * sizeof(WORD));
-#endif
+            printf("Overlay size %dx%d does not match screen size %dx%d\n", width, height, SCREENWIDTH, SCREENHEIGHT);
+            return;
         }
+        printf("Loading default overlay %dx%d\n", width, height);
+#if !HSTX
+        memcpy(framebuffer, overlay + 4, width * height * sizeof(WORD));
+#else
+        memcpy(hstx_getframebuffer(), overlay + 4, width * height * sizeof(WORD));
+#endif
     }
+
 }
 // C-compatible wrappers
 extern "C"
