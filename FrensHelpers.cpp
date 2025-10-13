@@ -30,11 +30,7 @@
 #include "pico/cyw43_arch.h"
 #endif
 
-#if !HSTX
-#define FILEXTFORSEARCH ".444"
-#else
-#define FILEXTFORSEARCH ".555"
-#endif
+
 // Valid values arr:
 //  44100
 //  48000
@@ -53,6 +49,7 @@ int maxRomSize = 0;
 
 namespace Frens
 {
+    static uint32_t crcOfRom = 0;
     static FATFS fs;
 #if !HSTX && FRAMEBUFFERISPOSSIBLE
     // uint8_t *framebuffer1; // [320 * 240];
@@ -707,6 +704,7 @@ namespace Frens
             {
                 if ((crc = compute_crc32_buffer(pMem, filesize, crcOffset)) > 0)
                 {
+                    crcOfRom = crc;
                     printf("CRC32 checksum of %s in PSRAM: %08X\n", selectdRom, crc);
                 }
                 else
@@ -828,6 +826,8 @@ namespace Frens
                                 {
                                     break;
                                 }
+                                // Wat met offset bij NES roms?
+                                crcOfRom = update_crc32(crcOfRom, buffer, bytesRead);
                                 if (swapbytes)
                                 {
                                     for (int i = 0; i < bytesRead; i += 2)
@@ -1570,6 +1570,10 @@ namespace Frens
 #else
         memcpy(hstx_getframebuffer(), overlay + 4, width * height * sizeof(WORD));
 #endif
+    }
+    uint32_t getCrcOfLoadedRom()
+    {
+        return crcOfRom;
     }
 
 }

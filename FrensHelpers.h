@@ -30,6 +30,11 @@
 #ifndef PSRAM_CS_PIN
 #define PSRAM_CS_PIN 0 // 0 is no PSRAM
 #endif
+#if !HSTX
+#define FILEXTFORSEARCH ".444"
+#else
+#define FILEXTFORSEARCH ".555"
+#endif
 
 enum class ScreenMode
     {
@@ -130,6 +135,7 @@ namespace Frens
     //extern volatile ProcessScanLineFunction processScanLineFunction;
     void loadOverLay(const char *filename, const char *overlay);
     FRESULT pick_random_file_fullpath(const char *path, char *chosen, size_t bufsize);
+    uint32_t getCrcOfLoadedRom();
 } // namespace Frens
 
 
