@@ -157,35 +157,37 @@ extern "C"
             struct Button
             {
 
-                inline static constexpr int A = 0b01000000;
-                inline static constexpr int B = 0b00100000;
-                inline static constexpr int C = 0b00000010;
-                inline static constexpr int X = 0b10001111;
-                inline static constexpr int Y = 0b00011111;
-                inline static constexpr int Z = 0b00000001;
-                inline static constexpr int START = 0b00100000;
-                inline static constexpr int UP = 0;
-                inline static constexpr int DOWN = 0b11111111;
-                inline static constexpr int LEFT = 0;
-                inline static constexpr int RIGHT = 0b11111111;
+                inline static constexpr int A = 0b01000000; // byte 6
+                inline static constexpr int B = 0b00100000; // byte 6
+                inline static constexpr int C = 0b00000010; // byte 7
+                inline static constexpr int X = 0b10001111; // byte 6
+                inline static constexpr int Y = 0b00011111; // byte 6
+                inline static constexpr int Z = 0b00000001; // byte 6
+                inline static constexpr int MODE = 0b00010000;   // byte 7
+                inline static constexpr int START = 0b00100000;  // byte 7
+                inline static constexpr int UP = 0;              // byte 5
+                inline static constexpr int DOWN = 0b11111111;   // byte 5
+                inline static constexpr int LEFT = 0;            // byte 4
+                inline static constexpr int RIGHT = 0b11111111;  // byte 4
                 ;
             };
             struct ButtonRetrobit
             {
 
-                inline static constexpr int A = 0b00000100;
-                inline static constexpr int B = 0b00000010;
-                inline static constexpr int C = 0b10000000;
-                inline static constexpr int X = 0b00001000;
-                inline static constexpr int Y = 0b00000001;
-                inline static constexpr int Z = 0b01000000;
-                inline static constexpr int L = 0b00010000;
-                inline static constexpr int R = 0b00100000;
-                inline static constexpr int START = 0b00000010;
-                inline static constexpr int UP = 0;
-                inline static constexpr int DOWN = 0b11111111;
-                inline static constexpr int LEFT = 0;
-                inline static constexpr int RIGHT = 0b11111111;
+                inline static constexpr int A = 0b00000100;  // byte 1
+                inline static constexpr int B = 0b00000010;  // byte 1
+                inline static constexpr int C = 0b10000000;  // byte 1
+                inline static constexpr int X = 0b00001000;  // byte 1
+                inline static constexpr int Y = 0b00000001;  // byte 1
+                inline static constexpr int Z = 0b01000000;  // byte 1
+                inline static constexpr int MODE = 0b00000001;     // byte 2
+                inline static constexpr int L = 0b00010000;  // byte 1
+                inline static constexpr int R = 0b00100000;  // byte 1
+                inline static constexpr int START = 0b00000010; // byte 2
+                inline static constexpr int UP = 0;             // byte 5
+                inline static constexpr int DOWN = 0b11111111;  // byte 5
+                inline static constexpr int LEFT = 0;           // byte 4
+                inline static constexpr int RIGHT = 0b11111111; // byte 4
                 ;
             };
         };
@@ -282,12 +284,17 @@ extern "C"
                 bool changed_large = !prev_valid || prev_len != len || memcmp(prev_report, report, MAX_PRINT) != 0;
                 if (!changed_large)
                     return;
-                printf("GenesisMini report (len=%u > MAX_PRINT=%u) (bin,trunc): ", len, MAX_PRINT);
+                printf("HID report (len=%u > MAX_PRINT=%u) (changed bytes in []): ", len, MAX_PRINT);
                 for (uint16_t i = 0; i < MAX_PRINT; ++i)
                 {
+                    bool byte_changed = !prev_valid || prev_report[i] != report[i];
+                    if (byte_changed)
+                        putchar('[');
                     uint8_t v = report[i];
                     for (int b = 7; b >= 0; --b)
                         putchar((v & (1 << b)) ? '1' : '0');
+                    if (byte_changed)
+                        putchar(']');
                     if (i + 1 < MAX_PRINT)
                         putchar(' ');
                 }
@@ -302,12 +309,17 @@ extern "C"
             if (!changed)
                 return;
 
-            printf("HID report (len=%u) (bin): ", len);
+            printf("HID report (len=%u) (bin, changed bytes in []): ", len);
             for (uint16_t i = 0; i < len; ++i)
             {
+                bool byte_changed = !prev_valid || prev_report[i] != report[i];
+                if (byte_changed)
+                    putchar('[');
                 uint8_t v = report[i];
                 for (int b = 7; b >= 0; --b)
                     putchar((v & (1 << b)) ? '1' : '0');
+                if (byte_changed)
+                    putchar(']');
                 if (i + 1 < len)
                     putchar(' ');
             }
