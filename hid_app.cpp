@@ -160,6 +160,9 @@ extern "C"
                 inline static constexpr int A = 0b01000000;
                 inline static constexpr int B = 0b00100000;
                 inline static constexpr int C = 0b00000010;
+                inline static constexpr int X = 0b10001111;
+                inline static constexpr int Y = 0b00011111;
+                inline static constexpr int Z = 0b00000001;
                 inline static constexpr int START = 0b00100000;
                 inline static constexpr int UP = 0;
                 inline static constexpr int DOWN = 0b11111111;
