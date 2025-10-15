@@ -7,7 +7,7 @@ namespace Frens
 {
     void printsettings()
     {
-        printf("Settings:\n");
+        printf("Settings Version: %d\n", settings.version);
         printf("ScreenMode: %d\n", (int)settings.screenMode);
         printf("firstVisibleRowINDEX: %d\n", settings.firstVisibleRowINDEX);
         printf("selectedRow: %d\n", settings.selectedRow);
@@ -17,6 +17,7 @@ namespace Frens
         printf("bgcolor: %d\n", settings.bgcolor);
         printf("useExtAudio: %d\n", settings.flags.useExtAudio);
         printf("enableVUMeter: %d\n", settings.flags.enableVUMeter);
+        printf("borderMode: %d\n", settings.flags.borderMode);
         printf("\n");
     }
     void resetsettings()
@@ -31,6 +32,8 @@ namespace Frens
         settings.bgcolor = DEFAULT_BGCOLOR;
         settings.flags.useExtAudio = 0; // default to use DVIAudio
         settings.flags.enableVUMeter = ENABLE_VU_METER ? 1 : 0; // default to ENABLE_VU_METER
+        settings.flags.borderMode = THEMEDBORDER;
+        settings.version = SETTINGS_VERSION;
         // clear all the reserved settings
         settings.flags.reserved = 0;
         strcpy(settings.currentDir, "/");
@@ -98,9 +101,13 @@ namespace Frens
                     else
                     {
                         // If file is corrupt, reset settings to default
-                        if (br != sizeof(settings))
+                        if (br != sizeof(settings)  || settings.version != SETTINGS_VERSION)
                         {
-                            printf("File %s is corrupt, expected %d bytes, read %d\n", SETTINGSFILE, sizeof(settings), br);
+                            if (settings.version != SETTINGS_VERSION) {
+                                printf("File %s has wrong version %d, expected %d\n", SETTINGSFILE, settings.version, SETTINGS_VERSION);
+                            } else {
+                                printf("File %s is corrupt, expected %d bytes, read %d\n", SETTINGSFILE, sizeof(settings), br);
+                            }
                             resetsettings();
                         }
                         else
