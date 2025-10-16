@@ -95,7 +95,7 @@ static const uint32_t crc32_table[256] = {
 };
 
 // Update CRC32 with data
-static uint32_t update_crc32(uint32_t crc, const uint8_t* data, UINT length) {
+uint32_t update_crc32(uint32_t crc, const uint8_t* data, UINT length) {
     crc = ~crc;
     for (UINT i = 0; i < length; i++) {
         crc = (crc >> 8) ^ crc32_table[(crc ^ data[i]) & 0xFF];

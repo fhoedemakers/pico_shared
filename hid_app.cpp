@@ -5,13 +5,20 @@
 
 #include <tusb.h>
 #include <stdio.h>
+#include <string.h>
 #include "xinput_host.h"
 #include "gamepad.h"
 #ifndef ABSWAPPED
 #define ABSWAPPED 1
 #endif
+
+// set to 1 to enable printing of button states in binary when they change
+#ifndef PRINTFBUTTONS
+#define PRINTFBUTTONS 0
+#endif
+
 int abSwapped = ABSWAPPED;
-int isManta = 0; // 1 NES, 2 SNES
+int isManta = 0;        // 1 NES, 2 SNES
 int isMantaVariant = 0; // SNES pad (0810:e501 Personal Communication Systems, Inc. SNES Gamepad)
 #ifdef __cplusplus
 extern "C"
@@ -45,10 +52,14 @@ extern "C"
         {
             return vid == 0x057e && (pid == 0x2009 || pid == 0x2017);
         }
-        // Is Genesis Mini 1 controller or Genesis Mini 2 controller detected?
         bool isGenesisMini(uint16_t vid, uint16_t pid)
         {
             return vid == 0x0ca3 && (pid == 0x0025 || pid == 0x0024);
+        }
+        // Retro-bit 8 button Mega Drive Arcade Pad with USB
+        bool isMDArcadePad(uint16_t vid, uint16_t pid)
+        {
+            return (vid == 0xf0d) && (pid == 0x00c1);
         }
         // Is MantaPad detected? Cheap Aliexpress SNES/NES controller
         bool isMantaPad(uint16_t vid, uint16_t pid)
@@ -132,7 +143,7 @@ extern "C"
             int getHat() const { return buttons[0] & 15; }
         };
 
-        // Report for Genesis Mini controller
+        // Report for Genesis Mini controller and Retro-bit 8 button Mega Drive Arcade Pad with USB
         struct GenesisMiniReport
         {
             uint8_t byte1;
@@ -146,14 +157,37 @@ extern "C"
             struct Button
             {
 
-                inline static constexpr int A = 0b01000000;
-                inline static constexpr int B = 0b00100000;
-                inline static constexpr int C = 0b00000010;
-                inline static constexpr int START = 0b00100000;
-                inline static constexpr int UP = 0;
-                inline static constexpr int DOWN = 0b11111111;
-                inline static constexpr int LEFT = 0;
-                inline static constexpr int RIGHT = 0b11111111;
+                inline static constexpr int A = 0b01000000; // byte 6
+                inline static constexpr int B = 0b00100000; // byte 6
+                inline static constexpr int C = 0b00000010; // byte 7
+                inline static constexpr int X = 0b10001111; // byte 6
+                inline static constexpr int Y = 0b00011111; // byte 6
+                inline static constexpr int Z = 0b00000001; // byte 6
+                inline static constexpr int MODE = 0b00010000;   // byte 7
+                inline static constexpr int START = 0b00100000;  // byte 7
+                inline static constexpr int UP = 0;              // byte 5
+                inline static constexpr int DOWN = 0b11111111;   // byte 5
+                inline static constexpr int LEFT = 0;            // byte 4
+                inline static constexpr int RIGHT = 0b11111111;  // byte 4
+                ;
+            };
+            struct ButtonRetrobit
+            {
+
+                inline static constexpr int A = 0b00000100;  // byte 1
+                inline static constexpr int B = 0b00000010;  // byte 1
+                inline static constexpr int C = 0b10000000;  // byte 1
+                inline static constexpr int X = 0b00001000;  // byte 1
+                inline static constexpr int Y = 0b00000001;  // byte 1
+                inline static constexpr int Z = 0b01000000;  // byte 1
+                inline static constexpr int MODE = 0b00000001;     // byte 2
+                inline static constexpr int L = 0b00010000;  // byte 1
+                inline static constexpr int R = 0b00100000;  // byte 1
+                inline static constexpr int START = 0b00000010; // byte 2
+                inline static constexpr int UP = 0;             // byte 5
+                inline static constexpr int DOWN = 0b11111111;  // byte 5
+                inline static constexpr int LEFT = 0;           // byte 4
+                inline static constexpr int RIGHT = 0b11111111; // byte 4
                 ;
             };
         };
@@ -229,6 +263,72 @@ extern "C"
                 inline static constexpr int SELECTSTART = 0b00010111;
             };
         };
+
+        // Helper: print a HID report (any length up to MAX) as binary only when it changes.
+        static void printHIDReportIfChanged(const uint8_t *report, uint16_t len)
+        {
+#if PRINTFBUTTONS
+            if (!report || !len)
+                return;
+            // Typical HID report sizes are <= 64 bytes for full-speed devices
+            constexpr uint16_t MAX_PRINT = 64; // adjust if you expect bigger
+            static uint8_t prev_report[MAX_PRINT];
+            static uint16_t prev_len = 0;
+            static bool prev_valid = false;
+
+            if (len > MAX_PRINT)
+            {
+                // Fallback: if size exceeds buffer, just print length notice once (or always?)
+                // Print raw truncated binary when it changes relative to first MAX_PRINT bytes.
+                // Compare only first MAX_PRINT bytes.
+                bool changed_large = !prev_valid || prev_len != len || memcmp(prev_report, report, MAX_PRINT) != 0;
+                if (!changed_large)
+                    return;
+                printf("HID report (len=%u > MAX_PRINT=%u) (changed bytes in []): ", len, MAX_PRINT);
+                for (uint16_t i = 0; i < MAX_PRINT; ++i)
+                {
+                    bool byte_changed = !prev_valid || prev_report[i] != report[i];
+                    if (byte_changed)
+                        putchar('[');
+                    uint8_t v = report[i];
+                    for (int b = 7; b >= 0; --b)
+                        putchar((v & (1 << b)) ? '1' : '0');
+                    if (byte_changed)
+                        putchar(']');
+                    if (i + 1 < MAX_PRINT)
+                        putchar(' ');
+                }
+                putchar('\n');
+                memcpy(prev_report, report, MAX_PRINT);
+                prev_len = len; // store true len for change detection
+                prev_valid = true;
+                return;
+            }
+
+            bool changed = !prev_valid || prev_len != len || memcmp(prev_report, report, len) != 0;
+            if (!changed)
+                return;
+
+            printf("HID report (len=%u) (bin, changed bytes in []): ", len);
+            for (uint16_t i = 0; i < len; ++i)
+            {
+                bool byte_changed = !prev_valid || prev_report[i] != report[i];
+                if (byte_changed)
+                    putchar('[');
+                uint8_t v = report[i];
+                for (int b = 7; b >= 0; --b)
+                    putchar((v & (1 << b)) ? '1' : '0');
+                if (byte_changed)
+                    putchar(']');
+                if (i + 1 < len)
+                    putchar(' ');
+            }
+            putchar('\n');
+            memcpy(prev_report, report, len);
+            prev_len = len;
+            prev_valid = true;
+#endif
+        }
     }
 
     void tuh_hid_mount_cb(uint8_t dev_addr, uint8_t instance, uint8_t const *desc_report, uint16_t desc_len)
@@ -267,6 +367,11 @@ extern "C"
         {
             printf("Sega Mega Drive/Genesis Mini %d controller detected - device address = %d, instance = %d is mounted - ", (pid == 0x0025) ? 1 : 2, dev_addr, instance);
             sprintf(gp.GamePadName, "Genesis Mini %d", (pid == 0x0025) ? 1 : 2);
+        }
+        else if (isMDArcadePad(vid, pid))
+        {
+            printf("Retro-bit MD Arcade pad  detected - device address = %d, instance = %d is mounted - ", dev_addr, instance);
+            sprintf(gp.GamePadName, "MDArcade");
         }
         else if (isPSClassic(vid, pid))
         {
@@ -316,7 +421,7 @@ extern "C"
 
         uint16_t vid, pid;
         tuh_vid_pid_get(dev_addr, &vid, &pid);
-
+        printHIDReportIfChanged(report, len);
         if (isDS4(vid, pid))
         {
             if (sizeof(DS4Report) <= len)
@@ -418,7 +523,7 @@ extern "C"
                 {
                     isManta = 2;
                     strcpy(gp.GamePadName, "Manta SNES");
-                    //printf("MantaPad SNES mode activated\n");
+                    // printf("MantaPad SNES mode activated\n");
                 }
                 // printf("MantaPad report: %02x %02x %02x %02x %02x %02x %02x %02x\n",
                 //        r->byte1, r->byte2, r->byte3, r->byte4, r->byte5, r->byte6, r->byte7, r->byte8);
@@ -468,7 +573,10 @@ extern "C"
         {
             if (sizeof(GenesisMiniReport) == len)
             {
+                
+
                 auto r = reinterpret_cast<const GenesisMiniReport *>(report);
+
                 auto &gp = io::getCurrentGamePadState(0);
                 if (abSwapped)
                 {
@@ -488,6 +596,41 @@ extern "C"
                              (r->byte5 == GenesisMiniReport::Button::DOWN ? io::GamePadState::Button::DOWN : 0) |
                              (r->byte4 == GenesisMiniReport::Button::LEFT ? io::GamePadState::Button::LEFT : 0) |
                              (r->byte4 == GenesisMiniReport::Button::RIGHT ? io::GamePadState::Button::RIGHT : 0);
+                gp.flagConnected(true);
+            }
+            else
+            {
+                printf("Invalid Genesis Mini report size %zd\n", len);
+                return;
+            }
+        }
+        else if (isMDArcadePad(vid, pid))
+        {
+            if (sizeof(GenesisMiniReport) == len)
+            {
+                printHIDReportIfChanged(report, len);
+
+                auto r = reinterpret_cast<const GenesisMiniReport *>(report);
+
+                auto &gp = io::getCurrentGamePadState(0);
+                if (abSwapped)
+                {
+                    gp.buttons = (r->byte1 & GenesisMiniReport::ButtonRetrobit::B ? io::GamePadState::Button::A : 0) |
+                                 (r->byte1 & GenesisMiniReport::ButtonRetrobit::A ? io::GamePadState::Button::B : 0);
+                }
+                else
+                {
+                    gp.buttons = (r->byte1 & GenesisMiniReport::ButtonRetrobit::A ? io::GamePadState::Button::A : 0) |
+                                 (r->byte1 & GenesisMiniReport::ButtonRetrobit::B ? io::GamePadState::Button::B : 0);
+                }
+                gp.buttons = gp.buttons |
+                             (r->byte1 & GenesisMiniReport::ButtonRetrobit::C ? io::GamePadState::Button::SELECT : 0) |
+                             (r->byte1 & GenesisMiniReport::ButtonRetrobit::C ? io::GamePadState::Button::X : 0) |
+                             (r->byte2 & GenesisMiniReport::ButtonRetrobit::START ? io::GamePadState::Button::START : 0) |
+                             (r->byte5 == GenesisMiniReport::ButtonRetrobit::UP ? io::GamePadState::Button::UP : 0) |
+                             (r->byte5 == GenesisMiniReport::ButtonRetrobit::DOWN ? io::GamePadState::Button::DOWN : 0) |
+                             (r->byte4 == GenesisMiniReport::ButtonRetrobit::LEFT ? io::GamePadState::Button::LEFT : 0) |
+                             (r->byte4 == GenesisMiniReport::ButtonRetrobit::RIGHT ? io::GamePadState::Button::RIGHT : 0);
                 gp.flagConnected(true);
             }
             else

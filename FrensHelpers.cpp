@@ -30,6 +30,7 @@
 #include "pico/cyw43_arch.h"
 #endif
 
+
 // Valid values arr:
 //  44100
 //  48000
@@ -48,6 +49,7 @@ int maxRomSize = 0;
 
 namespace Frens
 {
+    static uint32_t crcOfRom = 0;
     static FATFS fs;
 #if !HSTX && FRAMEBUFFERISPOSSIBLE
     // uint8_t *framebuffer1; // [320 * 240];
@@ -104,12 +106,16 @@ namespace Frens
 #endif
         return psRamEnabled;
     }
-#if !HSTX
+
     bool __not_in_flash_func(isFrameBufferUsed)()
     {
+#if !HSTX
         return usingFramebuffer;
-    }
+#else
+        return true;  // HSTX always uses framebuffer
 #endif
+    }
+
 #define STORAGE_CMD_DUMMY_BYTES 1
 #define STORAGE_CMD_DATA_BYTES 3
 #define STORAGE_CMD_TOTAL_BYTES (STORAGE_CMD_DUMMY_BYTES + STORAGE_CMD_DATA_BYTES)
@@ -698,6 +704,7 @@ namespace Frens
             {
                 if ((crc = compute_crc32_buffer(pMem, filesize, crcOffset)) > 0)
                 {
+                    crcOfRom = crc;
                     printf("CRC32 checksum of %s in PSRAM: %08X\n", selectdRom, crc);
                 }
                 else
@@ -819,6 +826,8 @@ namespace Frens
                                 {
                                     break;
                                 }
+                                // Wat met offset bij NES roms?
+                                crcOfRom = update_crc32(crcOfRom, buffer, bytesRead);
                                 if (swapbytes)
                                 {
                                     for (int i = 0; i < bytesRead; i += 2)
@@ -1397,6 +1406,176 @@ namespace Frens
         }
 #endif
     }
+
+    FRESULT pick_random_file_fullpath(const char *dirpath, char *out_path, size_t out_size)
+    {
+        static const int MAX_ITER = 504;
+        FRESULT fr;
+        DIR dir;
+        FILINFO fno;
+        UINT file_count = 0;
+        int iter = 0;
+        *out_path = 0;
+
+        fr = f_opendir(&dir, dirpath);
+        if (fr != FR_OK)
+        {
+            printf("Error: Unable to open directory: %s, error code: %d\n", dirpath, fr);
+            return fr;
+        }
+
+        while (1)
+        {
+
+            fr = f_readdir(&dir, &fno);
+            if (fr != FR_OK || fno.fname[0] == 0)
+                break; // End or error
+            if (fno.fattrib & AM_DIR)
+                continue; // Skip directories
+                          // skip files with wrong extension
+            // skip hidden files
+            if (fno.fattrib & AM_HID || fno.fname[0] == '.')
+                continue;
+            // Bail out if f_readdir loops too many. Can be caused by bad sd card?
+            if (++iter > MAX_ITER)
+            {
+                printf("Error: Too many files in directory, aborting search.\n");
+                f_closedir(&dir);
+                return FR_INT_ERR;
+            }
+            // Check file extension
+            int l = strlen(fno.fname);
+            if (l > 4 && strcmp(&fno.fname[l - 4], FILEXTFORSEARCH) == 0)
+            {
+                // Found a file with the correct extension
+            }
+            else
+            {
+                continue;
+            }
+            file_count++;
+
+            // Reservoir sampling: replace current choice with probability 1/file_count
+            if ((rand() % file_count) == 0)
+            {
+                const char *name = fno.fname;
+                // Build full path: "<dirpath>/<filename>"
+                size_t dir_len = strlen(dirpath);
+                if (dir_len + 1 + strlen(name) + 1 > out_size)
+                {
+                    // Output buffer too small, skip this file and continue
+                    printf("Output buffer too small for path: %s/%s\n", dirpath, name);
+                    continue;
+                }
+
+                strcpy(out_path, dirpath);
+                if (dirpath[dir_len - 1] != '/' && dirpath[dir_len - 1] != '\\')
+                {
+                    strcat(out_path, "/");
+                }
+                strcat(out_path, name);
+            }
+        }
+        if (file_count > 0)
+        {
+            // strcpy(out_path, "/Metadata/SMS/Images/160/0/00C34D94.444"); // For testing only
+            // strcpy(out_path, "/Metadata/SMS/Images/160/0/0B1BA87F.444"); //
+            printf("Picked random file: %s\n", out_path);
+        }
+        else
+        {
+            printf("No files found in directory: %s\n", dirpath);
+        }
+        f_closedir(&dir);
+
+        return (file_count > 0) ? FR_OK : FR_NO_FILE;
+    }
+
+    /// @brief Load an overlay from file or from memory
+    /// The overlay file must be a binary file with a 4 byte header followed by
+    /// SCREENWIDTH * SCREENHEIGHT * 2 bytes of pixel data in 16 bit 555 or 444 format.
+    /// The first two bytes of the header is the width (little endian)
+    /// The next two bytes of the header is the height (little endian)
+    /// The overlay is loaded into the framebuffer.
+    /// If the file cannot be loaded, the overlay is loaded from memory.
+    /// The overlay in memory must have the same format as the file.
+    /// If both file and memory overlay are not available, no overlay is loaded.
+    /// @param filename 
+    /// @param overlay 
+    void loadOverLay(const char *filename, const char *overlay)
+    {
+        // Only possible when using framebuffer
+        if (!Frens::isFrameBufferUsed())
+        {
+            return;
+        }
+
+        if (filename != nullptr)
+        {
+            FIL fil;
+            FRESULT fr;
+            size_t filesize;
+            fr = f_open(&fil, filename, FA_READ);
+            if (fr == FR_OK)
+            {
+
+                filesize = f_size(&fil);
+                if (filesize < (4 + SCREENWIDTH * SCREENHEIGHT * sizeof(WORD)))
+                {
+                    printf("Overlay file %s too small: %d bytes\n", filename, filesize);
+                    f_close(&fil);
+                    return;
+                }
+                // Go past the 4 byte header
+                f_lseek(&fil, 4);
+                UINT br;
+#if !HSTX
+                fr = f_read(&fil, framebuffer, filesize - 4, &br);
+#else
+                fr = f_read(&fil, hstx_getframebuffer(), filesize - 4, &br);
+#endif
+
+                if (fr != FR_OK || br != filesize - 4)
+                {
+                    printf("Cannot read overlay file %s: %d/%d bytes read\n", filename, fr, br);
+                    f_close(&fil);
+                    return;
+                }
+                f_close(&fil);
+                printf("Loaded overlay file %s: %d bytes\n", filename, br + 4);
+                return;
+            }
+            else
+            {
+                printf("Cannot open overlay file %s: %d\n", filename, fr);
+            }
+        }
+        if (overlay == nullptr)
+        {
+            printf("No overlay data provided\n");
+            return;
+        }
+        // If we get here, we failed to load the overlay from file, try to load from memory
+        uint16_t width = *((uint16_t *)overlay);
+        // next two bytes is height
+        uint16_t height = *((uint16_t *)(overlay + 2));
+        if (width != SCREENWIDTH || height != SCREENHEIGHT)
+        {
+            printf("Overlay size %dx%d does not match screen size %dx%d\n", width, height, SCREENWIDTH, SCREENHEIGHT);
+            return;
+        }
+        printf("Loading default overlay %dx%d\n", width, height);
+#if !HSTX
+        memcpy(framebuffer, overlay + 4, width * height * sizeof(WORD));
+#else
+        memcpy(hstx_getframebuffer(), overlay + 4, width * height * sizeof(WORD));
+#endif
+    }
+    uint32_t getCrcOfLoadedRom()
+    {
+        return crcOfRom;
+    }
+
 }
 // C-compatible wrappers
 extern "C"

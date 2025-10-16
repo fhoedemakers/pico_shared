@@ -132,6 +132,9 @@ static bool isArtWorkEnabled()
     } else if (strcmp(emulator, "MD") == 0)
     {
         sprintf(PATH, "/Metadata/%s/Images/160/5/56976261.444", emulator);
+    } else if (strcmp(emulator, "GB") == 0)
+    {
+        sprintf(PATH, "/Metadata/%s/Images/160/0/00A9001E.444", emulator);
     }
     else
     {
@@ -425,8 +428,16 @@ void drawline(int scanline, int selectedRow, int w = 0, int h = 0, uint16_t *ima
             auto rowOffset = (scanline - imagey) * w;
             memcpy(WorkLineRom + imagex, imagebuffer + rowOffset, w * sizeof(uint16_t));
             offset = w;
-        }
+         } else {
+            // avoid garbeled text when image is smaller than 120 pixels high
+            if (scanline < 120 ) {
+                offset = w;
+            }
+         }
+         
+        
     }
+    // Only show text when not in screensaver mode (imagex and imagey are 0)
     if (imagex == 0 && imagey == 0)
     {
         RomSelect_DrawLine(scanline, selectedRow, offset);
@@ -729,91 +740,7 @@ void showSplashScreen()
         }
     }
 }
-#if !HSTX
-#define FILEXTFORSEARCH ".444"
-#else
-#define FILEXTFORSEARCH ".555"
-#endif
-static FRESULT pick_random_file_fullpath(const char *dirpath, char *out_path, size_t out_size)
-{
-    static const int MAX_ITER = 404;
-    FRESULT fr;
-    DIR dir;
-    FILINFO fno;
-    UINT file_count = 0;
-    int iter = 0;
-    *out_path = 0;
 
-    fr = f_opendir(&dir, dirpath);
-    if (fr != FR_OK) {
-        printf("Error: Unable to open directory: %s, error code: %d\n", dirpath, fr);
-        return fr;
-    }
-
-    while (1)
-    {
-       
-        fr = f_readdir(&dir, &fno);
-        if (fr != FR_OK || fno.fname[0] == 0)
-            break; // End or error
-        if (fno.fattrib & AM_DIR)
-            continue; // Skip directories
-                      // skip files with wrong extension
-        // skip hidden files
-        if (fno.fattrib & AM_HID || fno.fname[0] == '.')
-            continue;
-        // Bail out if f_readdir loops too many. Can be caused by bad sd card?
-        if (++iter > MAX_ITER)
-        {
-            printf("Error: Too many files in directory, aborting search.\n");
-            f_closedir(&dir);
-            return FR_INT_ERR;
-        }
-        // Check file extension
-        int l = strlen(fno.fname);
-        if (l > 4 && strcmp(&fno.fname[l - 4], FILEXTFORSEARCH) == 0)
-        {
-            // Found a file with the correct extension
-        }
-        else
-        {
-            continue;
-        }
-        file_count++;
-
-        // Reservoir sampling: replace current choice with probability 1/file_count
-        if ((rand() % file_count) == 0)
-        {
-            const char *name = fno.fname;
-            // Build full path: "<dirpath>/<filename>"
-            size_t dir_len = strlen(dirpath);
-            if (dir_len + 1 + strlen(name) + 1 > out_size)
-            {
-                // Output buffer too small, skip this file and continue
-                printf("Output buffer too small for path: %s/%s\n", dirpath, name);
-                continue;
-            }
-
-            strcpy(out_path, dirpath);
-            if (dirpath[dir_len - 1] != '/' && dirpath[dir_len - 1] != '\\')
-            {
-                strcat(out_path, "/");
-            }
-            strcat(out_path, name);
-        }
-    }
-    if (file_count > 0)
-    {
-        //strcpy(out_path, "/Metadata/SMS/Images/160/0/00C34D94.444"); // For testing only
-        //strcpy(out_path, "/Metadata/SMS/Images/160/0/0B1BA87F.444"); //
-        printf("Picked random file: %s\n", out_path);
-    } else {
-        printf("No files found in directory: %s\n", dirpath);
-    }
-    f_closedir(&dir);
-   
-    return (file_count > 0) ? FR_OK : FR_NO_FILE;
-}
 
 void screenSaverWithBlocks()
 {
@@ -882,7 +809,7 @@ void screenSaverWithArt(bool showdefault = false)
                 fld = (char)(rand() % 15);
                 snprintf(PATH, (FF_MAX_LFN + 1) * sizeof(char), "/metadata/%s/images/160/%X", emulator, fld);
                 printf("Scanning random folder: %s\n", PATH);
-                fr = pick_random_file_fullpath(PATH, CHOSEN, (FF_MAX_LFN + 1) * sizeof(char));
+                fr = Frens::pick_random_file_fullpath(PATH, CHOSEN, (FF_MAX_LFN + 1) * sizeof(char));
             }
             else
             {

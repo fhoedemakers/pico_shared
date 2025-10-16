@@ -18,8 +18,13 @@ namespace io
             inline static constexpr int B = 1 << 1;
             inline static constexpr int X = 1 << 2;
             inline static constexpr int Y = 1 << 3;
+            inline static constexpr int C = 1 << 4;
+            inline static constexpr int Z = 1 << 5;
             inline static constexpr int SELECT = 1 << 6;
             inline static constexpr int START = 1 << 7;
+            inline static constexpr int L = 1 << 8;
+            inline static constexpr int R = 1 << 9;
+            inline static constexpr int MODE = 1 << 10;
 
             inline static constexpr int LEFT = 1 << 31;
             inline static constexpr int RIGHT = 1 << 30;

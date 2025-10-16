@@ -1,4 +1,13 @@
 # Release notes
+
+## 16/10/2025
+
+- Added support for [Retro-Bit Genesis/Megadrive 8 button Arcade Pad with USB](https://www.retro-bit.com/controllers/genesis/#usb).
+- Added possibility to load overlays
+- Settings:
+  - Version number added. When the version in settings.dat does not match, settings will be reset to defaults.
+  - Border/Bezel settings are now saved.
+
 ## 20/9/2025
 
 - Waveshare RP2350-USBA support
