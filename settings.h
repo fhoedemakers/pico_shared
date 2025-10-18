@@ -23,9 +23,9 @@ struct settings
         ScreenMode screenMode;
         uint8_t scanlineOn;
     };
-    unsigned short firstVisibleRowINDEX;
-    unsigned short selectedRow;
-    unsigned short horzontalScrollIndex;
+    short firstVisibleRowINDEX;
+    short selectedRow;
+    short horzontalScrollIndex;
     unsigned short fgcolor;
     unsigned short bgcolor;
     // int reserved[3];
