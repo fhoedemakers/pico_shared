@@ -33,41 +33,41 @@ extern "C"
         tuh_hid_report_info_t _report_info_arr[CFG_TUH_HID][MAX_REPORT];
 
         // Is dual shock 4 controller detected?
-        bool isDS4(uint16_t vid, uint16_t pid)
+        static inline bool isDS4(uint16_t vid, uint16_t pid)
         {
             return vid == 0x054c && (pid == 0x09cc || pid == 0x05c4);
         }
         // Is dual sense controller detected?
-        bool isDS5(uint16_t vid, uint16_t pid)
+        static inline bool isDS5(uint16_t vid, uint16_t pid)
         {
             return vid == 0x054c && pid == 0x0ce6;
         }
         // Is PSClassic controller detected?
-        bool isPSClassic(uint16_t vid, uint16_t pid)
+        static inline bool isPSClassic(uint16_t vid, uint16_t pid)
         {
             return vid == 0x054c && pid == 0x0cda;
         }
         // Is Nintendo controller detected?
-        bool isNintendo(uint16_t vid, uint16_t pid)
+        static inline bool isNintendo(uint16_t vid, uint16_t pid)
         {
             return vid == 0x057e && (pid == 0x2009 || pid == 0x2017);
         }
-        bool isGenesisMini(uint16_t vid, uint16_t pid)
+        static inline bool isGenesisMini(uint16_t vid, uint16_t pid)
         {
             return vid == 0x0ca3 && (pid == 0x0025 || pid == 0x0024);
         }
         // Retro-bit 8 button Mega Drive Arcade Pad with USB
-        bool isMDArcadePad(uint16_t vid, uint16_t pid)
+        static inline bool isMDArcadePad(uint16_t vid, uint16_t pid)
         {
             return (vid == 0xf0d) && (pid == 0x00c1);
         }
         // Is MantaPad detected? Cheap Aliexpress SNES/NES controller
-        bool isMantaPad(uint16_t vid, uint16_t pid)
+        static inline bool isMantaPad(uint16_t vid, uint16_t pid)
         {
             return vid == 0x081f && pid == 0xe401;
         }
         // Is MantaPad Variant detected? Cheap Aliexpress SNES controller (0810:e501)
-        bool isMantaPadVariant(uint16_t vid, uint16_t pid)
+        static inline bool isMantaPadVariant(uint16_t vid, uint16_t pid)
         {
             return vid == 0x0810 && pid == 0xe501;
         }
@@ -267,7 +267,6 @@ extern "C"
         // Helper: print a HID report (any length up to MAX) as binary only when it changes.
         static void printHIDReportIfChanged(const uint8_t *report, uint16_t len)
         {
-#if PRINTFBUTTONS
             if (!report || !len)
                 return;
             // Typical HID report sizes are <= 64 bytes for full-speed devices
@@ -327,7 +326,6 @@ extern "C"
             memcpy(prev_report, report, len);
             prev_len = len;
             prev_valid = true;
-#endif
         }
     }
 
@@ -370,7 +368,7 @@ extern "C"
         }
         else if (isMDArcadePad(vid, pid))
         {
-            printf("Retro-bit MD Arcade pad  detected - device address = %d, instance = %d is mounted - ", dev_addr, instance);
+            printf("Retro-bit MD Arcade pad detected - device address = %d, instance = %d is mounted - ", dev_addr, instance);
             sprintf(gp.GamePadName, "MDArcade");
         }
         else if (isPSClassic(vid, pid))
@@ -421,7 +419,10 @@ extern "C"
 
         uint16_t vid, pid;
         tuh_vid_pid_get(dev_addr, &vid, &pid);
+#if PRINTFBUTTONS
+        // helper for figuring out button states
         printHIDReportIfChanged(report, len);
+#endif
         if (isDS4(vid, pid))
         {
             if (sizeof(DS4Report) <= len)
@@ -589,9 +590,10 @@ extern "C"
                                  (r->byte6 & GenesisMiniReport::Button::B ? io::GamePadState::Button::B : 0);
                 }
                 gp.buttons = gp.buttons |
-                             (r->byte7 & GenesisMiniReport::Button::C ? io::GamePadState::Button::SELECT : 0) |
-                             (r->byte7 & GenesisMiniReport::Button::C ? io::GamePadState::Button::X : 0) |
+                             (((r->byte7 & GenesisMiniReport::Button::C) && pid == 0x0025)? io::GamePadState::Button::SELECT : 0) |  // C button is SELECT only original 3-button controller
+                             ((r->byte7 & GenesisMiniReport::Button::C) ? io::GamePadState::Button::C : 0) |
                              (r->byte7 & GenesisMiniReport::Button::START ? io::GamePadState::Button::START : 0) |
+                             (r->byte7 & GenesisMiniReport::Button::MODE ? io::GamePadState::Button::SELECT : 0) |
                              (r->byte5 == GenesisMiniReport::Button::UP ? io::GamePadState::Button::UP : 0) |
                              (r->byte5 == GenesisMiniReport::Button::DOWN ? io::GamePadState::Button::DOWN : 0) |
                              (r->byte4 == GenesisMiniReport::Button::LEFT ? io::GamePadState::Button::LEFT : 0) |
@@ -608,8 +610,6 @@ extern "C"
         {
             if (sizeof(GenesisMiniReport) == len)
             {
-                printHIDReportIfChanged(report, len);
-
                 auto r = reinterpret_cast<const GenesisMiniReport *>(report);
 
                 auto &gp = io::getCurrentGamePadState(0);
@@ -624,8 +624,8 @@ extern "C"
                                  (r->byte1 & GenesisMiniReport::ButtonRetrobit::B ? io::GamePadState::Button::B : 0);
                 }
                 gp.buttons = gp.buttons |
-                             (r->byte1 & GenesisMiniReport::ButtonRetrobit::C ? io::GamePadState::Button::SELECT : 0) |
-                             (r->byte1 & GenesisMiniReport::ButtonRetrobit::C ? io::GamePadState::Button::X : 0) |
+                             (r->byte2 & GenesisMiniReport::ButtonRetrobit::MODE ? io::GamePadState::Button::SELECT : 0) |
+                             (r->byte1 & GenesisMiniReport::ButtonRetrobit::C ? io::GamePadState::Button::C : 0) |
                              (r->byte2 & GenesisMiniReport::ButtonRetrobit::START ? io::GamePadState::Button::START : 0) |
                              (r->byte5 == GenesisMiniReport::ButtonRetrobit::UP ? io::GamePadState::Button::UP : 0) |
                              (r->byte5 == GenesisMiniReport::ButtonRetrobit::DOWN ? io::GamePadState::Button::DOWN : 0) |
