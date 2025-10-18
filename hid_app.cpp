@@ -593,6 +593,7 @@ extern "C"
                              (((r->byte7 & GenesisMiniReport::Button::C) && pid == 0x0025)? io::GamePadState::Button::SELECT : 0) |  // C button is SELECT only original 3-button controller
                              ((r->byte7 & GenesisMiniReport::Button::C) ? io::GamePadState::Button::C : 0) |
                              (r->byte7 & GenesisMiniReport::Button::START ? io::GamePadState::Button::START : 0) |
+                             (r->byte7 & GenesisMiniReport::Button::MODE ? io::GamePadState::Button::SELECT : 0) |
                              (r->byte5 == GenesisMiniReport::Button::UP ? io::GamePadState::Button::UP : 0) |
                              (r->byte5 == GenesisMiniReport::Button::DOWN ? io::GamePadState::Button::DOWN : 0) |
                              (r->byte4 == GenesisMiniReport::Button::LEFT ? io::GamePadState::Button::LEFT : 0) |
@@ -609,8 +610,6 @@ extern "C"
         {
             if (sizeof(GenesisMiniReport) == len)
             {
-                printHIDReportIfChanged(report, len);
-
                 auto r = reinterpret_cast<const GenesisMiniReport *>(report);
 
                 auto &gp = io::getCurrentGamePadState(0);
@@ -625,7 +624,7 @@ extern "C"
                                  (r->byte1 & GenesisMiniReport::ButtonRetrobit::B ? io::GamePadState::Button::B : 0);
                 }
                 gp.buttons = gp.buttons |
-                             (r->byte1 & GenesisMiniReport::ButtonRetrobit::MODE ? io::GamePadState::Button::SELECT : 0) |
+                             (r->byte2 & GenesisMiniReport::ButtonRetrobit::MODE ? io::GamePadState::Button::SELECT : 0) |
                              (r->byte1 & GenesisMiniReport::ButtonRetrobit::C ? io::GamePadState::Button::C : 0) |
                              (r->byte2 & GenesisMiniReport::ButtonRetrobit::START ? io::GamePadState::Button::START : 0) |
                              (r->byte5 == GenesisMiniReport::ButtonRetrobit::UP ? io::GamePadState::Button::UP : 0) |
