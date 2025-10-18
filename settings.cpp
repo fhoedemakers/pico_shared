@@ -18,6 +18,7 @@ namespace Frens
         printf("useExtAudio: %d\n", settings.flags.useExtAudio);
         printf("enableVUMeter: %d\n", settings.flags.enableVUMeter);
         printf("borderMode: %d\n", settings.flags.borderMode);
+        printf("dmgLCDPalette: %d\n", settings.flags.dmgLCDPalette);
         printf("\n");
     }
     void resetsettings()
@@ -33,6 +34,7 @@ namespace Frens
         settings.flags.useExtAudio = 0; // default to use DVIAudio
         settings.flags.enableVUMeter = ENABLE_VU_METER ? 1 : 0; // default to ENABLE_VU_METER
         settings.flags.borderMode = THEMEDBORDER;
+        settings.flags.dmgLCDPalette = 0; // default DMG LCD Palette, DMG Green
         settings.version = SETTINGS_VERSION;
         // clear all the reserved settings
         settings.flags.reserved = 0;
