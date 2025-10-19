@@ -5,7 +5,7 @@
 #include <stdint.h>
 #define SETTINGSFILE "/settings.dat" // File to store settings
 extern struct settings settings;
-#define SETTINGS_VERSION 100
+#define SETTINGS_VERSION 101
 
 // Border rendering mode enumeration
 enum BorderMode {
@@ -23,9 +23,9 @@ struct settings
         ScreenMode screenMode;
         uint8_t scanlineOn;
     };
-    unsigned short firstVisibleRowINDEX;
-    unsigned short selectedRow;
-    unsigned short horzontalScrollIndex;
+    short firstVisibleRowINDEX;
+    short selectedRow;
+    short horzontalScrollIndex;
     unsigned short fgcolor;
     unsigned short bgcolor;
     // int reserved[3];
@@ -35,7 +35,8 @@ struct settings
         unsigned short useExtAudio : 1;   // 0 = use DVIAudio, 1 = use external Audio
         unsigned short enableVUMeter : 1; // 0 = disable VU meter, 1 = enable VU meter
         unsigned short borderMode : 2;    // BorderMode enum (2 bits)
-        unsigned short reserved : 12;
+        unsigned short dmgLCDPalette : 2;   // DMG LCD Palette (2 bits)
+        unsigned short reserved : 10;
     } flags; // Total 16 bits
 };
 namespace Frens
