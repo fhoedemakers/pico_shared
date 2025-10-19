@@ -1577,10 +1577,10 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
 
                 if (!entries[index].IsDirectory && selectedRomOrFolder && artworkEnabled)
                 {
-                    if (strcmp(emulator, "MD") == 0)
-                    {
+                    // if (strcmp(emulator, "MD") == 0)
+                    // {
                           showLoadingScreen("Metadata loading...");
-                    }
+                    //}
                     //romlister.ClearMemory();
                     fr = my_getcwd(curdir, sizeof(curdir)); // f_getcwd(curdir, sizeof(curdir));
                     FSIZE_t romsize = 0;
