@@ -111,6 +111,7 @@ namespace Frens
                                 printf("File %s is corrupt, expected %d bytes, read %d\n", SETTINGSFILE, sizeof(settings), br);
                             }
                             resetsettings();
+                            savesettings();
                         }
                         else
                         {
