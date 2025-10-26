@@ -273,6 +273,10 @@ static void tlv320_init()
 	printf("Initializing TLV320AIC3204 audio DAC...\n");
 	i2c_init(I2C_PORT, 400 * 1000); // Initialize I2C at 400kHz
 	sleep_ms(1000);					// Wait for I2C to stabilize
+	gpio_set_function(20, GPIO_FUNC_I2C);
+    gpio_set_function(21, GPIO_FUNC_I2C);
+    gpio_pull_up(20);
+    gpio_pull_up(21);
 #if 0
     // Old setup, from DataSheet
 	// 1. Define starting point:
