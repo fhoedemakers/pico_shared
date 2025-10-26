@@ -181,6 +181,11 @@ int Menu_LoadFrame()
         Frens::markFrameReadyForReendering(true);
     }
 #endif
+#if WII_PAD_DELAYED_START and WII_PIN_SDA >= 0 and WII_PIN_SCL >= 0
+    if (!wiipad_is_connected() && onOff) {
+        wiipad_begin();
+    }
+#endif
     return count;
 }
 
