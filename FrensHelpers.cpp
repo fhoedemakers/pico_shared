@@ -1086,7 +1086,11 @@ namespace Frens
 #if NES_PIN_CLK_1 != -1
         nespad_begin(1, CPUFreqKHz, NES_PIN_CLK_1, NES_PIN_DATA_1, NES_PIN_LAT_1, NES_PIO_1);
 #endif
-#if !WII_PAD_DELAYED_START and WII_PIN_SDA >= 0 and WII_PIN_SCL >= 0
+        // Initialize the Wii Pad, but only if the pins are defined and WIIPAD_DELAYED_START is not set
+        // This allows for delayed initialization if needed to avoid conflicts with other I2C devices
+        // like the DAC on Fruit Jam.
+        // https://github.com/fhoedemakers/pico-genesisPlus/issues/10
+#if !WIIPAD_DELAYED_START and WII_PIN_SDA >= 0 and WII_PIN_SCL >= 0
         wiipad_begin();
 #endif
     }

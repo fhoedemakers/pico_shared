@@ -181,7 +181,10 @@ int Menu_LoadFrame()
         Frens::markFrameReadyForReendering(true);
     }
 #endif
-#if WII_PAD_DELAYED_START and WII_PIN_SDA >= 0 and WII_PIN_SCL >= 0
+    // https://github.com/fhoedemakers/pico-genesisPlus/issues/10
+    // Initialize the Wii Pad here if delayed start is enabled, after the DAC has been initialized. 
+#if WIIPAD_DELAYED_START and WII_PIN_SDA >= 0 and WII_PIN_SCL >= 0
+    // check only every 60 frames.
     if (!wiipad_is_connected() && onOff) {
         wiipad_begin();
     }
