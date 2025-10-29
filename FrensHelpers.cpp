@@ -1,4 +1,3 @@
-
 #include <stdio.h>
 #include <cstring>
 #include "pico.h"
@@ -7,6 +6,7 @@
 #include "pico/rand.h"
 #include "hardware/flash.h"
 #include "hardware/watchdog.h"
+#include "hardware/structs/qmi.h"
 #include "util/exclusive_proc.h"
 #include "FrensHelpers.h"
 #if CFG_TUH_RPI_PIO_USB && PICO_RP2350
@@ -1344,11 +1344,38 @@ namespace Frens
     void setClocksAndStartStdio(uint32_t cpuFreqKHz, vreg_voltage voltage)
     {
         // Set voltage and clock frequency
+       
+        vreg_disable_voltage_limit();
         vreg_set_voltage(voltage);
-        sleep_ms(10);
+#if !HSTX
         set_sys_clock_khz(cpuFreqKHz, true);
-
-#if HSTX
+        sleep_ms(100);
+#else  
+        if (cpuFreqKHz >= 378000)
+        {
+            /*
+             * When overclocking above ~378 MHz we must slow down and relax the execute-in-place
+             * (XIP) external flash access timings to stay within the flash device's max SPI
+             * frequency and preserve reliable instruction fetches.
+             *
+             * qmi_hw->m[0].timing directly programs the QMI (Quad/Octal Memory Interface) timing
+             * register for XIP region 0.
+             *
+             * Value 0x60007304 (fields per RP2350 datasheet):
+             *   0x3004  : core base latency / data strobe/sample delay settings
+             *   0x0070  : additional dummy cycles + turnaround adjustments
+             *   0x60000000 : sets a higher clock divisor (4x flash divisor path enabled)
+             *
+             * In short: this applies a safer (slower) flash access profile so the very high
+             * system clock does not overdrive the flash. Without this, random faults or hard
+             * crashes can occur when fetching code/data from XIP at these frequencies.
+             */
+              qmi_hw->m[0].timing = 0x60007304; // 4x FLASH divisor
+        }
+     
+        sleep_ms(100);
+        set_sys_clock_khz(cpuFreqKHz, true);
+        sleep_ms(100);
         // Reconfigure HSTX clock to 126 Mhz, so display can run at 60Hz.
         bool hstx_ok = true;
         if ((cpuFreqKHz / 1000) % 126 != 0)
