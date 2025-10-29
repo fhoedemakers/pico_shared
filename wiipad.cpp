@@ -47,12 +47,11 @@ uint16_t wiipad_read(void) {
     static constexpr int B = 1 << 1;
     static constexpr int X = 1 << 8;
     static constexpr int Y = 1 << 9;
-    static constexpr int ALL_BUTTONS = LEFT | RIGHT | UP | DOWN | SELECT | START | A | B | X | Y;
+    
     if ( !wiipad_connected ) {
         return 0;
     }
     uint16_t v = 0;
-    static uint16_t previousState = 0;
     uint8_t req[] = { 0x00 };
     uint8_t buf[6];
     i2c_write_timeout_us(WII_I2C, WII_ADDR, req, 1, false, 100);
@@ -68,14 +67,7 @@ uint16_t wiipad_read(void) {
         if (!(buf[5] & 0x20)) v |= Y;
         if (!(buf[4] & 0x10)) v |= SELECT;
         if (!(buf[4] & 0x04)) v |= START;
-        // Strange behavior, occurs  only in GenesisPlus with SNES classic/WII-Pro controllers
-        // When no buttons are pressed, wiipad returns all buttons pressed
-        // If this happens, we need to revert to the previous state
-        if (v ==ALL_BUTTONS) {
-            v = previousState;
-        }
     }
-    previousState = v;
     return v;
 }
 
