@@ -589,7 +589,7 @@ void DrawScreen(int selectedRow, int w = 0, int h = 0, uint16_t *imagebuffer = n
         {
             strcpy(s, "O:Select X:Back");
         }
-        else if (strcmp(connectedGamePadName, "XInput") == 0 || strncmp(connectedGamePadName, "Genesis", 7) == 0)
+        else if (strcmp(connectedGamePadName, "XInput") == 0 || strncmp(connectedGamePadName, "Genesis", 7) == 0 || strcmp(connectedGamePadName, "MDArcade") == 0 )
         {
             strcpy(s, "B:Select A:Back");
         }
