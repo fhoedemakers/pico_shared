@@ -35,7 +35,9 @@
 #else
 #define FILEXTFORSEARCH ".555"
 #endif
-
+#ifndef WIIPAD_DELAYED_START
+#define WIIPAD_DELAYED_START 0
+#endif
 enum class ScreenMode
     {
         SCANLINE_8_7,

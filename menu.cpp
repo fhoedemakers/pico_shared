@@ -181,6 +181,14 @@ int Menu_LoadFrame()
         Frens::markFrameReadyForReendering(true);
     }
 #endif
+    // https://github.com/fhoedemakers/pico-genesisPlus/issues/10
+    // Initialize the Wii Pad here if delayed start is enabled, after the DAC has been initialized. 
+#if WIIPAD_DELAYED_START and WII_PIN_SDA >= 0 and WII_PIN_SCL >= 0
+    // check only every 60 frames.
+    if (!wiipad_is_connected() && onOff) {
+        wiipad_begin();
+    }
+#endif
     return count;
 }
 
@@ -575,13 +583,13 @@ void DrawScreen(int selectedRow, int w = 0, int h = 0, uint16_t *imagebuffer = n
         putText(SCREEN_COLS / 2 - strlen(spaces) / 2, SCREEN_ROWS - 1, spaces, settings.bgcolor, settings.bgcolor);
         snprintf(tmpstr, sizeof(tmpstr), "- %s -", connectedGamePadName[0] != 0 ? connectedGamePadName : "No USB GamePad");
         putText(SCREEN_COLS / 2 - strlen(tmpstr) / 2, SCREEN_ROWS - 1, tmpstr, CBLUE, CWHITE);
-        snprintf(s, sizeof(s), "%c%dK", Frens::isPsramEnabled() ? 'P' : 'F', maxRomSize / 1024);
+        snprintf(s, sizeof(s), "%c%dK %c", Frens::isPsramEnabled() ? 'P' : 'F', maxRomSize / 1024, WIIPAD_IS_CONNECTED() ? 'W' : ' ' );
         putText(1, SCREEN_ROWS - 1, s, settings.fgcolor, settings.bgcolor);
         if (strcmp(connectedGamePadName, "Dual Shock 4") == 0 || strcmp(connectedGamePadName, "Dual Sense") == 0 || strcmp(connectedGamePadName, "PSClassic") == 0)
         {
             strcpy(s, "O:Select X:Back");
         }
-        else if (strcmp(connectedGamePadName, "XInput") == 0 || strncmp(connectedGamePadName, "Genesis", 7) == 0)
+        else if (strcmp(connectedGamePadName, "XInput") == 0 || strncmp(connectedGamePadName, "Genesis", 7) == 0 || strcmp(connectedGamePadName, "MDArcade") == 0 )
         {
             strcpy(s, "B:Select A:Back");
         }
@@ -1307,6 +1315,28 @@ uint32_t loadRomInPsRam(char *curdir, char *selectedRomOrFolder, char *rompath, 
     return 0;
 #endif
 }
+
+// On Fruit Jam: SNES classic/Pro controller can cause audio DAC initialization to fail
+// Show instructions to the user on how to fix this.
+void DisplayDacError()
+{
+    ClearScreen(settings.bgcolor);
+    putText(0, 0, "Audio DAC Initialization Error", settings.fgcolor, settings.bgcolor);
+    putText(0, 3, "Sound hardware failed to start.", settings.fgcolor, settings.bgcolor);
+    putText(0, 4, "Probable cause: SNES Classic/Pro", settings.fgcolor, settings.bgcolor);
+    putText(0, 6, "Fix steps:", settings.fgcolor, settings.bgcolor);
+    putText(0, 7, "1 Unplug SNES Classic/Pro pad", settings.fgcolor, settings.bgcolor);
+    putText(0, 8, "2 Press Reset; wait for menu", settings.fgcolor, settings.bgcolor);
+    putText(0, 9, "3 Reconnect the controller", settings.fgcolor, settings.bgcolor);
+    putText(0, ENDROW - 1, "To reset:", settings.fgcolor, settings.bgcolor);
+    putText(0, ENDROW, "Press Reset on Fruit Jam board", settings.fgcolor, settings.bgcolor);
+    while (true)
+    {
+        auto frameCount = Menu_LoadFrame();
+        DrawScreen(-1);
+    }
+}  
+
 void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, const char *allowedExtensions, char *rompath, const char *emulatorType)
 {
     FRESULT fr;
@@ -1366,6 +1396,12 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
         }
         showSplash = false;
     }
+#if USE_I2S_AUDIO == PICO_AUDIO_I2S_DRIVER_TLV320
+    if (EXT_AUDIO_DACERROR())
+    {
+        DisplayDacError();     
+    }
+#endif
     if (showSplash)
     {
         showSplash = false;

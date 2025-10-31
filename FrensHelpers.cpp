@@ -1,4 +1,3 @@
-
 #include <stdio.h>
 #include <cstring>
 #include "pico.h"
@@ -7,6 +6,7 @@
 #include "pico/rand.h"
 #include "hardware/flash.h"
 #include "hardware/watchdog.h"
+#include "hardware/structs/qmi.h"
 #include "util/exclusive_proc.h"
 #include "FrensHelpers.h"
 #if CFG_TUH_RPI_PIO_USB && PICO_RP2350
@@ -1086,7 +1086,11 @@ namespace Frens
 #if NES_PIN_CLK_1 != -1
         nespad_begin(1, CPUFreqKHz, NES_PIN_CLK_1, NES_PIN_DATA_1, NES_PIN_LAT_1, NES_PIO_1);
 #endif
-#if WII_PIN_SDA >= 0 and WII_PIN_SCL >= 0
+        // Initialize the Wii Pad, but only if the pins are defined and WIIPAD_DELAYED_START is not set
+        // This allows for delayed initialization if needed to avoid conflicts with other I2C devices
+        // like the DAC on Fruit Jam.
+        // https://github.com/fhoedemakers/pico-genesisPlus/issues/10
+#if !WIIPAD_DELAYED_START and WII_PIN_SDA >= 0 and WII_PIN_SCL >= 0
         wiipad_begin();
 #endif
     }
@@ -1340,18 +1344,45 @@ namespace Frens
     void setClocksAndStartStdio(uint32_t cpuFreqKHz, vreg_voltage voltage)
     {
         // Set voltage and clock frequency
+       
+        vreg_disable_voltage_limit();
         vreg_set_voltage(voltage);
-        sleep_ms(10);
+#if !HSTX
         set_sys_clock_khz(cpuFreqKHz, true);
-
-#if HSTX
+        sleep_ms(100);
+#else  
+        if (cpuFreqKHz >= 378000)
+        {
+            /*
+             * When overclocking above ~378 MHz we must slow down and relax the execute-in-place
+             * (XIP) external flash access timings to stay within the flash device's max SPI
+             * frequency and preserve reliable instruction fetches.
+             *
+             * qmi_hw->m[0].timing directly programs the QMI (Quad/Octal Memory Interface) timing
+             * register for XIP region 0.
+             *
+             * Value 0x60007304 (fields per RP2350 datasheet):
+             *   0x3004  : core base latency / data strobe/sample delay settings
+             *   0x0070  : additional dummy cycles + turnaround adjustments
+             *   0x60000000 : sets a higher clock divisor (4x flash divisor path enabled)
+             *
+             * In short: this applies a safer (slower) flash access profile so the very high
+             * system clock does not overdrive the flash. Without this, random faults or hard
+             * crashes can occur when fetching code/data from XIP at these frequencies.
+             */
+              qmi_hw->m[0].timing = 0x60007304; // 4x FLASH divisor
+        }
+     
+        sleep_ms(100);
+        set_sys_clock_khz(cpuFreqKHz, true);
+        sleep_ms(100);
         // Reconfigure HSTX clock to 126 Mhz, so display can run at 60Hz.
         bool hstx_ok = true;
         if ((cpuFreqKHz / 1000) % 126 != 0)
         {
             // (Re)configure PLL_USB for 126 MHz HSTX source, so that we can get a 60Hz display output.
             // This will break tinyusb, but PIO USB will still work.
-            // Used by Pico-GenesisPlus which runs at 340Mhz.
+            // Used by Pico-GenesisPlus when set at 340Mhz.
             pll_deinit(pll_usb);
             pll_init(pll_usb, 1, 756000000, 6, 1); // 756 / (6*1) = 126 MHz
 
@@ -1376,7 +1407,6 @@ namespace Frens
             // DO NOT touch pll_usb: keep its 48 MHz for USB.
             // Derive 126 MHz HSTX from clk_sys (cpuFreqKHz * 1000 input).
             // This works only when clock is set to 126, 252 or 378 MHz.
-            // 252 Mhz is too slow for the Pico-GenesisPlus emulator, 378 MHz causes stability issues.
             const uint32_t sys_hz = cpuFreqKHz * 1000;
             const uint32_t target_hstx_hz = 126000000u;
 
