@@ -3,17 +3,10 @@
 #include "ff.h"
 #include "FrensHelpers.h"
 #include <stdint.h>
-#define SETTINGSFILE "/settings.dat" // File to store settings
+
+
 extern struct settings settings;
 #define SETTINGS_VERSION 101
-
-// Border rendering mode enumeration
-enum BorderMode
-{
-    DEFAULTBORDER = 0, // Use default static border
-    RANDOMBORDER = 1,  // Pick a random border each time (implementation dependent)
-    THEMEDBORDER = 2   // Use a border that matches current theme/game
-};
 
 struct settings
 {
@@ -39,15 +32,24 @@ struct settings
         unsigned short reserved : 10;
     } flags; // Total 16 bits
 };
-namespace Frens
+namespace FrensSettings
 {
-    enum emulators
+    
+    // Border rendering mode enumeration
+    enum BorderMode
     {
+        DEFAULTBORDER = 0, // Use default static border
+        RANDOMBORDER = 1,  // Pick a random border each time (implementation dependent)
+        THEMEDBORDER = 2   // Use a border that matches current theme/game
+    };
+    typedef enum {
         NES = 0,
         SMS = 1,
         GAMEBOY = 2,
-        GENESIS = 3,
-    };
+        GENESIS = 3
+    } emulators;
+    static emulators emulatorType = NES;
+    void initSettings(emulators emu) ;
     void savesettings();
     void loadsettings();
     void resetsettings();

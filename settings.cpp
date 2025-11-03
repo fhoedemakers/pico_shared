@@ -3,9 +3,24 @@
 #include <string.h>
 #include "vumeter.h"
 struct settings settings;
-namespace Frens
+namespace FrensSettings
 {
-    const char *emulatorstrings[4] = { "NES", "SMS", "GB", "MD" };
+    #define SETTINGSFILE "/settings_%s.dat" // File to store settings
+    static const char *emulatorstrings[4] = { "NES", "SMS", "GB", "MD" };
+    static char settingsFileName[21] = {};
+
+    char *getSettingsFileName()
+    {
+        if (settingsFileName[0] == '\0')
+        {
+            snprintf(settingsFileName, sizeof(settingsFileName), SETTINGSFILE, emulatorstrings[static_cast<int>(emulatorType)]);
+        }
+        return settingsFileName;
+    }
+    void initSettings(emulators emu)
+    {
+        emulatorType = emu;
+    }
     void printsettings()
     {
         printf("Settings Version: %d\n", settings.version);
@@ -48,24 +63,24 @@ namespace Frens
         FIL fil;
         UINT bw;
         FRESULT fr;
-        printf("Saving settings to %s\n", SETTINGSFILE);
-        fr = f_open(&fil, SETTINGSFILE, FA_WRITE | FA_CREATE_ALWAYS);
+        printf("Saving settings to %s\n", getSettingsFileName());
+        fr = f_open(&fil, getSettingsFileName(), FA_WRITE | FA_CREATE_ALWAYS);
         if (fr == FR_OK)
         {
             fr = f_write(&fil, &settings, sizeof(settings), &bw);
             if (fr)
             {
-                printf("Error writing %s: %d\n", SETTINGSFILE, fr);
+                printf("Error writing %s: %d\n", getSettingsFileName(), fr);
             }
             else
             {
-                printf("Wrote %d bytes to %s\n", bw, SETTINGSFILE);
+                printf("Wrote %d bytes to %s\n", bw, getSettingsFileName());
             }
             f_close(&fil);
         }
         else
         {
-            printf("Error opening %s: %d\n", SETTINGSFILE, fr);
+            printf("Error opening %s: %d\n", getSettingsFileName(), fr);
         }
         printsettings();
     }
@@ -80,25 +95,25 @@ namespace Frens
         // Load settings from file
         printf("Loading settings\n");
         // determine size of settings file
-        fr = f_stat(SETTINGSFILE, &fno);
+        fr = f_stat(getSettingsFileName(), &fno);
         if (fr == FR_OK)
         {
-            printf("Size of %s: %lu bytes\n", SETTINGSFILE, fno.fsize);
+            printf("Size of %s: %lu bytes\n", getSettingsFileName(), fno.fsize);
             if (fno.fsize != sizeof(settings))
             {
-                printf("Size of %s is not %d bytes, resetting settings\n", SETTINGSFILE, sizeof(settings));
+                printf("Size of %s is not %d bytes, resetting settings\n", getSettingsFileName(), sizeof(settings));
                 resetsettings();
                 savesettings();
             }
             else
             {
-                fr = f_open(&fil, SETTINGSFILE, FA_READ);
+                fr = f_open(&fil, getSettingsFileName(), FA_READ);
                 if (fr == FR_OK)
                 {
                     fr = f_read(&fil, &settings, sizeof(settings), &br);
                     if (fr)
                     {
-                        printf("Error reading %s: %d\n", SETTINGSFILE, fr);
+                        printf("Error reading %s: %d\n", getSettingsFileName(), fr);
                         resetsettings();
                     }
                     else
@@ -107,16 +122,16 @@ namespace Frens
                         if (br != sizeof(settings)  || settings.version != SETTINGS_VERSION)
                         {
                             if (settings.version != SETTINGS_VERSION) {
-                                printf("File %s has wrong version %d, expected %d\n", SETTINGSFILE, settings.version, SETTINGS_VERSION);
+                                printf("File %s has wrong version %d, expected %d\n", getSettingsFileName(), settings.version, SETTINGS_VERSION);
                             } else {
-                                printf("File %s is corrupt, expected %d bytes, read %d\n", SETTINGSFILE, sizeof(settings), br);
+                                printf("File %s is corrupt, expected %d bytes, read %d\n", getSettingsFileName(), sizeof(settings), br);
                             }
                             resetsettings();
                             savesettings();
                         }
                         else
                         {
-                            printf("Read %d bytes from %s\n", br, SETTINGSFILE);
+                            printf("Read %d bytes from %s\n", br, getSettingsFileName());
                         }
                     }
                     f_close(&fil);
@@ -126,11 +141,11 @@ namespace Frens
                     // If file does not exist, reset settings to default
                     if (fr == FR_NO_FILE)
                     {
-                        printf("File %s does not exist\n", SETTINGSFILE);
+                        printf("File %s does not exist\n", getSettingsFileName());
                     }
                     else
                     {
-                        printf("Error opening %s: %d\n", SETTINGSFILE, fr);
+                        printf("Error opening %s: %d\n", getSettingsFileName(), fr);
                     }
                     resetsettings();
                 }
@@ -145,7 +160,7 @@ namespace Frens
         }
         else
         {
-            printf("Settings file not found %s: %d\n", SETTINGSFILE, fr);
+            printf("Settings file not found %s: %d\n", getSettingsFileName(), fr);
             resetsettings();
         }
         printsettings();
