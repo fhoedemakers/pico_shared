@@ -8,22 +8,15 @@ extern struct settings settings;
 #define SETTINGS_VERSION 101
 
 // Border rendering mode enumeration
-enum BorderMode {
-    DEFAULTBORDER = 0,  // Use default static border
-    RANDOMBORDER = 1,   // Pick a random border each time (implementation dependent)
-    THEMEDBORDER = 2    // Use a border that matches current theme/game
+enum BorderMode
+{
+    DEFAULTBORDER = 0, // Use default static border
+    RANDOMBORDER = 1,  // Pick a random border each time (implementation dependent)
+    THEMEDBORDER = 2   // Use a border that matches current theme/game
 };
-
-enum emulators {
-    NES = 0,
-    SMS = 1,
-    GAMEBOY = 2,
-    GENESIS = 3,
-};
-
 
 struct settings
-{    
+{
     unsigned short version = SETTINGS_VERSION; // version of settings structure
     union
     {
@@ -42,12 +35,19 @@ struct settings
         unsigned short useExtAudio : 1;   // 0 = use DVIAudio, 1 = use external Audio
         unsigned short enableVUMeter : 1; // 0 = disable VU meter, 1 = enable VU meter
         unsigned short borderMode : 2;    // BorderMode enum (2 bits)
-        unsigned short dmgLCDPalette : 2;   // DMG LCD Palette (2 bits)
+        unsigned short dmgLCDPalette : 2; // DMG LCD Palette (2 bits)
         unsigned short reserved : 10;
     } flags; // Total 16 bits
 };
 namespace Frens
 {
+    enum emulators
+    {
+        NES = 0,
+        SMS = 1,
+        GAMEBOY = 2,
+        GENESIS = 3,
+    };
     void savesettings();
     void loadsettings();
     void resetsettings();
