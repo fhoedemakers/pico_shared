@@ -6,7 +6,9 @@
 #include "pico/rand.h"
 #include "hardware/flash.h"
 #include "hardware/watchdog.h"
+#if PICO_RP2350
 #include "hardware/structs/qmi.h"
+#endif
 #include "util/exclusive_proc.h"
 #include "FrensHelpers.h"
 #if CFG_TUH_RPI_PIO_USB && PICO_RP2350
@@ -524,7 +526,7 @@ namespace Frens
         bool scaleMode8_7_;
         settings.screenMode = static_cast<ScreenMode>((static_cast<int>(settings.screenMode) + incr) & 3);
         scaleMode8_7_ = Frens::applyScreenMode(settings.screenMode);
-        savesettings();
+        FrensSettings::savesettings();
         return scaleMode8_7_;
     }
 #endif
@@ -1220,11 +1222,11 @@ namespace Frens
         // auto cap = storage_get_flash_capacity();
         // printf("Total flash size: %d bytes (%d Kbytes)\n", cap,cap/ 1024);
         // reset settings to default in case SD card could not be mounted
-        resetsettings();
+        FrensSettings::resetsettings();
         if (initSDCard())
         {
             ok = true;
-            loadsettings();
+             FrensSettings::loadsettings();
             // When a game is started from the menu, the menu will reboot the device.
             // After reboot the emulator will start the selected game.
             // The watchdog timer is used to detect if the reboot was caused by the menu.

@@ -300,7 +300,7 @@ void RomSelect_PadState(DWORD *pdwPad1, bool ignorepushed = false)
         else if (pushed & A)
         {
             printf("Saving colors to settings file.\n");
-            Frens::savesettings();
+            FrensSettings::savesettings();
             v = 0;
         }
         else if (pushed & B)
@@ -310,7 +310,7 @@ void RomSelect_PadState(DWORD *pdwPad1, bool ignorepushed = false)
             settings.fgcolor = DEFAULT_FGCOLOR;
             settings.bgcolor = DEFAULT_BGCOLOR;
             resetColors(prevFgColor, prevBgColor);
-            Frens::savesettings();
+            FrensSettings::savesettings();
             v = 0;
         }
 
@@ -1770,7 +1770,7 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
     Frens::f_free(screenBuffer);
     //Frens::f_free(buffer);
 
-    Frens::savesettings();
+    FrensSettings::savesettings();
 #if !HSTX
     scaleMode8_7_ = Frens::applyScreenMode(settings.screenMode);
     // Reset the screen mode to the original settings
