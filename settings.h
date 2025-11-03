@@ -14,9 +14,16 @@ enum BorderMode {
     THEMEDBORDER = 2    // Use a border that matches current theme/game
 };
 
-struct settings
-{
+enum emulators {
+    NES = 0,
+    SMS = 1,
+    GAMEBOY = 2,
+    GENESIS = 3,
+};
 
+
+struct settings
+{    
     unsigned short version = SETTINGS_VERSION; // version of settings structure
     union
     {

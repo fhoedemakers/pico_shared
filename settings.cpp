@@ -5,6 +5,7 @@
 struct settings settings;
 namespace Frens
 {
+    const char *emulatorstrings[4] = { "NES", "SMS", "GB", "MD" };
     void printsettings()
     {
         printf("Settings Version: %d\n", settings.version);
