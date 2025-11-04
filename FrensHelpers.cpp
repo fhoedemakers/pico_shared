@@ -535,7 +535,7 @@ namespace Frens
 #if !HSTX
 #else
         settings.scanlineOn = settings.scanlineOn != 0 ? 0 : 1; // toggle scanlineOn
-        savesettings();
+        FrensSettings::savesettings();
         hstx_setScanLines(settings.scanlineOn);
         printf("Scanlines %s\n", settings.scanlineOn ? "enabled" : "disabled");
 #endif
