@@ -1352,6 +1352,7 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
     // --- Options Menu Implementation ---
     auto showOptionsMenu = [&]() {
         // Local working copy of settings (changes applied only after SAVE/DEFAULT)
+        printf("First visible row index before options menu: %d\n", settings.firstVisibleRowINDEX);
         struct settings working = settings;
         // Screen row indices:
         // 0: Title (non-selectable)
@@ -1654,6 +1655,7 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
             FrensSettings::savesettings();
         }
         // Rebuild rom list display afterwards
+        printf("First visible row index after options menu: %d\n", settings.firstVisibleRowINDEX);
         displayRoms(romlister, settings.firstVisibleRowINDEX);
     }; // end lambda showOptionsMenu
     while (1)
