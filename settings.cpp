@@ -35,6 +35,9 @@ namespace FrensSettings
         printf("enableVUMeter: %d\n", settings.flags.enableVUMeter);
         printf("borderMode: %d\n", settings.flags.borderMode);
         printf("dmgLCDPalette: %d\n", settings.flags.dmgLCDPalette);
+        printf("audioEnabled: %d\n", settings.flags.audioEnabled);
+        printf("displayFrameRate: %d\n", settings.flags.displayFrameRate);
+        printf("frameSkip: %d\n", settings.flags.frameSkip);
         printf("\n");
     }
     void resetsettings()
@@ -51,6 +54,9 @@ namespace FrensSettings
         settings.flags.enableVUMeter = ENABLE_VU_METER ? 1 : 0; // default to ENABLE_VU_METER
         settings.flags.borderMode = THEMEDBORDER;
         settings.flags.dmgLCDPalette = 0; // default DMG LCD Palette, DMG Green
+        settings.flags.audioEnabled = 1; // audio on by default
+        settings.flags.displayFrameRate = 0; // default: do not show FPS overlay
+        settings.flags.frameSkip = 0; // default: frame skipping disabled
         settings.version = SETTINGS_VERSION;
         // clear all the reserved settings
         settings.flags.reserved = 0;

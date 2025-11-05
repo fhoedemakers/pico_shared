@@ -6,16 +6,13 @@
 
 
 extern struct settings settings;
-#define SETTINGS_VERSION 101
+#define SETTINGS_VERSION 102
 
 struct settings
 {
     unsigned short version = SETTINGS_VERSION; // version of settings structure
-    union
-    {
-        ScreenMode screenMode;
-        uint8_t scanlineOn;
-    };
+   
+    ScreenMode screenMode;
     short firstVisibleRowINDEX;
     short selectedRow;
     short horzontalScrollIndex;
@@ -25,11 +22,15 @@ struct settings
     char currentDir[FF_MAX_LFN];
     struct
     {
-        unsigned short useExtAudio : 1;   // 0 = use DVIAudio, 1 = use external Audio
-        unsigned short enableVUMeter : 1; // 0 = disable VU meter, 1 = enable VU meter
-        unsigned short borderMode : 2;    // BorderMode enum (2 bits)
-        unsigned short dmgLCDPalette : 2; // DMG LCD Palette (2 bits)
-        unsigned short reserved : 10;
+        unsigned short useExtAudio : 1;      // 0 = use DVIAudio, 1 = use external Audio
+        unsigned short enableVUMeter : 1;    // 0 = disable VU meter, 1 = enable VU meter
+        unsigned short borderMode : 2;       // BorderMode enum (2 bits)
+        unsigned short dmgLCDPalette : 2;    // DMG LCD Palette (2 bits) 0=Green 1=Color 2=B&W
+        unsigned short audioEnabled : 1;     // 1 = audio on, 0 = audio muted
+        unsigned short displayFrameRate : 1; // 1 = show FPS overlay, 0 = do not show
+        unsigned short frameSkip : 1;        // 1 = enable frame skipping, 0 = disable frame skipping
+        unsigned short scanlineOn : 1;        // 1 = scanlines on, 0 = scanlines off 
+        unsigned short reserved : 6;         // keep struct size the same
     } flags; // Total 16 bits
 };
 namespace FrensSettings

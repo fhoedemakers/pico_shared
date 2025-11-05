@@ -534,19 +534,19 @@ namespace Frens
     {
 #if !HSTX
 #else
-        settings.scanlineOn = settings.scanlineOn != 0 ? 0 : 1; // toggle scanlineOn
-        FrensSettings::savesettings();
-        hstx_setScanLines(settings.scanlineOn);
-        printf("Scanlines %s\n", settings.scanlineOn ? "enabled" : "disabled");
+    settings.flags.scanlineOn = settings.flags.scanlineOn ? 0 : 1; // toggle
+    FrensSettings::savesettings();
+    hstx_setScanLines(settings.flags.scanlineOn);
+    printf("Scanlines %s\n", settings.flags.scanlineOn ? "enabled" : "disabled");
 #endif
     }
     void restoreScanlines()
     {
 #if !HSTX
 #else
-        hstx_setScanLines(settings.scanlineOn > 0);
+    hstx_setScanLines(settings.flags.scanlineOn);
 #endif
-        printf("Restoring scanlines: %s\n", settings.scanlineOn ? "enabled" : "disabled");
+    printf("Restoring scanlines: %s\n", settings.flags.scanlineOn ? "enabled" : "disabled");
     }
 
     /// @brief Allocates memory from PSRAM if available, otherwise uses malloc
