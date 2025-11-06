@@ -1354,6 +1354,18 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
         // Local working copy of settings (changes applied only after SAVE/DEFAULT)
         printf("First visible row index before options menu: %d\n", settings.firstVisibleRowINDEX);
         struct settings working = settings;
+        // Ensure current screenMode is valid; if not, pick first available
+#if !HSTX
+        {
+            int cur = static_cast<int>(working.screenMode);
+            if (cur < 0 || cur > 3 || !g_available_screen_modes[cur]) {
+                // find first available
+                for (int i = 0; i < 4; ++i) {
+                    if (g_available_screen_modes[i]) { working.screenMode = static_cast<ScreenMode>(i); break; }
+                }
+            }
+        }
+#endif
         // Screen row indices:
         // 0: Title (non-selectable)
         // 1..visibleCount: options
@@ -1424,11 +1436,15 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
                 case MOPT_SCREENMODE: {
                     label = "Screen Mode";
                     switch (working.screenMode) {
-                        case ScreenMode::SCANLINE_1_1: value = "1:1 SL"; break;
-                        case ScreenMode::SCANLINE_8_7: value = "8:7 SL"; break;
-                        case ScreenMode::NOSCANLINE_1_1: value = "1:1"; break;
-                        case ScreenMode::NOSCANLINE_8_7: value = "8:7"; break;
+                        case ScreenMode::SCANLINE_1_1: value = "1:1 SCANLINES"; break;
+                        case ScreenMode::SCANLINE_8_7: value = "8:7 SCANLINES"; break;
+                        case ScreenMode::NOSCANLINE_1_1: value = "1:1 NO SCANLINES"; break;
+                        case ScreenMode::NOSCANLINE_8_7: value = "8:7 NO SCANLINES"; break;
                         default: value = "?"; break;
+                    }
+                    // If current mode is not available show marker
+                    if (!g_available_screen_modes[static_cast<int>(working.screenMode)]) {
+                        value = "None"; // fallback when all disabled
                     }
                     break; }
                 case MOPT_SCANLINES: {
@@ -1445,7 +1461,7 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
                     value = working.flags.displayFrameRate ? "ON" : "OFF";
                     break; }
                 case MOPT_AUDIO_ENABLE: {
-                    label = "Audio";
+                    label = "Audio enabled";
                     value = working.flags.audioEnabled ? "ON" : "OFF";
                     break; }
                 case MOPT_EXTERNAL_AUDIO: {
@@ -1453,12 +1469,12 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
                     value = working.flags.useExtAudio ? "Enable" : "Disable";
                     break; }
                 case MOPT_FONT_COLOR: {
-                    label = "Font Color";
+                    label = "Menu Font Color";
                     snprintf(line, sizeof(line), "%d", working.fgcolor);
                     value = line;
                     break; }
                 case MOPT_FONT_BACK_COLOR: {
-                    label = "Font Back Color";
+                    label = "Menu Font Back Color";
                     snprintf(line, sizeof(line), "%d", working.bgcolor);
                     value = line;
                     break; }
@@ -1504,6 +1520,9 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
             int gridStartCol = (SCREEN_COLS - gridWidth) / 2;
             if (gridStartCol < 0) gridStartCol = 0;
             for (int pr = 0; pr < blockRows; ++pr) {
+                char tmp[4];
+                snprintf(tmp, sizeof(tmp), "%02d-", pr * blocksPerRow);
+                putText(gridStartCol - 4, row, tmp, CBLACK, CWHITE); // row label
                 for (int pc = 0; pc < blocksPerRow; ++pc) {
                     int colorIndex = pr * blocksPerRow + pc;
                     if (colorIndex < 64) {
@@ -1575,22 +1594,20 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
                         bool right = pad & RIGHT;
                         switch (optIndex) {
                         case MOPT_SCREENMODE: {
-                            // Cycle through 4 modes forward/backward
+                            // Filter cycling: skip unavailable modes using enumeration order (0..3)
+                            int cur = static_cast<int>(working.screenMode);
+                            // Count available modes
+                            int availableCount = 0; for (int i=0;i<4;++i) if (g_available_screen_modes[i]) availableCount++;
+                            if (availableCount == 0) { /* nothing selectable */ break; }
                             if (right) {
-                                switch (working.screenMode) {
-                                    case ScreenMode::SCANLINE_1_1: working.screenMode = ScreenMode::SCANLINE_8_7; break;
-                                    case ScreenMode::SCANLINE_8_7: working.screenMode = ScreenMode::NOSCANLINE_1_1; break;
-                                    case ScreenMode::NOSCANLINE_1_1: working.screenMode = ScreenMode::NOSCANLINE_8_7; break;
-                                    case ScreenMode::NOSCANLINE_8_7: working.screenMode = ScreenMode::SCANLINE_1_1; break;
-                                    default: working.screenMode = ScreenMode::SCANLINE_1_1; break;
+                                for (int step=0; step<4; ++step) {
+                                    cur = (cur + 1) & 3; // wrap 0..3
+                                    if (g_available_screen_modes[cur]) { working.screenMode = static_cast<ScreenMode>(cur); break; }
                                 }
                             } else { // left
-                                switch (working.screenMode) {
-                                    case ScreenMode::SCANLINE_1_1: working.screenMode = ScreenMode::NOSCANLINE_8_7; break;
-                                    case ScreenMode::SCANLINE_8_7: working.screenMode = ScreenMode::SCANLINE_1_1; break;
-                                    case ScreenMode::NOSCANLINE_1_1: working.screenMode = ScreenMode::SCANLINE_8_7; break;
-                                    case ScreenMode::NOSCANLINE_8_7: working.screenMode = ScreenMode::NOSCANLINE_1_1; break;
-                                    default: working.screenMode = ScreenMode::SCANLINE_1_1; break;
+                                for (int step=0; step<4; ++step) {
+                                    cur = (cur + 3) & 3; // equivalent to -1 & 3
+                                    if (g_available_screen_modes[cur]) { working.screenMode = static_cast<ScreenMode>(cur); break; }
                                 }
                             }
                             break; }
