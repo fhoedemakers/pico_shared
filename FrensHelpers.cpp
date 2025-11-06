@@ -22,6 +22,7 @@
 #include "nespad.h"
 #include "wiipad.h"
 #include "settings.h"
+#include "menu_options.h" // for g_available_screen_modes visibility
 
 #include "PicoPlusPsram.h"
 #include "vumeter.h"
@@ -523,9 +524,28 @@ namespace Frens
 
     bool screenMode(int incr)
     {
-        bool scaleMode8_7_;
-        settings.screenMode = static_cast<ScreenMode>((static_cast<int>(settings.screenMode) + incr) & 3);
-        scaleMode8_7_ = Frens::applyScreenMode(settings.screenMode);
+        // Determine next (or previous) available screen mode based on g_available_screen_modes.
+        // Only modes with value 1 are selectable. Order must match ScreenMode enum.
+        constexpr int kModeCount = 4; // Mask logic (&3) previously assumed 4 modes.
+        int current = static_cast<int>(settings.screenMode);
+        int attempts = 0;
+        do
+        {
+            current = (current + incr) & 3; // wrap 0..3
+            attempts++;
+            // Break if this mode is available
+            if (g_available_screen_modes[current])
+                break;
+        } while (attempts < kModeCount); // prevent infinite loop if none available
+
+        // If no available mode found (all disabled), keep original
+        if (!g_available_screen_modes[current])
+        {
+            current = static_cast<int>(settings.screenMode);
+        }
+
+        settings.screenMode = static_cast<ScreenMode>(current);
+        bool scaleMode8_7_ = Frens::applyScreenMode(settings.screenMode);
         FrensSettings::savesettings();
         return scaleMode8_7_;
     }
