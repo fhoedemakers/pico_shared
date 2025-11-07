@@ -16,6 +16,9 @@ namespace Frens
 		max_entries = buffersize / sizeof(RomEntry);
 		const char *delimiters = ", ";
 		extensions = cstr_split(allowedExtensions, delimiters, &numberOfExtensions);
+		pFile = (FILINFO *)Frens::f_malloc(sizeof(FILINFO));
+		pDir = (DIR *)Frens::f_malloc(sizeof(DIR));
+		pTemp = (RomEntry *)Frens::f_malloc(sizeof(RomEntry));
 	}
 
 	RomLister::~RomLister()
@@ -33,6 +36,9 @@ namespace Frens
 			}
 			Frens::f_free(extensions);
 		}
+		Frens::f_free(pFile);
+		Frens::f_free(pDir);
+		Frens::f_free(pTemp);
 	}
 
 	RomLister::RomEntry *RomLister::GetEntries()
@@ -68,25 +74,27 @@ namespace Frens
 	{
 		FRESULT fr;
 		numberOfEntries = 0;
-		strcpy(directoryname, directoryName);
-		FILINFO file;
-		RomEntry tempEntry;
-		if (directoryname == "")
+		// safer copy
+		strncpy(directoryname, directoryName, sizeof(directoryname) - 1);
+		directoryname[sizeof(directoryname) - 1] = '\0';
+
+		// Fix: real empty check (old code compared pointer)
+		if (directoryname[0] == '\0')
 		{
 			return;
 		}
+
 		if (entries == nullptr)
 		{
 			printf("Allocating %d bytes for directory contents\n", buffersize);
 			entries = (RomEntry *)Frens::f_malloc(buffersize);
 		}
 		// Clear previous entries
-		DIR dir;
 		printf("chdir(%s)\n", directoryName);
 		// for f_getcwd to work, set
 		//   #define FF_FS_RPATH		2
 		// in ffconf.c
-		fr = f_chdir(directoryName); // f_chdir(directoryName);
+		fr = f_chdir(directoryName);
 		if (fr != FR_OK)
 		{
 			printf("Error changing dir: %d\n", fr);
@@ -95,38 +103,36 @@ namespace Frens
 		printf("Listing current directory, reading maximum %d entries.\n", max_entries);
 		uint availMem = Frens::GetAvailableMemory();
 		printf("Available memory: %d bytes\n", availMem);
-		f_opendir(&dir, ".");
-		while (f_readdir(&dir, &file) == FR_OK && file.fname[0])
+		f_opendir(pDir, ".");
+		while (f_readdir(pDir, pFile) == FR_OK && pFile->fname[0])
 		{
 			if (numberOfEntries < max_entries)
 			{
-				if (file.fattrib & AM_HID || file.fname[0] == '.' ||
-					strcasecmp(file.fname, "System Volume Information") == 0 ||
-					strcasecmp(file.fname, "SAVES") == 0 ||
-					strcasecmp(file.fname, "EDFC") == 0 ||
-					strcasecmp(file.fname, "Metadata") == 0)
+				if (pFile->fattrib & AM_HID || pFile->fname[0] == '.' ||
+					strcasecmp(pFile->fname, "System Volume Information") == 0 ||
+					strcasecmp(pFile->fname, "SAVES") == 0 ||
+					strcasecmp(pFile->fname, "EDFC") == 0 ||
+					strcasecmp(pFile->fname, "Metadata") == 0)
 				{
-					// skip hidden files and directories like .git, .config, .Trash, also "." and ".."
-					// printf("Skipping hidden file or directory %s\n", file.fname);
 					continue;
 				}
-				if (strlen(file.fname) < ROMLISTER_MAXPATH)
+				if (strlen(pFile->fname) < ROMLISTER_MAXPATH)
 				{
-					struct RomEntry romInfo;
-					strcpy(romInfo.Path, file.fname);
-					romInfo.IsDirectory = file.fattrib & AM_DIR;
-					// if (!romInfo.IsDirectory && Frens::cstr_endswith(romInfo.Path, ".nes"))
+					RomEntry romInfo;
+					strcpy(romInfo.Path, pFile->fname);
+					romInfo.IsDirectory = pFile->fattrib & AM_DIR;
 					if (!romInfo.IsDirectory)
 					{
 						if (IsextensionAllowed(romInfo.Path))
 						{
-							if (file.fsize < availMem)
+							// availMem already computed earlier (unchanged)
+							if (pFile->fsize < availMem)
 							{
 								entries[numberOfEntries++] = romInfo;
 							}
 							else
 							{
-								printf("Skipping %s, %d KBytes too large.\n", file.fname, (file.fsize - maxRomSize) / 1024);
+								printf("Skipping %s, %d KBytes too large.\n", pFile->fname, (pFile->fsize - maxRomSize) / 1024);
 							}
 						}
 					}
@@ -137,19 +143,16 @@ namespace Frens
 				}
 				else
 				{
-					printf("Filename too long: %s\n", file.fname);
+					printf("Filename too long: %s\n", pFile->fname);
 				}
 			}
 			else
 			{
-				if (numberOfEntries == max_entries)
-				{
-					printf("Max entries reached.\n");
-				}
-				printf("Skipping %s\n", file.fname);
+				printf("Skipping %s, maxentries %d reached\n", pFile->fname, max_entries);
+				break;
 			}
 		}
-		f_closedir(&dir);
+		f_closedir(pDir);
 		// (bubble) Sort
 		if (numberOfEntries > 1)
 		{
@@ -158,7 +161,6 @@ namespace Frens
 				for (int j = 0; j < numberOfEntries - 1 - pass; ++j)
 				{
 					int result = 0;
-					// Directories first in the list
 					if (entries[j].IsDirectory && entries[j + 1].IsDirectory == false)
 					{
 						continue;
@@ -174,9 +176,9 @@ namespace Frens
 					}
 					if (swap || result > 0)
 					{
-						tempEntry = entries[j];
+						*pTemp = entries[j];
 						entries[j] = entries[j + 1];
-						entries[j + 1] = tempEntry;
+						entries[j + 1] = *pTemp;
 					}
 				}
 			}
