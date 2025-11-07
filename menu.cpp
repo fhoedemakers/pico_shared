@@ -1272,7 +1272,19 @@ void DisplayDacError()
         DrawScreen(-1);
     }
 }  
-
+void waitForNoButtonPress()
+{
+    DWORD PAD1_Latch;
+    while (true)
+    {
+        Menu_LoadFrame();
+        RomSelect_PadState(&PAD1_Latch);
+        if (PAD1_Latch == 0)
+        {
+            return;
+        }
+    }
+}
 void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, const char *allowedExtensions, char *rompath, const char *emulatorType)
 {
     FRESULT fr;
@@ -1351,8 +1363,8 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
 
     // --- Options Menu Implementation ---
     auto showOptionsMenu = [&]() {
+        bool settingsChanged = false;
         // Local working copy of settings (changes applied only after SAVE/DEFAULT)
-        printf("First visible row index before options menu: %d\n", settings.firstVisibleRowINDEX);
         struct settings working = settings;
         // Ensure current screenMode is valid; if not, pick first available
 #if !HSTX
@@ -1539,7 +1551,11 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
             putText(infoCol, row++, infoLine, working.fgcolor, working.bgcolor);
             // Spacer after palette/info
             putText(0, row++, "", CBLACK, CWHITE);
-            putText(0, row++, "SAVE", CBLACK, CWHITE);
+            if (settingsChanged) {
+                putText(0, row++, "SAVE *", CBLACK, CWHITE);
+            } else {
+                putText(0, row++, "SAVE", CBLACK, CWHITE);
+            }
             putText(0, row++, "CANCEL", CBLACK, CWHITE);
             putText(0, row++, "DEFAULT", CBLACK, CWHITE);
             // Help text (non-selectable) centered near bottom.
@@ -1562,6 +1578,7 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
         };
         while (!exitMenu) {
             // Always redraw before reading pad state (requested behavior)
+            settingsChanged = (memcmp(&working, &settings, sizeof(settings)) != 0);
             redraw();
             DWORD pad;
             RomSelect_PadState(&pad);
@@ -1675,6 +1692,7 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
         printf("First visible row index after options menu: %d\n", settings.firstVisibleRowINDEX);
         displayRoms(romlister, settings.firstVisibleRowINDEX);
     }; // end lambda showOptionsMenu
+    waitForNoButtonPress();
     while (1)
     {
 
@@ -2025,16 +2043,7 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
 
     ClearScreen(CBLACK); // Removes artifacts from previous screen
                          // Wait until user has released all buttons
-    while (1)
-    {
-        Menu_LoadFrame();
-        DrawScreen(-1);
-        RomSelect_PadState(&PAD1_Latch, true);
-        if (PAD1_Latch == 0)
-        {
-            break;
-        }
-    }
+    waitForNoButtonPress();
     Frens::f_free(screenBuffer);
     //Frens::f_free(buffer);
 
