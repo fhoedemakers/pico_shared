@@ -1311,6 +1311,11 @@ void waitForNoButtonPress()
 bool showOptionsMenu()
 {
     bool settingsChanged = false;
+    // Preserve stack by using static buffers (RP2040 has limited stack)
+    static char buttonLabel1[2]; // e.g., "A", "B", "X", "O"
+    static char buttonLabel2[2]; // e.g., "A", "B", "
+    static char line[41];
+    static char valueBuf[16];     // NEW: separate buffer for numeric values
     // Local working copy of settings (changes applied only after SAVE/DEFAULT)
     struct settings working = settings;
     // Ensure current screenMode is valid; if not, pick first available
@@ -1392,10 +1397,7 @@ bool showOptionsMenu()
     auto redraw = [&]()
     {
         ClearScreen(CWHITE); // Always white background
-        char buttonLabel1[2]; // e.g., "A", "B", "X", "O"
-        char buttonLabel2[2]; // e.g., "A", "B", "
-        char line[41];
-        char valueBuf[16];     // NEW: separate buffer for numeric values
+      
         int row = 0;
 
          if (strcmp(connectedGamePadName, "Dual Shock 4") == 0 || strcmp(connectedGamePadName, "Dual Sense") == 0 || strcmp(connectedGamePadName, "PSClassic") == 0)
@@ -1628,7 +1630,7 @@ bool showOptionsMenu()
         {
             drawline(lineNr, selectedRowLocal);
         }
-    };
+    }; // redraw lambda
     while (!exitMenu)
     {
         // Always redraw before reading pad state (requested behavior)
