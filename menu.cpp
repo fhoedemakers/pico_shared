@@ -127,13 +127,16 @@ static bool isArtWorkEnabled()
     if (strcmp(emulator, "NES") == 0)
     {
         sprintf(PATH, "/Metadata/%s/Images/320/D/D0E96F6B.444", emulator);
-    } else if (strcmp(emulator, "SMS") == 0)
+    }
+    else if (strcmp(emulator, "SMS") == 0)
     {
         sprintf(PATH, "/Metadata/%s/Images/160/6/6A5A1E39.444", emulator);
-    } else if (strcmp(emulator, "MD") == 0)
+    }
+    else if (strcmp(emulator, "MD") == 0)
     {
         sprintf(PATH, "/Metadata/%s/Images/160/5/56976261.444", emulator);
-    } else if (strcmp(emulator, "GB") == 0)
+    }
+    else if (strcmp(emulator, "GB") == 0)
     {
         sprintf(PATH, "/Metadata/%s/Images/160/0/00A9001E.444", emulator);
     }
@@ -183,10 +186,11 @@ int Menu_LoadFrame()
     }
 #endif
     // https://github.com/fhoedemakers/pico-genesisPlus/issues/10
-    // Initialize the Wii Pad here if delayed start is enabled, after the DAC has been initialized. 
+    // Initialize the Wii Pad here if delayed start is enabled, after the DAC has been initialized.
 #if WIIPAD_DELAYED_START and WII_PIN_SDA >= 0 and WII_PIN_SCL >= 0
     // check only every 60 frames.
-    if (!wiipad_is_connected() && onOff) {
+    if (!wiipad_is_connected() && onOff)
+    {
         wiipad_begin();
     }
 #endif
@@ -372,14 +376,15 @@ void drawline(int scanline, int selectedRow, int w = 0, int h = 0, uint16_t *ima
             auto rowOffset = (scanline - imagey) * w;
             memcpy(WorkLineRom + imagex, imagebuffer + rowOffset, w * sizeof(uint16_t));
             offset = w;
-         } else {
+        }
+        else
+        {
             // avoid garbeled text when image is smaller than 120 pixels high
-            if (scanline < 120 ) {
+            if (scanline < 120)
+            {
                 offset = w;
             }
-         }
-         
-        
+        }
     }
     // Only show text when not in screensaver mode (imagex and imagey are 0)
     if (imagex == 0 && imagey == 0)
@@ -513,19 +518,20 @@ void DrawScreen(int selectedRow, int w = 0, int h = 0, uint16_t *imagebuffer = n
 
     if (selectedRow != -1)
     {
-        if (EXT_AUDIO_DACERROR()) {
+        if (EXT_AUDIO_DACERROR())
+        {
             putText(1, ENDROW + 3, "Dac Initialisation Failed", CRED, CWHITE);
         }
         putText(SCREEN_COLS / 2 - strlen(spaces) / 2, SCREEN_ROWS - 1, spaces, settings.bgcolor, settings.bgcolor);
         snprintf(tmpstr, sizeof(tmpstr), "- %s -", connectedGamePadName[0] != 0 ? connectedGamePadName : "No USB GamePad");
         putText(SCREEN_COLS / 2 - strlen(tmpstr) / 2, SCREEN_ROWS - 1, tmpstr, CBLUE, CWHITE);
-        snprintf(s, sizeof(s), "%c%dK %c", Frens::isPsramEnabled() ? 'P' : 'F', maxRomSize / 1024, WIIPAD_IS_CONNECTED() ? 'W' : ' ' );
+        snprintf(s, sizeof(s), "%c%dK %c", Frens::isPsramEnabled() ? 'P' : 'F', maxRomSize / 1024, WIIPAD_IS_CONNECTED() ? 'W' : ' ');
         putText(1, SCREEN_ROWS - 1, s, settings.fgcolor, settings.bgcolor);
         if (strcmp(connectedGamePadName, "Dual Shock 4") == 0 || strcmp(connectedGamePadName, "Dual Sense") == 0 || strcmp(connectedGamePadName, "PSClassic") == 0)
         {
             strcpy(s, "O:Select X:Back");
         }
-        else if (strcmp(connectedGamePadName, "XInput") == 0 || strncmp(connectedGamePadName, "Genesis", 7) == 0 || strcmp(connectedGamePadName, "MDArcade") == 0 )
+        else if (strcmp(connectedGamePadName, "XInput") == 0 || strncmp(connectedGamePadName, "Genesis", 7) == 0 || strcmp(connectedGamePadName, "MDArcade") == 0)
         {
             strcpy(s, "B:Select A:Back");
         }
@@ -543,6 +549,23 @@ void DrawScreen(int selectedRow, int w = 0, int h = 0, uint16_t *imagebuffer = n
             strcpy(s, "START:Info");
             putText(17, ENDROW + 2, s, settings.fgcolor, settings.bgcolor);
         }
+        int optionsRow = artworkEnabled ? ENDROW + 3 : ENDROW + 2;
+        if (strcmp(connectedGamePadName, "Genesis Mini 2") == 0 || strcmp(connectedGamePadName, "MDArcade") == 0)
+        {
+            strcpy(s, "Mode:Options");
+        }
+        else
+        {
+            if (strncmp(connectedGamePadName, "Genesis", 7) == 0)
+            {
+                strcpy(s, "C:Options");
+            }
+            else
+            {
+                strcpy(s, "SELECT:Options");
+            }
+        }
+        putText(17, optionsRow, s, settings.fgcolor, settings.bgcolor);
     }
 
     for (auto line = 0; line < 240; line++)
@@ -684,7 +707,6 @@ void showSplashScreen()
         }
     }
 }
-
 
 void screenSaverWithBlocks()
 {
@@ -1271,7 +1293,7 @@ void DisplayDacError()
         auto frameCount = Menu_LoadFrame();
         DrawScreen(-1);
     }
-}  
+}
 void waitForNoButtonPress()
 {
     DWORD PAD1_Latch;
@@ -1285,6 +1307,520 @@ void waitForNoButtonPress()
         }
     }
 }
+// --- Options Menu Implementation ---
+void showOptionsMenu(Frens::RomLister &romlister)
+{
+    bool settingsChanged = false;
+    // Local working copy of settings (changes applied only after SAVE/DEFAULT)
+    struct settings working = settings;
+    // Ensure current screenMode is valid; if not, pick first available
+#if !HSTX
+    {
+        int cur = static_cast<int>(working.screenMode);
+        if (cur < 0 || cur > 3 || !g_available_screen_modes[cur])
+        {
+            // find first available
+            for (int i = 0; i < 4; ++i)
+            {
+                if (g_available_screen_modes[i])
+                {
+                    working.screenMode = static_cast<ScreenMode>(i);
+                    break;
+                }
+            }
+        }
+    }
+#endif
+    // Screen row indices:
+    // 0: Title (non-selectable)
+    // 1..visibleCount: options
+    // visibleCount+1: SAVE
+    // visibleCount+2: CANCEL
+    // visibleCount+3: DEFAULT
+    int visibleIndices[MOPT_COUNT];
+    int visibleCount = 0;
+    for (int i = 0; i < MOPT_COUNT; ++i)
+    {
+        if (g_option_visibility[i])
+        {
+            visibleIndices[visibleCount++] = i;
+        }
+    }
+    // Layout rows:
+    // 0: title
+    // 1: blank spacer after title
+    // 2 .. 2+visibleCount-1 : options
+    // spacerAfterOptionsRow (blank)
+    // paletteStartRow .. paletteStartRow+3 : 4 rows of 16 color blocks (64 colors total)
+    // paletteInfoRow: textual FG/BG info using working colors
+    // spacerAfterPaletteRow (blank)
+    // SAVE
+    // CANCEL
+    // DEFAULT
+    const int rowStartOptions = 2;
+    const int spacerAfterOptionsRow = rowStartOptions + visibleCount; // first spacer (blank)
+    const int paletteStartRow = spacerAfterOptionsRow + 1;
+    const int paletteRowCount = 4;                                // 4 x 16 = 64
+    const int paletteInfoRow = paletteStartRow + paletteRowCount; // textual line
+    const int spacerAfterPaletteRow = paletteInfoRow + 1;
+    const int saveRowScreen = spacerAfterPaletteRow + 1;
+    const int cancelRowScreen = saveRowScreen + 1;
+    const int defaultRowScreen = cancelRowScreen + 1;
+    int selectedRowLocal = rowStartOptions; // first selectable option row
+    bool exitMenu = false;
+    bool applySettings = false; // true when SAVE, false when CANCEL
+    // Helper lambdas
+    auto isScanlinesOn = [&](ScreenMode sm)
+    {
+        return sm == ScreenMode::SCANLINE_1_1 || sm == ScreenMode::SCANLINE_8_7;
+    };
+    auto isModeEightSeven = [&](ScreenMode sm)
+    {
+        return sm == ScreenMode::SCANLINE_8_7 || sm == ScreenMode::NOSCANLINE_8_7;
+    };
+    auto setScreenMode = [&](bool eightSeven, bool scanlines)
+    {
+        if (scanlines)
+        {
+            working.screenMode = eightSeven ? ScreenMode::SCANLINE_8_7 : ScreenMode::SCANLINE_1_1;
+        }
+        else
+        {
+            working.screenMode = eightSeven ? ScreenMode::NOSCANLINE_8_7 : ScreenMode::NOSCANLINE_1_1;
+        }
+    };
+    auto redraw = [&]()
+    {
+        ClearScreen(CWHITE); // Always white background
+        char line[64];
+        int row = 0;
+        // Centered Title
+        constexpr int titleLen = 13; // "-- Options --"
+        int titleCol = (SCREEN_COLS - titleLen) / 2;
+        if (titleCol < 0)
+            titleCol = 0;
+        putText(titleCol, row++, "-- Options --", CBLACK, CWHITE);
+        // Blank spacer line
+        putText(0, row++, "", CBLACK, CWHITE);
+        // Render each visible option
+        for (int vi = 0; vi < visibleCount; ++vi)
+        {
+            int optIndex = visibleIndices[vi];
+            const char *label = "";
+            const char *value = "";
+            switch (optIndex)
+            {
+            case MOPT_SCREENMODE:
+            {
+                label = "Screen Mode";
+                switch (working.screenMode)
+                {
+                case ScreenMode::SCANLINE_1_1:
+                    value = "1:1 SCANLINES";
+                    break;
+                case ScreenMode::SCANLINE_8_7:
+                    value = "8:7 SCANLINES";
+                    break;
+                case ScreenMode::NOSCANLINE_1_1:
+                    value = "1:1 NO SCANLINES";
+                    break;
+                case ScreenMode::NOSCANLINE_8_7:
+                    value = "8:7 NO SCANLINES";
+                    break;
+                default:
+                    value = "?";
+                    break;
+                }
+                // If current mode is not available show marker
+                if (!g_available_screen_modes[static_cast<int>(working.screenMode)])
+                {
+                    value = "None"; // fallback when all disabled
+                }
+                break;
+            }
+            case MOPT_SCANLINES:
+            {
+#if HSTX
+                label = "Scanlines";
+                value = working.flags.scanlineOn ? "ON" : "OFF";
+#else
+                // When !HSTX the scanlines are encoded in screen mode and this option is hidden via visibility array.
+                label = "Scanlines";
+                value = "-";
+#endif
+                break;
+            }
+            case MOPT_FPS_OVERLAY:
+            {
+                label = "Framerate Overlay";
+                value = working.flags.displayFrameRate ? "ON" : "OFF";
+                break;
+            }
+            case MOPT_AUDIO_ENABLE:
+            {
+                label = "Audio enabled";
+                value = working.flags.audioEnabled ? "ON" : "OFF";
+                break;
+            }
+            case MOPT_EXTERNAL_AUDIO:
+            {
+                label = "External Audio";
+                value = working.flags.useExtAudio ? "Enable" : "Disable";
+                break;
+            }
+            case MOPT_FONT_COLOR:
+            {
+                label = "Menu Font Color";
+                snprintf(line, sizeof(line), "%d", working.fgcolor);
+                value = line;
+                break;
+            }
+            case MOPT_FONT_BACK_COLOR:
+            {
+                label = "Menu Font Back Color";
+                snprintf(line, sizeof(line), "%d", working.bgcolor);
+                value = line;
+                break;
+            }
+            case MOPT_VUMETER:
+            {
+                label = "VU Meter";
+                value = working.flags.enableVUMeter ? "ON" : "OFF";
+                break;
+            }
+            case MOPT_DMG_PALETTE:
+            {
+                label = "DMG Palette";
+                switch (working.flags.dmgLCDPalette)
+                {
+                case 0:
+                    value = "Green";
+                    break;
+                case 1:
+                    value = "Color";
+                    break;
+                case 2:
+                    value = "B&W";
+                    break;
+                default:
+                    value = "?";
+                    break;
+                }
+                break;
+            }
+            case MOPT_BORDER_MODE:
+            {
+                label = "Border Mode";
+                switch (working.flags.borderMode)
+                {
+                case FrensSettings::DEFAULTBORDER:
+                    value = "Super Gameboy";
+                    break;
+                case FrensSettings::RANDOMBORDER:
+                    value = "Random";
+                    break;
+                case FrensSettings::THEMEDBORDER:
+                    value = "Themed";
+                    break;
+                default:
+                    value = "?";
+                    break;
+                }
+                break;
+            }
+            case MOPT_FRAMESKIP:
+            {
+                label = "Frame Skip";
+                value = working.flags.frameSkip ? "ON" : "OFF";
+                break;
+            }
+            default:
+                label = "Unknown";
+                value = "";
+                break;
+            }
+            char out[80];
+            snprintf(out, sizeof(out), "%s: %s", label, value);
+            putText(0, row++, out, CBLACK, CWHITE);
+        }
+        // Blank spacer after last option
+        putText(0, row++, "", CBLACK, CWHITE);
+        // 64-color palette grid (4 rows x 16 columns). Each block is a space with fg=bg=colorIndex
+        int blocksPerRow = 16;
+        int blockRows = paletteRowCount;
+        int gridWidth = blocksPerRow; // one char per block
+        int gridStartCol = (SCREEN_COLS - gridWidth) / 2;
+        if (gridStartCol < 0)
+            gridStartCol = 0;
+        for (int pr = 0; pr < blockRows; ++pr)
+        {
+            char tmp[4];
+            snprintf(tmp, sizeof(tmp), "%02d-", pr * blocksPerRow);
+            putText(gridStartCol - 4, row, tmp, CBLACK, CWHITE); // row label
+            for (int pc = 0; pc < blocksPerRow; ++pc)
+            {
+                int colorIndex = pr * blocksPerRow + pc;
+                if (colorIndex < 64)
+                {
+                    putText(gridStartCol + pc, row, " ", colorIndex, colorIndex);
+                }
+            }
+            row++;
+        }
+        // FG/BG info line centered
+        char infoLine[64];
+        snprintf(infoLine, sizeof(infoLine), "FG=%02d BG=%02d", working.fgcolor, working.bgcolor);
+        int infoLen = (int)strlen(infoLine);
+        int infoCol = (SCREEN_COLS - infoLen) / 2;
+        if (infoCol < 0)
+            infoCol = 0;
+        putText(infoCol, row++, infoLine, working.fgcolor, working.bgcolor);
+        // Spacer after palette/info
+        putText(0, row++, "", CBLACK, CWHITE);
+        if (settingsChanged)
+        {
+            putText(0, row++, "SAVE *", CBLACK, CWHITE);
+        }
+        else
+        {
+            putText(0, row++, "SAVE", CBLACK, CWHITE);
+        }
+        putText(0, row++, "CANCEL", CBLACK, CWHITE);
+        putText(0, row++, "DEFAULT", CBLACK, CWHITE);
+        // Help text (non-selectable) centered near bottom.
+        // Keep concise due to limited width.
+        const char *helpLines[] = {
+            "UP/DOWN: Move  LEFT/RIGHT: Change",
+            "A: SAVE/CANCEL/DEFAULT   B: Cancel"};
+        int helpCount = sizeof(helpLines) / sizeof(helpLines[0]);
+        row = SCREEN_ROWS - helpCount - 1; // leave one blank row at bottom
+        for (int hi = 0; hi < helpCount; ++hi)
+        {
+            int hlen = (int)strlen(helpLines[hi]);
+            int col = (SCREEN_COLS - hlen) / 2;
+            if (col < 0)
+                col = 0;
+            putText(col, row++, helpLines[hi], CBLACK, CWHITE);
+        }
+        // Draw highlighted screen
+        for (int lineNr = 0; lineNr < 240; ++lineNr)
+        {
+            drawline(lineNr, selectedRowLocal); // use highlight logic
+        }
+    };
+    while (!exitMenu)
+    {
+        // Always redraw before reading pad state (requested behavior)
+        settingsChanged = (memcmp(&working, &settings, sizeof(settings)) != 0);
+        redraw();
+        DWORD pad;
+        RomSelect_PadState(&pad);
+        auto frameCount = Menu_LoadFrame();
+        bool pushed = pad != 0;
+        if (pushed)
+        {
+            if (pad & UP)
+            {
+                if (selectedRowLocal > rowStartOptions)
+                {
+                    do
+                    {
+                        selectedRowLocal--;
+                    } while (
+                        selectedRowLocal == spacerAfterOptionsRow ||
+                        (selectedRowLocal >= paletteStartRow && selectedRowLocal < paletteStartRow + paletteRowCount) ||
+                        selectedRowLocal == paletteInfoRow ||
+                        selectedRowLocal == spacerAfterPaletteRow);
+                }
+                else
+                {
+                    selectedRowLocal = defaultRowScreen; // wrap
+                }
+            }
+            else if (pad & DOWN)
+            {
+                if (selectedRowLocal < defaultRowScreen)
+                {
+                    do
+                    {
+                        selectedRowLocal++;
+                    } while (
+                        selectedRowLocal == spacerAfterOptionsRow ||
+                        (selectedRowLocal >= paletteStartRow && selectedRowLocal < paletteStartRow + paletteRowCount) ||
+                        selectedRowLocal == paletteInfoRow ||
+                        selectedRowLocal == spacerAfterPaletteRow);
+                }
+                else
+                {
+                    selectedRowLocal = rowStartOptions; // wrap
+                }
+            }
+            else if (pad & LEFT || pad & RIGHT)
+            {
+                if (selectedRowLocal >= rowStartOptions && selectedRowLocal < rowStartOptions + visibleCount)
+                {
+                    int optIndex = visibleIndices[selectedRowLocal - rowStartOptions]; // map screen row to option index
+                    bool right = pad & RIGHT;
+                    switch (optIndex)
+                    {
+                    case MOPT_SCREENMODE:
+                    {
+                        // Filter cycling: skip unavailable modes using enumeration order (0..3)
+                        int cur = static_cast<int>(working.screenMode);
+                        // Count available modes
+                        int availableCount = 0;
+                        for (int i = 0; i < 4; ++i)
+                            if (g_available_screen_modes[i])
+                                availableCount++;
+                        if (availableCount == 0)
+                        { /* nothing selectable */
+                            break;
+                        }
+                        if (right)
+                        {
+                            for (int step = 0; step < 4; ++step)
+                            {
+                                cur = (cur + 1) & 3; // wrap 0..3
+                                if (g_available_screen_modes[cur])
+                                {
+                                    working.screenMode = static_cast<ScreenMode>(cur);
+                                    break;
+                                }
+                            }
+                        }
+                        else
+                        { // left
+                            for (int step = 0; step < 4; ++step)
+                            {
+                                cur = (cur + 3) & 3; // equivalent to -1 & 3
+                                if (g_available_screen_modes[cur])
+                                {
+                                    working.screenMode = static_cast<ScreenMode>(cur);
+                                    break;
+                                }
+                            }
+                        }
+                        break;
+                    }
+                    case MOPT_SCANLINES:
+                    {
+#if HSTX
+                        working.flags.scanlineOn = !working.flags.scanlineOn;
+#endif
+                        // !HSTX build will never have this option visible.
+                        break;
+                    }
+                    case MOPT_FPS_OVERLAY:
+                        working.flags.displayFrameRate = !working.flags.displayFrameRate;
+                        break;
+                    case MOPT_AUDIO_ENABLE:
+                        working.flags.audioEnabled = !working.flags.audioEnabled;
+                        break;
+                    case MOPT_EXTERNAL_AUDIO:
+                        working.flags.useExtAudio = !working.flags.useExtAudio;
+                        break;
+                    case MOPT_FONT_COLOR:
+                    {
+                        if (right)
+                        {
+                            working.fgcolor = (working.fgcolor + 1) % 64;
+                        }
+                        else
+                        {
+                            working.fgcolor = (working.fgcolor == 0 ? 63 : working.fgcolor - 1);
+                        }
+                        break;
+                    }
+                    case MOPT_FONT_BACK_COLOR:
+                    {
+                        if (right)
+                        {
+                            working.bgcolor = (working.bgcolor + 1) % 64;
+                        }
+                        else
+                        {
+                            working.bgcolor = (working.bgcolor == 0 ? 63 : working.bgcolor - 1);
+                        }
+                        break;
+                    }
+                    case MOPT_VUMETER:
+                        working.flags.enableVUMeter = !working.flags.enableVUMeter;
+                        break;
+                    case MOPT_DMG_PALETTE:
+                    {
+                        if (right)
+                        {
+                            working.flags.dmgLCDPalette = (working.flags.dmgLCDPalette + 1) % 3;
+                        }
+                        else
+                        {
+                            working.flags.dmgLCDPalette = (working.flags.dmgLCDPalette == 0 ? 2 : working.flags.dmgLCDPalette - 1);
+                        }
+                        break;
+                    }
+                    case MOPT_BORDER_MODE:
+                    {
+                        if (right)
+                        {
+                            working.flags.borderMode = (working.flags.borderMode + 1) % 3;
+                        }
+                        else
+                        {
+                            working.flags.borderMode = (working.flags.borderMode == 0 ? 2 : working.flags.borderMode - 1);
+                        }
+                        break;
+                    }
+                    case MOPT_FRAMESKIP:
+                        working.flags.frameSkip = !working.flags.frameSkip;
+                        break;
+                    default:
+                        break;
+                    }
+                }
+            }
+            else if (pad & A)
+            {
+                if (selectedRowLocal == saveRowScreen)
+                {
+                    applySettings = true;
+                    exitMenu = true;
+                }
+                else if (selectedRowLocal == cancelRowScreen)
+                {
+                    applySettings = false;
+                    exitMenu = true;
+                }
+                else if (selectedRowLocal == defaultRowScreen)
+                {
+                    FrensSettings::resetsettings(&working);
+                }
+            }
+            else if (pad & B)
+            {
+                // B acts like cancel
+                applySettings = false;
+                exitMenu = true;
+            }
+        }
+    }
+    if (applySettings)
+    {
+        // Copy working settings into global settings and persist.
+        // Preserve directory navigation fields that user did not edit here.
+        working.firstVisibleRowINDEX = settings.firstVisibleRowINDEX;
+        working.selectedRow = settings.selectedRow;
+        working.horzontalScrollIndex = settings.horzontalScrollIndex;
+        strcpy(working.currentDir, settings.currentDir);
+        settings = working;
+        // Apply hardware-affecting settings that are mutually exclusive between HSTX and non-HSTX builds.
+#if HSTX
+        hstx_setScanLines(settings.flags.scanlineOn);
+#endif
+        FrensSettings::savesettings();
+        romlister.list(settings.currentDir);
+    }
+    displayRoms(romlister, settings.firstVisibleRowINDEX);
+}; // end lambda showOptionsMenu
 void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, const char *allowedExtensions, char *rompath, const char *emulatorType)
 {
     FRESULT fr;
@@ -1347,7 +1883,7 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
 #if USE_I2S_AUDIO == PICO_AUDIO_I2S_DRIVER_TLV320
     if (EXT_AUDIO_DACERROR())
     {
-        DisplayDacError();     
+        DisplayDacError();
     }
 #endif
     if (showSplash)
@@ -1361,337 +1897,6 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
     displayRoms(romlister, settings.firstVisibleRowINDEX);
     bool startGame = false;
 
-    // --- Options Menu Implementation ---
-    auto showOptionsMenu = [&]() {
-        bool settingsChanged = false;
-        // Local working copy of settings (changes applied only after SAVE/DEFAULT)
-        struct settings working = settings;
-        // Ensure current screenMode is valid; if not, pick first available
-#if !HSTX
-        {
-            int cur = static_cast<int>(working.screenMode);
-            if (cur < 0 || cur > 3 || !g_available_screen_modes[cur]) {
-                // find first available
-                for (int i = 0; i < 4; ++i) {
-                    if (g_available_screen_modes[i]) { working.screenMode = static_cast<ScreenMode>(i); break; }
-                }
-            }
-        }
-#endif
-        // Screen row indices:
-        // 0: Title (non-selectable)
-        // 1..visibleCount: options
-        // visibleCount+1: SAVE
-        // visibleCount+2: CANCEL
-        // visibleCount+3: DEFAULT
-        int visibleIndices[MOPT_COUNT];
-        int visibleCount = 0;
-        for (int i = 0; i < MOPT_COUNT; ++i) {
-            if (g_option_visibility[i]) {
-                visibleIndices[visibleCount++] = i;
-            }
-        }
-    // Layout rows:
-    // 0: title
-    // 1: blank spacer after title
-    // 2 .. 2+visibleCount-1 : options
-    // spacerAfterOptionsRow (blank)
-    // paletteStartRow .. paletteStartRow+3 : 4 rows of 16 color blocks (64 colors total)
-    // paletteInfoRow: textual FG/BG info using working colors
-    // spacerAfterPaletteRow (blank)
-    // SAVE
-    // CANCEL
-    // DEFAULT
-    const int rowStartOptions          = 2;
-    const int spacerAfterOptionsRow    = rowStartOptions + visibleCount; // first spacer (blank)
-    const int paletteStartRow          = spacerAfterOptionsRow + 1;
-    const int paletteRowCount          = 4; // 4 x 16 = 64
-    const int paletteInfoRow           = paletteStartRow + paletteRowCount; // textual line
-    const int spacerAfterPaletteRow    = paletteInfoRow + 1;
-    const int saveRowScreen            = spacerAfterPaletteRow + 1;
-    const int cancelRowScreen          = saveRowScreen + 1;
-    const int defaultRowScreen         = cancelRowScreen + 1;
-    int selectedRowLocal = rowStartOptions; // first selectable option row
-        bool exitMenu = false;
-        bool applySettings = false; // true when SAVE, false when CANCEL
-        // Helper lambdas
-        auto isScanlinesOn = [&](ScreenMode sm) {
-            return sm == ScreenMode::SCANLINE_1_1 || sm == ScreenMode::SCANLINE_8_7;
-        };
-        auto isModeEightSeven = [&](ScreenMode sm) {
-            return sm == ScreenMode::SCANLINE_8_7 || sm == ScreenMode::NOSCANLINE_8_7;
-        };
-        auto setScreenMode = [&](bool eightSeven, bool scanlines) {
-            if (scanlines) {
-                working.screenMode = eightSeven ? ScreenMode::SCANLINE_8_7 : ScreenMode::SCANLINE_1_1;
-            } else {
-                working.screenMode = eightSeven ? ScreenMode::NOSCANLINE_8_7 : ScreenMode::NOSCANLINE_1_1;
-            }
-        };
-        auto redraw = [&]() {
-            ClearScreen(CWHITE); // Always white background
-            char line[64];
-            int row = 0;
-            // Centered Title
-            constexpr int titleLen = 13; // "-- Options --"
-            int titleCol = (SCREEN_COLS - titleLen) / 2;
-            if (titleCol < 0) titleCol = 0;
-            putText(titleCol, row++, "-- Options --", CBLACK, CWHITE);
-            // Blank spacer line
-            putText(0, row++, "", CBLACK, CWHITE);
-            // Render each visible option
-            for (int vi = 0; vi < visibleCount; ++vi) {
-                int optIndex = visibleIndices[vi];
-                const char *label = "";
-                const char *value = "";
-                switch (optIndex) {
-                case MOPT_SCREENMODE: {
-                    label = "Screen Mode";
-                    switch (working.screenMode) {
-                        case ScreenMode::SCANLINE_1_1: value = "1:1 SCANLINES"; break;
-                        case ScreenMode::SCANLINE_8_7: value = "8:7 SCANLINES"; break;
-                        case ScreenMode::NOSCANLINE_1_1: value = "1:1 NO SCANLINES"; break;
-                        case ScreenMode::NOSCANLINE_8_7: value = "8:7 NO SCANLINES"; break;
-                        default: value = "?"; break;
-                    }
-                    // If current mode is not available show marker
-                    if (!g_available_screen_modes[static_cast<int>(working.screenMode)]) {
-                        value = "None"; // fallback when all disabled
-                    }
-                    break; }
-                case MOPT_SCANLINES: {
-#if HSTX
-                    label = "Scanlines";
-                    value = working.flags.scanlineOn ? "ON" : "OFF";
-#else
-                    // When !HSTX the scanlines are encoded in screen mode and this option is hidden via visibility array.
-                    label = "Scanlines"; value = "-";
-#endif
-                    break; }
-                case MOPT_FPS_OVERLAY: {
-                    label = "Framerate Overlay";
-                    value = working.flags.displayFrameRate ? "ON" : "OFF";
-                    break; }
-                case MOPT_AUDIO_ENABLE: {
-                    label = "Audio enabled";
-                    value = working.flags.audioEnabled ? "ON" : "OFF";
-                    break; }
-                case MOPT_EXTERNAL_AUDIO: {
-                    label = "External Audio";
-                    value = working.flags.useExtAudio ? "Enable" : "Disable";
-                    break; }
-                case MOPT_FONT_COLOR: {
-                    label = "Menu Font Color";
-                    snprintf(line, sizeof(line), "%d", working.fgcolor);
-                    value = line;
-                    break; }
-                case MOPT_FONT_BACK_COLOR: {
-                    label = "Menu Font Back Color";
-                    snprintf(line, sizeof(line), "%d", working.bgcolor);
-                    value = line;
-                    break; }
-                case MOPT_VUMETER: {
-                    label = "VU Meter";
-                    value = working.flags.enableVUMeter ? "ON" : "OFF";
-                    break; }
-                case MOPT_DMG_PALETTE: {
-                    label = "DMG Palette";
-                    switch (working.flags.dmgLCDPalette) {
-                        case 0: value = "Green"; break;
-                        case 1: value = "Color"; break;
-                        case 2: value = "B&W"; break;
-                        default: value = "?"; break;
-                    }
-                    break; }
-                case MOPT_BORDER_MODE: {
-                    label = "Border Mode";
-                    switch (working.flags.borderMode) {
-                        case FrensSettings::DEFAULTBORDER: value = "Super Gameboy"; break;
-                        case FrensSettings::RANDOMBORDER: value = "Random"; break;
-                        case FrensSettings::THEMEDBORDER: value = "Themed"; break;
-                        default: value = "?"; break;
-                    }
-                    break; }
-                case MOPT_FRAMESKIP: {
-                    label = "Frame Skip";
-                    value = working.flags.frameSkip ? "ON" : "OFF";
-                    break; }
-                default:
-                    label = "Unknown"; value = ""; break;
-                }
-                char out[80];
-                snprintf(out, sizeof(out), "%s: %s", label, value);
-                putText(0, row++, out, CBLACK, CWHITE);
-            }
-            // Blank spacer after last option
-            putText(0, row++, "", CBLACK, CWHITE);
-            // 64-color palette grid (4 rows x 16 columns). Each block is a space with fg=bg=colorIndex
-            int blocksPerRow = 16;
-            int blockRows = paletteRowCount;
-            int gridWidth = blocksPerRow; // one char per block
-            int gridStartCol = (SCREEN_COLS - gridWidth) / 2;
-            if (gridStartCol < 0) gridStartCol = 0;
-            for (int pr = 0; pr < blockRows; ++pr) {
-                char tmp[4];
-                snprintf(tmp, sizeof(tmp), "%02d-", pr * blocksPerRow);
-                putText(gridStartCol - 4, row, tmp, CBLACK, CWHITE); // row label
-                for (int pc = 0; pc < blocksPerRow; ++pc) {
-                    int colorIndex = pr * blocksPerRow + pc;
-                    if (colorIndex < 64) {
-                        putText(gridStartCol + pc, row, " ", colorIndex, colorIndex);
-                    }
-                }
-                row++;
-            }
-            // FG/BG info line centered
-            char infoLine[64];
-            snprintf(infoLine, sizeof(infoLine), "FG=%02d BG=%02d", working.fgcolor, working.bgcolor);
-            int infoLen = (int)strlen(infoLine);
-            int infoCol = (SCREEN_COLS - infoLen) / 2; if (infoCol < 0) infoCol = 0;
-            putText(infoCol, row++, infoLine, working.fgcolor, working.bgcolor);
-            // Spacer after palette/info
-            putText(0, row++, "", CBLACK, CWHITE);
-            if (settingsChanged) {
-                putText(0, row++, "SAVE *", CBLACK, CWHITE);
-            } else {
-                putText(0, row++, "SAVE", CBLACK, CWHITE);
-            }
-            putText(0, row++, "CANCEL", CBLACK, CWHITE);
-            putText(0, row++, "DEFAULT", CBLACK, CWHITE);
-            // Help text (non-selectable) centered near bottom.
-            // Keep concise due to limited width.
-            const char *helpLines[] = {
-                "UP/DOWN: Move  LEFT/RIGHT: Change",
-                "A: SAVE/CANCEL/DEFAULT   B: Cancel"
-            };
-            int helpCount = sizeof(helpLines)/sizeof(helpLines[0]);
-            row = SCREEN_ROWS - helpCount - 1; // leave one blank row at bottom
-            for(int hi=0; hi<helpCount; ++hi){
-                int hlen = (int)strlen(helpLines[hi]);
-                int col = (SCREEN_COLS - hlen) / 2; if (col < 0) col = 0;
-                putText(col, row++, helpLines[hi], CBLACK, CWHITE);
-            }
-            // Draw highlighted screen
-            for (int lineNr = 0; lineNr < 240; ++lineNr) {
-                drawline(lineNr, selectedRowLocal); // use highlight logic
-            }
-        };
-        while (!exitMenu) {
-            // Always redraw before reading pad state (requested behavior)
-            settingsChanged = (memcmp(&working, &settings, sizeof(settings)) != 0);
-            redraw();
-            DWORD pad;
-            RomSelect_PadState(&pad);
-            auto frameCount = Menu_LoadFrame();
-            bool pushed = pad != 0;
-            if (pushed) {
-                if (pad & UP) {
-                    if (selectedRowLocal > rowStartOptions) {
-                        do { selectedRowLocal--; } while (
-                            selectedRowLocal == spacerAfterOptionsRow ||
-                            (selectedRowLocal >= paletteStartRow && selectedRowLocal < paletteStartRow + paletteRowCount) ||
-                            selectedRowLocal == paletteInfoRow ||
-                            selectedRowLocal == spacerAfterPaletteRow);
-                    } else {
-                        selectedRowLocal = defaultRowScreen; // wrap
-                    }
-                } else if (pad & DOWN) {
-                    if (selectedRowLocal < defaultRowScreen) {
-                        do { selectedRowLocal++; } while (
-                            selectedRowLocal == spacerAfterOptionsRow ||
-                            (selectedRowLocal >= paletteStartRow && selectedRowLocal < paletteStartRow + paletteRowCount) ||
-                            selectedRowLocal == paletteInfoRow ||
-                            selectedRowLocal == spacerAfterPaletteRow);
-                    } else {
-                        selectedRowLocal = rowStartOptions; // wrap
-                    }
-                } else if (pad & LEFT || pad & RIGHT) {
-                    if (selectedRowLocal >= rowStartOptions && selectedRowLocal < rowStartOptions + visibleCount) {
-                        int optIndex = visibleIndices[selectedRowLocal - rowStartOptions]; // map screen row to option index
-                        bool right = pad & RIGHT;
-                        switch (optIndex) {
-                        case MOPT_SCREENMODE: {
-                            // Filter cycling: skip unavailable modes using enumeration order (0..3)
-                            int cur = static_cast<int>(working.screenMode);
-                            // Count available modes
-                            int availableCount = 0; for (int i=0;i<4;++i) if (g_available_screen_modes[i]) availableCount++;
-                            if (availableCount == 0) { /* nothing selectable */ break; }
-                            if (right) {
-                                for (int step=0; step<4; ++step) {
-                                    cur = (cur + 1) & 3; // wrap 0..3
-                                    if (g_available_screen_modes[cur]) { working.screenMode = static_cast<ScreenMode>(cur); break; }
-                                }
-                            } else { // left
-                                for (int step=0; step<4; ++step) {
-                                    cur = (cur + 3) & 3; // equivalent to -1 & 3
-                                    if (g_available_screen_modes[cur]) { working.screenMode = static_cast<ScreenMode>(cur); break; }
-                                }
-                            }
-                            break; }
-                        case MOPT_SCANLINES: {
-#if HSTX
-                            working.flags.scanlineOn = !working.flags.scanlineOn;
-#endif
-                            // !HSTX build will never have this option visible.
-                            break; }
-                        case MOPT_FPS_OVERLAY: working.flags.displayFrameRate = !working.flags.displayFrameRate; break;
-                        case MOPT_AUDIO_ENABLE: working.flags.audioEnabled = !working.flags.audioEnabled; break;
-                        case MOPT_EXTERNAL_AUDIO: working.flags.useExtAudio = !working.flags.useExtAudio; break;
-                        case MOPT_FONT_COLOR: {
-                            if (right) { working.fgcolor = (working.fgcolor + 1) % 64; } else { working.fgcolor = (working.fgcolor == 0 ? 63 : working.fgcolor - 1); }
-                            break; }
-                        case MOPT_FONT_BACK_COLOR: {
-                            if (right) { working.bgcolor = (working.bgcolor + 1) % 64; } else { working.bgcolor = (working.bgcolor == 0 ? 63 : working.bgcolor - 1); }
-                            break; }
-                        case MOPT_VUMETER: working.flags.enableVUMeter = !working.flags.enableVUMeter; break;
-                        case MOPT_DMG_PALETTE: {
-                            if (right) { working.flags.dmgLCDPalette = (working.flags.dmgLCDPalette + 1) % 3; }
-                            else { working.flags.dmgLCDPalette = (working.flags.dmgLCDPalette == 0 ? 2 : working.flags.dmgLCDPalette - 1); }
-                            break; }
-                        case MOPT_BORDER_MODE: {
-                            if (right) { working.flags.borderMode = (working.flags.borderMode + 1) % 3; }
-                            else { working.flags.borderMode = (working.flags.borderMode == 0 ? 2 : working.flags.borderMode - 1); }
-                            break; }
-                        case MOPT_FRAMESKIP: working.flags.frameSkip = !working.flags.frameSkip; break;
-                        default: break;
-                        }
-                    }
-                } else if (pad & A) {
-                    if (selectedRowLocal == saveRowScreen) {
-                        applySettings = true;
-                        exitMenu = true;
-                    } else if (selectedRowLocal == cancelRowScreen) {
-                        applySettings = false;
-                        exitMenu = true;
-                    } else if (selectedRowLocal == defaultRowScreen) {
-                        FrensSettings::resetsettings(&working);
-                    }
-                } else if (pad & B) {
-                    // B acts like cancel
-                    applySettings = false;
-                    exitMenu = true;
-                }
-            }
-        }
-        if (applySettings) {
-            // Copy working settings into global settings and persist.
-            // Preserve directory navigation fields that user did not edit here.
-            working.firstVisibleRowINDEX = settings.firstVisibleRowINDEX;
-            working.selectedRow = settings.selectedRow;
-            working.horzontalScrollIndex = settings.horzontalScrollIndex;
-            strcpy(working.currentDir, settings.currentDir);
-            settings = working;
-            // Apply hardware-affecting settings that are mutually exclusive between HSTX and non-HSTX builds.
-#if HSTX
-            hstx_setScanLines(settings.flags.scanlineOn);
-#endif
-            FrensSettings::savesettings();
-            romlister.list(settings.currentDir);
-        }
-        // Rebuild rom list display afterwards
-        printf("First visible row index after options menu: %d\n", settings.firstVisibleRowINDEX);
-        displayRoms(romlister, settings.firstVisibleRowINDEX);
-    }; // end lambda showOptionsMenu
     waitForNoButtonPress();
     while (1)
     {
@@ -1839,9 +2044,10 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
                     printf("Cannot get current dir: %d\n", fr);
                 }
             }
-            else if ((PAD1_Latch & SELECT) == SELECT) {
+            else if ((PAD1_Latch & SELECT) == SELECT)
+            {
                 // Open options menu
-                showOptionsMenu();
+                showOptionsMenu(romlister);
                 continue; // skip other processing this frame
             }
             else if ((PAD1_Latch & START) == START && ((PAD1_Latch & SELECT) != SELECT))
@@ -1901,9 +2107,9 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
                 {
                     // if (strcmp(emulator, "MD") == 0)
                     // {
-                          showLoadingScreen("Metadata loading...");
+                    showLoadingScreen("Metadata loading...");
                     //}
-                    //romlister.ClearMemory();
+                    // romlister.ClearMemory();
                     fr = my_getcwd(curdir, sizeof(curdir)); // f_getcwd(curdir, sizeof(curdir));
                     FSIZE_t romsize = 0;
                     // printf("Current dir: %s\n", curdir);
@@ -1917,9 +2123,9 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
                         startGame = true;
                         break;
                     case 2:
-                      
+
                         screenSaver();
-                      
+
                         break;
                     default:
                         break;
@@ -2034,7 +2240,7 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
         {
             // printf("Starting screensaver\n");
             totalFrames = -1;
-            //romlister.ClearMemory();
+            // romlister.ClearMemory();
             screenSaver();
             romlister.list(".");
             displayRoms(romlister, settings.firstVisibleRowINDEX);
@@ -2045,7 +2251,7 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
                          // Wait until user has released all buttons
     waitForNoButtonPress();
     Frens::f_free(screenBuffer);
-    //Frens::f_free(buffer);
+    // Frens::f_free(buffer);
 
     FrensSettings::savesettings();
 #if !HSTX
