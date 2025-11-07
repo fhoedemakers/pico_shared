@@ -552,17 +552,17 @@ void DrawScreen(int selectedRow, int w = 0, int h = 0, uint16_t *imagebuffer = n
         int optionsRow = artworkEnabled ? ENDROW + 3 : ENDROW + 2;
         if (strcmp(connectedGamePadName, "Genesis Mini 2") == 0 || strcmp(connectedGamePadName, "MDArcade") == 0)
         {
-            strcpy(s, "Mode:Options");
+            strcpy(s, "Mode:Settings");
         }
         else
         {
             if (strncmp(connectedGamePadName, "Genesis", 7) == 0)
             {
-                strcpy(s, "C:Options");
+                strcpy(s, "C:Settings");
             }
             else
             {
-                strcpy(s, "SELECT:Options");
+                strcpy(s, "SELECT:Settings");
             }
         }
         putText(17, optionsRow, s, settings.fgcolor, settings.bgcolor);
@@ -1392,14 +1392,38 @@ void showOptionsMenu(Frens::RomLister &romlister)
     auto redraw = [&]()
     {
         ClearScreen(CWHITE); // Always white background
-        char line[64];
+        char buttonLabel1[2]; // e.g., "A", "B", "X", "O"
+        char buttonLabel2[2]; // e.g., "A", "B", "
+        char line[41];
+        char valueBuf[16];     // NEW: separate buffer for numeric values
         int row = 0;
+
+         if (strcmp(connectedGamePadName, "Dual Shock 4") == 0 || strcmp(connectedGamePadName, "Dual Sense") == 0 || strcmp(connectedGamePadName, "PSClassic") == 0)
+        {
+            strcpy(buttonLabel1, "O");
+            strcpy(buttonLabel2, "X");
+        }
+        else if (strcmp(connectedGamePadName, "XInput") == 0 || strncmp(connectedGamePadName, "Genesis", 7) == 0 || strcmp(connectedGamePadName, "MDArcade") == 0)
+        {
+            strcpy(buttonLabel1, "B");
+            strcpy(buttonLabel2, "A");
+        }
+        else if (strcmp(connectedGamePadName, "Keyboard") == 0)
+        {
+            strcpy(buttonLabel1, "X");
+            strcpy(buttonLabel2, "Z");
+        }
+        else
+        {
+            strcpy(buttonLabel1, "A");
+            strcpy(buttonLabel2, "B");
+        }
         // Centered Title
-        constexpr int titleLen = 13; // "-- Options --"
+        constexpr int titleLen = 13; // "-- Settings --"
         int titleCol = (SCREEN_COLS - titleLen) / 2;
         if (titleCol < 0)
             titleCol = 0;
-        putText(titleCol, row++, "-- Options --", CBLACK, CWHITE);
+        putText(titleCol, row++, "-- Settings --", CBLACK, CWHITE);
         // Blank spacer line
         putText(0, row++, "", CBLACK, CWHITE);
         // Render each visible option
@@ -1471,15 +1495,15 @@ void showOptionsMenu(Frens::RomLister &romlister)
             case MOPT_FONT_COLOR:
             {
                 label = "Menu Font Color";
-                snprintf(line, sizeof(line), "%d", working.fgcolor);
-                value = line;
+                snprintf(valueBuf, sizeof(valueBuf), "%d", working.fgcolor);
+                value = valueBuf;
                 break;
             }
             case MOPT_FONT_BACK_COLOR:
             {
                 label = "Menu Font Back Color";
-                snprintf(line, sizeof(line), "%d", working.bgcolor);
-                value = line;
+                snprintf(valueBuf, sizeof(valueBuf), "%d", working.bgcolor);
+                value = valueBuf;
                 break;
             }
             case MOPT_VUMETER:
@@ -1533,15 +1557,14 @@ void showOptionsMenu(Frens::RomLister &romlister)
                 label = "Frame Skip";
                 value = working.flags.frameSkip ? "ON" : "OFF";
                 break;
-            }
+            }   
             default:
                 label = "Unknown";
                 value = "";
                 break;
             }
-            char out[80];
-            snprintf(out, sizeof(out), "%s: %s", label, value);
-            putText(0, row++, out, CBLACK, CWHITE);
+            snprintf(line, sizeof(line), "%s: %s", label, value);
+            putText(0, row++, line, CBLACK, CWHITE);
         }
         // Blank spacer after last option
         putText(0, row++, "", CBLACK, CWHITE);
@@ -1568,13 +1591,12 @@ void showOptionsMenu(Frens::RomLister &romlister)
             row++;
         }
         // FG/BG info line centered
-        char infoLine[64];
-        snprintf(infoLine, sizeof(infoLine), "FG=%02d BG=%02d", working.fgcolor, working.bgcolor);
-        int infoLen = (int)strlen(infoLine);
+        snprintf(line, sizeof(line), "FG=%02d BG=%02d", working.fgcolor, working.bgcolor);
+        int infoLen = (int)strlen(line);
         int infoCol = (SCREEN_COLS - infoLen) / 2;
         if (infoCol < 0)
             infoCol = 0;
-        putText(infoCol, row++, infoLine, working.fgcolor, working.bgcolor);
+        putText(infoCol, row++, line, working.fgcolor, working.bgcolor);
         // Spacer after palette/info
         putText(0, row++, "", CBLACK, CWHITE);
         if (settingsChanged)
@@ -1587,25 +1609,24 @@ void showOptionsMenu(Frens::RomLister &romlister)
         }
         putText(0, row++, "CANCEL", CBLACK, CWHITE);
         putText(0, row++, "DEFAULT", CBLACK, CWHITE);
-        // Help text (non-selectable) centered near bottom.
-        // Keep concise due to limited width.
-        const char *helpLines[] = {
-            "UP/DOWN: Move  LEFT/RIGHT: Change",
-            "A: SAVE/CANCEL/DEFAULT   B: Cancel"};
-        int helpCount = sizeof(helpLines) / sizeof(helpLines[0]);
+        // Help text (dynamic button labels)
+       strcpy(line, "UP/DOWN: Move  LEFT/RIGHT: Change");
+        
+        int helpCount = 2;
         row = SCREEN_ROWS - helpCount - 1; // leave one blank row at bottom
-        for (int hi = 0; hi < helpCount; ++hi)
-        {
-            int hlen = (int)strlen(helpLines[hi]);
-            int col = (SCREEN_COLS - hlen) / 2;
-            if (col < 0)
-                col = 0;
-            putText(col, row++, helpLines[hi], CBLACK, CWHITE);
-        }
-        // Draw highlighted screen
+        int hlen = (int)strlen(line);
+        int col = (SCREEN_COLS - hlen) / 2; if (col < 0) col = 0;
+        putText(col, row++, line, CBLACK, CWHITE);
+        snprintf(line, sizeof(line),
+                 "%s: SAVE/CANCEL/DEFAULT   %s: Cancel",
+                 buttonLabel1, buttonLabel2);
+        hlen = (int)strlen(line);
+        col = (SCREEN_COLS - hlen) / 2; if (col < 0) col = 0;
+        putText(col, row++, line, CBLACK, CWHITE);
+
         for (int lineNr = 0; lineNr < 240; ++lineNr)
         {
-            drawline(lineNr, selectedRowLocal); // use highlight logic
+            drawline(lineNr, selectedRowLocal);
         }
     };
     while (!exitMenu)
@@ -1806,6 +1827,7 @@ void showOptionsMenu(Frens::RomLister &romlister)
     if (applySettings)
     {
         // Copy working settings into global settings and persist.
+       
         // Preserve directory navigation fields that user did not edit here.
         working.firstVisibleRowINDEX = settings.firstVisibleRowINDEX;
         working.selectedRow = settings.selectedRow;
