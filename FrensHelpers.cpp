@@ -445,7 +445,7 @@ namespace Frens
 
         /* Print the free space (assuming 512 bytes/sector) */
         printf("%10lu KiB (%7.2f GB) total drive space.\n%10lu KiB available.\n", tot_sect / 2, fstemp->csize * fstemp->n_fatent * 512E-9, fre_sect / 2);
-        fr = my_chdir("/"); // f_chdir("/");
+        fr = f_chdir("/"); // f_chdir("/");
         if (fr != FR_OK)
         {
             snprintf(ErrorMessage, ERRORMESSAGESIZE, "Cannot change dir to / : %d", fr);
@@ -455,7 +455,7 @@ namespace Frens
         // for f_getcwd to work, set
         //   #define FF_FS_RPATH		2
         // in drivers/fatfs/ffconf.h
-        fr = my_getcwd(str, sizeof(str));
+        fr = f_getcwd(str, sizeof(str));
         ; // f_getcwd(str, sizeof(str));
         if (fr != FR_OK)
         {
