@@ -86,7 +86,7 @@ namespace Frens
 		// for f_getcwd to work, set
 		//   #define FF_FS_RPATH		2
 		// in ffconf.c
-		fr = my_chdir(directoryName); // f_chdir(directoryName);
+		fr = f_chdir(directoryName); // f_chdir(directoryName);
 		if (fr != FR_OK)
 		{
 			printf("Error changing dir: %d\n", fr);
