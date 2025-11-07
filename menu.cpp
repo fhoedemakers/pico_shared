@@ -1647,8 +1647,7 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
                         applySettings = false;
                         exitMenu = true;
                     } else if (selectedRowLocal == defaultRowScreen) {
-                        FrensSettings::resetsettings();
-                        working = settings; // resetsettings updated global; copy into working
+                        FrensSettings::resetsettings(&working);
                     }
                 } else if (pad & B) {
                     // B acts like cancel
@@ -1670,6 +1669,7 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
             hstx_setScanLines(settings.flags.scanlineOn);
 #endif
             FrensSettings::savesettings();
+            romlister.list(settings.currentDir);
         }
         // Rebuild rom list display afterwards
         printf("First visible row index after options menu: %d\n", settings.firstVisibleRowINDEX);
