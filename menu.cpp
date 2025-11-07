@@ -1308,7 +1308,7 @@ void waitForNoButtonPress()
     }
 }
 // --- Options Menu Implementation ---
-void showOptionsMenu(Frens::RomLister &romlister)
+bool showOptionsMenu()
 {
     bool settingsChanged = false;
     // Local working copy of settings (changes applied only after SAVE/DEFAULT)
@@ -1839,9 +1839,8 @@ void showOptionsMenu(Frens::RomLister &romlister)
         hstx_setScanLines(settings.flags.scanlineOn);
 #endif
         FrensSettings::savesettings();
-        romlister.list(settings.currentDir);
     }
-    displayRoms(romlister, settings.firstVisibleRowINDEX);
+    return applySettings;
 }
 
 void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, const char *allowedExtensions, char *rompath, const char *emulatorType)
@@ -2041,7 +2040,7 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
             }
             else if ((PAD1_Latch & B) == B)
             {
-                fr = my_getcwd(settings.currentDir, FF_MAX_LFN); // f_getcwd(settings.currentDir, FF_MAX_LFN);
+                fr = f_getcwd(settings.currentDir, FF_MAX_LFN); // f_getcwd(settings.currentDir, FF_MAX_LFN);
                 if (fr == FR_OK)
                 {
 
@@ -2051,7 +2050,7 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
                         settings.firstVisibleRowINDEX = 0;
                         settings.selectedRow = STARTROW;
                         displayRoms(romlister, settings.firstVisibleRowINDEX);
-                        fr = my_getcwd(settings.currentDir, FF_MAX_LFN); // f_getcwd(settings.currentDir, FF_MAX_LFN);
+                        fr = f_getcwd(settings.currentDir, FF_MAX_LFN); // f_getcwd(settings.currentDir, FF_MAX_LFN);
                         if (fr == FR_OK)
                         {
                             printf("Current dir: %s\n", settings.currentDir);
@@ -2070,7 +2069,12 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
             else if ((PAD1_Latch & SELECT) == SELECT)
             {
                 // Open options menu
-                showOptionsMenu(romlister);
+                if (showOptionsMenu())
+                {
+                    // reload rom list to apply possible changes
+                    romlister.list(settings.currentDir);
+                }
+                displayRoms(romlister, settings.firstVisibleRowINDEX);
                 continue; // skip other processing this frame
             }
             else if ((PAD1_Latch & START) == START && ((PAD1_Latch & SELECT) != SELECT))
@@ -2133,7 +2137,7 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
                     showLoadingScreen("Metadata loading...");
                     //}
                     // romlister.ClearMemory();
-                    fr = my_getcwd(curdir, sizeof(curdir)); // f_getcwd(curdir, sizeof(curdir));
+                    fr = f_getcwd(curdir, sizeof(curdir)); // f_getcwd(curdir, sizeof(curdir));
                     FSIZE_t romsize = 0;
                     // printf("Current dir: %s\n", curdir);
                     uint32_t crc = GetCRCOfRomFile(curdir, selectedRomOrFolder, rompath, romsize);
@@ -2168,7 +2172,7 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
                     settings.selectedRow = STARTROW;
                     displayRoms(romlister, settings.firstVisibleRowINDEX);
                     // get full path name of folder
-                    fr = my_getcwd(settings.currentDir, FF_MAX_LFN); //  f_getcwd(settings.currentDir, FF_MAX_LFN);
+                    fr = f_getcwd(settings.currentDir, FF_MAX_LFN); //  f_getcwd(settings.currentDir, FF_MAX_LFN);
                     if (fr != FR_OK)
                     {
                         printf("Cannot get current dir: %d\n", fr);
@@ -2178,7 +2182,7 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
                 else
                 {
                     showLoadingScreen();
-                    fr = my_getcwd(curdir, sizeof(curdir)); // f_getcwd(curdir, sizeof(curdir));
+                    fr = f_getcwd(curdir, sizeof(curdir)); // f_getcwd(curdir, sizeof(curdir));
                     printf("Current dir: %s\n", curdir);
                     if (Frens::isPsramEnabled())
                     {
