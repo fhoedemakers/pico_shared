@@ -1317,7 +1317,13 @@ bool showOptionsMenu()
     static char line[41];
     static char valueBuf[16];     // NEW: separate buffer for numeric values
     // Local working copy of settings (changes applied only after SAVE/DEFAULT)
-    struct settings working = settings;
+    struct settings *workingDyn = (struct settings*)Frens::f_malloc(sizeof(settings));
+    if (!workingDyn)
+    {
+        return false; // allocation failed
+    }
+    *workingDyn = settings;          // copy current settings into dynamic block
+    struct settings &working = *workingDyn; // keep existing code unchanged (reference alias)
     // Ensure current screenMode is valid; if not, pick first available
 #if !HSTX
     {
@@ -1842,6 +1848,7 @@ bool showOptionsMenu()
 #endif
         FrensSettings::savesettings();
     }
+    Frens::f_free(workingDyn);
     return applySettings;
 }
 
