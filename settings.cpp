@@ -40,8 +40,9 @@ namespace FrensSettings
         printf("frameSkip: %d\n", settings.flags.frameSkip);
         printf("\n");
     }
-    void resetsettings()
+    void resetsettings(struct settings *settingsPtr)
     {
+        struct settings &settings = settingsPtr ? *settingsPtr : ::settings;
         // Reset settings to default
         printf("Resetting settings\n");
         settings.screenMode = {};

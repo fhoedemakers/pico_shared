@@ -53,6 +53,6 @@ namespace FrensSettings
     void initSettings(emulators emu) ;
     void savesettings();
     void loadsettings();
-    void resetsettings();
+    void resetsettings(struct settings *settings = nullptr);
 }
 #endif
