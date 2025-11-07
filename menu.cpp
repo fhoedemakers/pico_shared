@@ -1555,8 +1555,8 @@ void showOptionsMenu(Frens::RomLister &romlister)
         for (int pr = 0; pr < blockRows; ++pr)
         {
             char tmp[4];
-            snprintf(tmp, sizeof(tmp), "%02d-", pr * blocksPerRow);
-            putText(gridStartCol - 4, row, tmp, CBLACK, CWHITE); // row label
+            snprintf(tmp, sizeof(tmp), "%02d", pr * blocksPerRow);
+            putText(gridStartCol - 2, row, tmp, CBLACK, CWHITE); // row label
             for (int pc = 0; pc < blocksPerRow; ++pc)
             {
                 int colorIndex = pr * blocksPerRow + pc;
@@ -1820,7 +1820,8 @@ void showOptionsMenu(Frens::RomLister &romlister)
         romlister.list(settings.currentDir);
     }
     displayRoms(romlister, settings.firstVisibleRowINDEX);
-}; // end lambda showOptionsMenu
+}
+
 void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, const char *allowedExtensions, char *rompath, const char *emulatorType)
 {
     FRESULT fr;
