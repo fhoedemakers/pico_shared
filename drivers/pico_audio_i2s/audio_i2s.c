@@ -875,3 +875,12 @@ bool audio_i2s_dacError()
 {
 	return dacError;
 }
+void audio_i2s_muteInternalSpeaker(bool mute)
+{
+	speakerIsMuted = mute;
+	if (speakerIsMuted) {
+		speakerMute();
+	} else {
+		speakerUnmute();
+	}
+}
