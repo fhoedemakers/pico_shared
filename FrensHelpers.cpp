@@ -22,7 +22,7 @@
 #include "nespad.h"
 #include "wiipad.h"
 #include "settings.h"
-#include "menu_options.h" // for g_available_screen_modes visibility
+#include "menu_settings.h" // for g_available_screen_modes visibility
 
 #include "PicoPlusPsram.h"
 #include "vumeter.h"
