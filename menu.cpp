@@ -15,7 +15,7 @@
 #include "menu.h"
 #include "nespad.h"
 #include "wiipad.h"
-#include "menu_options.h"
+#include "menu_settings.h"
 
 #include "font_8x8.h"
 #include "settings.h"
@@ -1307,8 +1307,8 @@ void waitForNoButtonPress()
         }
     }
 }
-// --- Options Menu Implementation ---
-bool showOptionsMenu()
+// --- Settings Menu Implementation ---
+bool showSettingsMenu()
 {
     bool settingsChanged = false;
     // Preserve stack by using static buffers (RP2040 has limited stack)
@@ -1352,7 +1352,7 @@ bool showOptionsMenu()
     int visibleCount = 0;
     for (int i = 0; i < MOPT_COUNT; ++i)
     {
-        if (g_option_visibility[i])
+        if (g_settings_visibility[i])
         {
             visibleIndices[visibleCount++] = i;
         }
@@ -1442,7 +1442,7 @@ bool showOptionsMenu()
             const char *value = "";
             switch (optIndex)
             {
-            case MOPT_SCREENMODE:
+            case MenuSettingsIndex::MOPT_SCREENMODE:
             {
                 label = "Screen Mode";
                 switch (working.screenMode)
@@ -1470,7 +1470,7 @@ bool showOptionsMenu()
                 }
                 break;
             }
-            case MOPT_SCANLINES:
+            case MenuSettingsIndex::MOPT_SCANLINES:
             {
 #if HSTX
                 label = "Scanlines";
@@ -1482,45 +1482,45 @@ bool showOptionsMenu()
 #endif
                 break;
             }
-            case MOPT_FPS_OVERLAY:
+            case MenuSettingsIndex::MOPT_FPS_OVERLAY:
             {
                 label = "Framerate Overlay";
                 value = working.flags.displayFrameRate ? "ON" : "OFF";
                 break;
             }
-            case MOPT_AUDIO_ENABLE:
+            case MenuSettingsIndex::MOPT_AUDIO_ENABLE:
             {
                 label = "Audio enabled";
                 value = working.flags.audioEnabled ? "ON" : "OFF";
                 break;
             }
-            case MOPT_EXTERNAL_AUDIO:
+            case MenuSettingsIndex::MOPT_EXTERNAL_AUDIO:
             {
                 label = "External Audio";
                 value = working.flags.useExtAudio ? "Enable" : "Disable";
                 break;
             }
-            case MOPT_FONT_COLOR:
+            case MenuSettingsIndex::MOPT_FONT_COLOR:
             {
                 label = "Menu Font Color";
                 snprintf(valueBuf, sizeof(valueBuf), "%d", working.fgcolor);
                 value = valueBuf;
                 break;
             }
-            case MOPT_FONT_BACK_COLOR:
+            case MenuSettingsIndex::MOPT_FONT_BACK_COLOR:
             {
                 label = "Menu Font Back Color";
                 snprintf(valueBuf, sizeof(valueBuf), "%d", working.bgcolor);
                 value = valueBuf;
                 break;
             }
-            case MOPT_VUMETER:
+            case MenuSettingsIndex::MOPT_VUMETER:
             {
                 label = "VU Meter";
                 value = working.flags.enableVUMeter ? "ON" : "OFF";
                 break;
             }
-            case MOPT_DMG_PALETTE:
+            case MenuSettingsIndex::MOPT_DMG_PALETTE:
             {
                 label = "DMG Palette";
                 switch (working.flags.dmgLCDPalette)
@@ -1540,7 +1540,7 @@ bool showOptionsMenu()
                 }
                 break;
             }
-            case MOPT_BORDER_MODE:
+            case MenuSettingsIndex::MOPT_BORDER_MODE:
             {
                 label = "Border Mode";
                 switch (working.flags.borderMode)
@@ -1560,7 +1560,7 @@ bool showOptionsMenu()
                 }
                 break;
             }
-            case MOPT_FRAMESKIP:
+            case MenuSettingsIndex::MOPT_FRAMESKIP:
             {
                 label = "Frame Skip";
                 value = working.flags.frameSkip ? "ON" : "OFF";
@@ -2077,8 +2077,8 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
             }
             else if ((PAD1_Latch & SELECT) == SELECT)
             {
-                // Open options menu
-                if (showOptionsMenu())
+                // Open settings menu
+                if (showSettingsMenu())
                 {
                     // reload rom list to apply possible changes
                     romlister.list(settings.currentDir);
