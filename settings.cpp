@@ -59,7 +59,7 @@ namespace FrensSettings
         settings.flags.dmgLCDPalette = 0; // default DMG LCD Palette, DMG Green
         settings.flags.audioEnabled = 1; // audio on by default
         settings.flags.displayFrameRate = 0; // default: do not show FPS overlay
-        settings.flags.frameSkip = 0; // default: frame skipping disabled
+        settings.flags.frameSkip = 1; // default: frame skipping enabled (Genesis needs it)
         settings.flags.fruitJamEnableInternalSpeaker = 1; // default: enable Fruit Jam internal speaker
         settings.version = SETTINGS_VERSION;
         // clear all the reserved settings
