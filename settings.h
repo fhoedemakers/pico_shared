@@ -29,8 +29,9 @@ struct settings
         unsigned short audioEnabled : 1;     // 1 = audio on, 0 = audio muted
         unsigned short displayFrameRate : 1; // 1 = show FPS overlay, 0 = do not show
         unsigned short frameSkip : 1;        // 1 = enable frame skipping, 0 = disable frame skipping
-        unsigned short scanlineOn : 1;        // 1 = scanlines on, 0 = scanlines off 
-        unsigned short reserved : 6;         // keep struct size the same
+        unsigned short scanlineOn : 1;        // 1 = scanlines on, 0 = scanlines off
+        unsigned short fruitJamEnableInternalSpeaker : 1; // 1 = enable Fruit Jam internal speaker, 0 = disable
+        unsigned short reserved : 5;         // keep struct size the same
     } flags; // Total 16 bits
 };
 namespace FrensSettings

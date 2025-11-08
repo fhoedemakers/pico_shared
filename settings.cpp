@@ -38,6 +38,8 @@ namespace FrensSettings
         printf("audioEnabled: %d\n", settings.flags.audioEnabled);
         printf("displayFrameRate: %d\n", settings.flags.displayFrameRate);
         printf("frameSkip: %d\n", settings.flags.frameSkip);
+        printf("scanlineOn: %d\n", settings.flags.scanlineOn);
+        printf("fruitJamEnableInternalSpeaker: %d\n", settings.flags.fruitJamEnableInternalSpeaker);
         printf("\n");
     }
     void resetsettings(struct settings *settingsPtr)
@@ -58,6 +60,7 @@ namespace FrensSettings
         settings.flags.audioEnabled = 1; // audio on by default
         settings.flags.displayFrameRate = 0; // default: do not show FPS overlay
         settings.flags.frameSkip = 0; // default: frame skipping disabled
+        settings.flags.fruitJamEnableInternalSpeaker = 1; // default: enable Fruit Jam internal speaker
         settings.version = SETTINGS_VERSION;
         // clear all the reserved settings
         settings.flags.reserved = 0;
