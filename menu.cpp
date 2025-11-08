@@ -1539,7 +1539,7 @@ bool showSettingsMenu()
                     value = "Color";
                     break;
                 case 2:
-                    value = "B&W";
+                    value = "Black & White";
                     break;
                 default:
                     value = "?";
