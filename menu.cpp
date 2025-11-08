@@ -1299,6 +1299,7 @@ void waitForNoButtonPress()
     DWORD PAD1_Latch;
     while (true)
     {
+        DrawScreen(-1);
         Menu_LoadFrame();
         RomSelect_PadState(&PAD1_Latch);
         if (PAD1_Latch == 0)
