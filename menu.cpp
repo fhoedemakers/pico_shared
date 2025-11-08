@@ -1515,10 +1515,16 @@ bool showSettingsMenu()
                 value = valueBuf;
                 break;
             }
-            case MenuSettingsIndex::MOPT_VUMETER:
+            case MenuSettingsIndex::MOPT_FRUITJAM_VUMETER:
             {
-                label = "VU Meter";
+                label = "Fruit Jam VU Meter";
                 value = working.flags.enableVUMeter ? "ON" : "OFF";
+                break;
+            }
+            case MenuSettingsIndex::MOPT_FRUITJAM_INTERNAL_SPEAKER:
+            {
+                label = "Fruit Jam Internal Speaker";
+                value = working.flags.fruitJamEnableInternalSpeaker ? "ON" : "OFF";
                 break;
             }
             case MenuSettingsIndex::MOPT_DMG_PALETTE:
@@ -1773,7 +1779,7 @@ bool showSettingsMenu()
                         }
                         break;
                     }
-                    case MOPT_VUMETER:
+                    case MOPT_FRUITJAM_VUMETER:
                         working.flags.enableVUMeter = !working.flags.enableVUMeter;
                         break;
                     case MOPT_DMG_PALETTE:
@@ -1801,8 +1807,15 @@ bool showSettingsMenu()
                         break;
                     }
                     case MOPT_FRAMESKIP:
+                    {
                         working.flags.frameSkip = !working.flags.frameSkip;
                         break;
+                    }
+                    case MOPT_FRUITJAM_INTERNAL_SPEAKER:
+                    {
+                        working.flags.fruitJamEnableInternalSpeaker = !working.flags.fruitJamEnableInternalSpeaker;
+                        break;
+                    }
                     default:
                         break;
                     }
@@ -1843,10 +1856,6 @@ bool showSettingsMenu()
         working.horzontalScrollIndex = settings.horzontalScrollIndex;
         strcpy(working.currentDir, settings.currentDir);
         settings = working;
-        // Apply hardware-affecting settings that are mutually exclusive between HSTX and non-HSTX builds.
-#if HSTX
-        hstx_setScanLines(settings.flags.scanlineOn);
-#endif
         FrensSettings::savesettings();
     }
     Frens::f_free(workingDyn);
