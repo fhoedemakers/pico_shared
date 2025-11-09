@@ -1751,6 +1751,7 @@ bool showSettingsMenu()
                         break;
                     case MOPT_AUDIO_ENABLE:
                         working.flags.audioEnabled = !working.flags.audioEnabled;
+                        working.flags.frameSkip = working.flags.audioEnabled;
                         break;
                     case MOPT_EXTERNAL_AUDIO:
                         working.flags.useExtAudio = !working.flags.useExtAudio;
