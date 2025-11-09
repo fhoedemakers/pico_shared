@@ -1553,13 +1553,13 @@ bool showSettingsMenu()
                 switch (working.flags.borderMode)
                 {
                 case FrensSettings::DEFAULTBORDER:
-                    value = "Super Gameboy";
+                    value = "Super Gameboy Default";
                     break;
                 case FrensSettings::RANDOMBORDER:
-                    value = "Random";
+                    value = "Super Gameboy Random";
                     break;
                 case FrensSettings::THEMEDBORDER:
-                    value = "Themed";
+                    value = "Game-Specific";
                     break;
                 default:
                     value = "?";
