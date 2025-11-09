@@ -47,7 +47,7 @@ namespace FrensSettings
         struct settings &settings = settingsPtr ? *settingsPtr : ::settings;
         // Reset settings to default
         printf("Resetting settings\n");
-        settings.screenMode = ScreenMode::NOSCANLINE_1_1;
+        settings.screenMode = (emulatorType == emulators::NES) ? ScreenMode::SCANLINE_8_7 : ScreenMode::NOSCANLINE_1_1;
         settings.firstVisibleRowINDEX = 0;
         settings.selectedRow = 0;
         settings.horzontalScrollIndex = 0;
