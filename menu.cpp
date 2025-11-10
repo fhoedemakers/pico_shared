@@ -1314,6 +1314,8 @@ int showSettingsMenu(void *altscreenBuffer, size_t altscreenBufferSize)
 {
     bool settingsChanged = false;
     int rval =0;
+    int margintop = 0;
+    int marginbottom = 0;
     // write contents of altScreenbuffer to file when not nullptr
     if (altscreenBuffer) {
         assert(altscreenBufferSize >= screenbufferSize);
@@ -1333,6 +1335,18 @@ int showSettingsMenu(void *altscreenBuffer, size_t altscreenBufferSize)
             printf("Error opening swapfile.DAT for writing: %d\n", fr);
         }
         screenBuffer = (charCell *)altscreenBuffer;
+        scaleMode8_7_ = Frens::applyScreenMode(ScreenMode::NOSCANLINE_1_1);
+#if !HSTX
+        margintop = dvi_->getBlankSettings().top;
+        marginbottom = dvi_->getBlankSettings().bottom;
+        printf("Top margin: %d, bottom margin: %d\n", margintop, marginbottom);
+        // Use the entire screen resolution of 320x240 pixels. This makes a 40x30 screen with 8x8 font possible.
+        scaleMode8_7_ = Frens::applyScreenMode(ScreenMode::NOSCANLINE_1_1);
+        dvi_->getBlankSettings().top = 0;
+        dvi_->getBlankSettings().bottom = 0;
+#else
+        hstx_setScanLines(false);
+#endif
     }
     
     // Preserve stack by using static buffers (RP2040 has limited stack)
@@ -1919,6 +1933,21 @@ int showSettingsMenu(void *altscreenBuffer, size_t altscreenBufferSize)
         } else {
             printf("Error opening swapfile.DAT for reading: %d\n", fr);
         }
+        ClearScreen(CBLACK); // Removes artifacts from previous screen
+                         // Wait until user has released all buttons
+        waitForNoButtonPress();
+#if !HSTX
+        scaleMode8_7_ = Frens::applyScreenMode(settings.screenMode);
+        // Reset the screen mode to the original settings
+        // Do not reset the margins when framebuffer is used, this will lock up the display driver
+        // Margins will be handled by the framebuffer.
+        if (!Frens::isFrameBufferUsed())
+        {
+            dvi_->getBlankSettings().top = margintop;
+            dvi_->getBlankSettings().bottom = marginbottom;
+        }
+#endif
+        
     }
     return rval;
 }
