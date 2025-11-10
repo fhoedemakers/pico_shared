@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <string.h>
+#include <algorithm>
 #include "pico.h"
 #include "RomLister.h"
 #include "ff.h"
@@ -153,36 +154,17 @@ namespace Frens
 			}
 		}
 		f_closedir(pDir);
-		// (bubble) Sort
+		// Sort: directories first (case-insensitive), then files (case-insensitive)
 		if (numberOfEntries > 1)
 		{
-			for (int pass = 0; pass < numberOfEntries - 1; ++pass)
-			{
-				for (int j = 0; j < numberOfEntries - 1 - pass; ++j)
+			std::sort(entries, entries + numberOfEntries, [](const RomEntry &a, const RomEntry &b) {
+				if (a.IsDirectory != b.IsDirectory)
 				{
-					int result = 0;
-					if (entries[j].IsDirectory && entries[j + 1].IsDirectory == false)
-					{
-						continue;
-					}
-					bool swap = false;
-					if (entries[j].IsDirectory == false && entries[j + 1].IsDirectory)
-					{
-						swap = true;
-					}
-					else
-					{
-						result = strcasecmp(entries[j].Path, entries[j + 1].Path);
-					}
-					if (swap || result > 0)
-					{
-						*pTemp = entries[j];
-						entries[j] = entries[j + 1];
-						entries[j + 1] = *pTemp;
-					}
+					return a.IsDirectory && !b.IsDirectory; // directories come before files
 				}
-			}
+				return strcasecmp(a.Path, b.Path) < 0; // case-insensitive alphabetical
+			});
 		}
-		printf("Sort done\n");
+		printf("Sort done (std::sort)\n");
 	}
 }
