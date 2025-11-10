@@ -40,6 +40,8 @@ namespace FrensSettings
         printf("frameSkip: %d\n", settings.flags.frameSkip);
         printf("scanlineOn: %d\n", settings.flags.scanlineOn);
         printf("fruitJamEnableInternalSpeaker: %d\n", settings.flags.fruitJamEnableInternalSpeaker);
+        printf("rapdFireOnA: %d\n", settings.flags.rapdFireOnA);
+        printf("rapdFireOnB: %d\n", settings.flags.rapdFireOnB);
         printf("\n");
     }
     void resetsettings(struct settings *settingsPtr)
@@ -61,6 +63,8 @@ namespace FrensSettings
         settings.flags.displayFrameRate = 0; // default: do not show FPS overlay
         settings.flags.frameSkip = 1; // default: frame skipping enabled (Genesis needs it)
         settings.flags.fruitJamEnableInternalSpeaker = 1; // default: enable Fruit Jam internal speaker
+        settings.flags.rapdFireOnA = 0; // default: rapid fire off
+        settings.flags.rapdFireOnB = 0; // default: rapid fire off
         settings.version = SETTINGS_VERSION;
         // clear all the reserved settings
         settings.flags.reserved = 0;
