@@ -1310,10 +1310,31 @@ void waitForNoButtonPress()
 // --- Settings Menu Implementation ---
 // returns 0 if no changes, 1 if settings applied
 //         2 start screensaver
-int showSettingsMenu()
+int showSettingsMenu(void *altscreenBuffer, size_t altscreenBufferSize)
 {
     bool settingsChanged = false;
     int rval =0;
+    // write contents of altScreenbuffer to file when not nullptr
+    if (altscreenBuffer) {
+        assert(altscreenBufferSize >= screenbufferSize);
+        FIL fil;
+        FRESULT fr;
+        fr = f_open(&fil, "/swapfile.DAT", FA_WRITE | FA_CREATE_ALWAYS);
+        if (fr == FR_OK) {
+            size_t bw;
+            fr = f_write(&fil, altscreenBuffer, altscreenBufferSize, &bw);
+            if (fr != FR_OK || bw != altscreenBufferSize) {
+                printf("Error writing swapfile.DAT: %d, written %d bytes\n", fr, bw);
+            } else {
+                printf("Wrote %d bytes to swapfile.DAT\n", bw);
+            }
+            f_close(&fil);
+        } else {
+            printf("Error opening swapfile.DAT for writing: %d\n", fr);
+        }
+        screenBuffer = (charCell *)altscreenBuffer;
+    }
+    
     // Preserve stack by using static buffers (RP2040 has limited stack)
     static char buttonLabel1[2]; // e.g., "A", "B", "X", "O"
     static char buttonLabel2[2]; // e.g., "A", "B", "
@@ -1874,6 +1895,31 @@ int showSettingsMenu()
         rval = 1;
     }
     Frens::f_free(workingDyn);
+    // restore contents of swap file back to altScreenbuffer when not nullptr
+    if (altscreenBuffer) {
+        FIL fil;
+        FRESULT fr;
+        fr = f_open(&fil, "/swapfile.DAT", FA_READ);
+        if (fr == FR_OK) {
+            size_t br;
+            fr = f_read(&fil, altscreenBuffer, altscreenBufferSize, &br);
+            if (fr != FR_OK || br != altscreenBufferSize) {
+                printf("Error reading swapfile.DAT: %d, read %d bytes\n", fr, br);
+            } else {        
+                printf("Read %d bytes from swapfile.DAT\n", br);
+            }
+            f_close(&fil);
+            // delete the swap file
+            fr = f_unlink("/swapfile.DAT");
+            if (fr != FR_OK) {
+                printf("Error deleting swapfile.DAT: %d\n", fr);
+            } else {
+                printf("Deleted swapfile.DAT\n");
+            }
+        } else {
+            printf("Error opening swapfile.DAT for reading: %d\n", fr);
+        }
+    }
     return rval;
 }
 
@@ -1917,7 +1963,7 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
 
     printf("Starting Menu\n");
     // allocate buffers
-    size_t screenbufferSize = sizeof(charCell) * SCREEN_COLS * SCREEN_ROWS;
+   
     printf("Allocating %d bytes for screenbuffer\n", screenbufferSize);
     screenBuffer = (charCell *)Frens::f_malloc(screenbufferSize); // (charCell *)InfoNes_GetRAM(&ramsize);
     size_t directoryContentsBufferSize = 32768;
