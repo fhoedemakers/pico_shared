@@ -1058,13 +1058,13 @@ int showartwork(uint32_t crc, FSIZE_t romsize)
     putText(firstCharColumnIndex, 17, "START or A: Start game", settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex);
     putText(firstCharColumnIndex, 18, "B: Back to rom list", settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex);
     bool skipImage = false;
-    int totalframes = -1;
+    int startFrames = -1;
     while (true)
     {
         auto frameCount = Menu_LoadFrame();
-        if (totalframes == -1)
+        if (startFrames == -1)
         {
-            totalframes = frameCount;
+            startFrames = frameCount;
         }
         DrawScreen(-1, width, height, (skipImage ? nullptr : imagebuffer));
         RomSelect_PadState(&PAD1_Latch);
@@ -1076,7 +1076,7 @@ int showartwork(uint32_t crc, FSIZE_t romsize)
                 ClearScreen(settings.bgcolor);
                 putText(0, 0, desc, settings.fgcolor, settings.bgcolor, true);
                 skipImage = true;
-                totalframes = frameCount; // reset totalframes to current frame count
+                startFrames = frameCount; // reset totalframes to current frame count
                 continue;
             }
             if ((PAD1_Latch & START) == START || (PAD1_Latch & A) == A)
@@ -1086,10 +1086,9 @@ int showartwork(uint32_t crc, FSIZE_t romsize)
             }
             break;
         }
-        if (frameCount - totalframes > 3600)
+        if (frameCount - startFrames > 3600)
         {
             // if no input for 3600 frames, start screensaver
-            // startscreensaver = true;
             startGame = 2;
             break;
         }
@@ -1309,9 +1308,12 @@ void waitForNoButtonPress()
     }
 }
 // --- Settings Menu Implementation ---
-bool showSettingsMenu()
+// returns 0 if no changes, 1 if settings applied
+//         2 start screensaver
+int showSettingsMenu()
 {
     bool settingsChanged = false;
+    int rval =0;
     // Preserve stack by using static buffers (RP2040 has limited stack)
     static char buttonLabel1[2]; // e.g., "A", "B", "X", "O"
     static char buttonLabel2[2]; // e.g., "A", "B", "
@@ -1644,6 +1646,7 @@ bool showSettingsMenu()
             drawline(lineNr, selectedRowLocal);
         }
     }; // redraw lambda
+    int startFrames = -1;
     while (!exitMenu)
     {
         // Always redraw before reading pad state (requested behavior)
@@ -1652,9 +1655,14 @@ bool showSettingsMenu()
         DWORD pad;
         RomSelect_PadState(&pad);
         auto frameCount = Menu_LoadFrame();
+        if (startFrames == -1)
+        {
+            startFrames = frameCount;
+        }
         bool pushed = pad != 0;
         if (pushed)
         {
+            startFrames = frameCount; // reset idle counter
             if (pad & UP)
             {
                 if (selectedRowLocal > rowStartOptions)
@@ -1846,11 +1854,16 @@ bool showSettingsMenu()
                 exitMenu = true;
             }
         }
+         if (frameCount - startFrames > 3600)
+        {
+            // if no input for 3600 frames, start screensaver
+            rval = 2;
+            break;
+        }
     }
-    if (applySettings)
+    if (applySettings && rval !=2)
     {
-        // Copy working settings into global settings and persist.
-       
+        // Copy working settings into global settings and persist.    
         // Preserve directory navigation fields that user did not edit here.
         working.firstVisibleRowINDEX = settings.firstVisibleRowINDEX;
         working.selectedRow = settings.selectedRow;
@@ -1858,9 +1871,10 @@ bool showSettingsMenu()
         strcpy(working.currentDir, settings.currentDir);
         settings = working;
         FrensSettings::savesettings();
+        rval = 1;
     }
     Frens::f_free(workingDyn);
-    return applySettings;
+    return rval;
 }
 
 void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, const char *allowedExtensions, char *rompath, const char *emulatorType)
@@ -2089,10 +2103,16 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
             else if ((PAD1_Latch & SELECT) == SELECT)
             {
                 // Open settings menu
-                if (showSettingsMenu())
+                auto settingsResult = showSettingsMenu();
+                if (settingsResult == 1)
                 {
                     // reload rom list to apply possible changes
                     romlister.list(settings.currentDir);
+                }
+                if (settingsResult == 2)
+                {
+                    // start screensaver
+                    screenSaver();
                 }
                 displayRoms(romlister, settings.firstVisibleRowINDEX);
                 continue; // skip other processing this frame
