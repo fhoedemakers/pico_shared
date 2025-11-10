@@ -1321,9 +1321,10 @@ int showSettingsMenu(void *altscreenBuffer, size_t altscreenBufferSize)
         assert(altscreenBufferSize >= screenbufferSize);
         FIL fil;
         FRESULT fr;
+        size_t bw;
         fr = f_open(&fil, "/swapfile.DAT", FA_WRITE | FA_CREATE_ALWAYS);
         if (fr == FR_OK) {
-            size_t bw;
+            
             fr = f_write(&fil, altscreenBuffer, altscreenBufferSize, &bw);
             if (fr != FR_OK || bw != altscreenBufferSize) {
                 printf("Error writing swapfile.DAT: %d, written %d bytes\n", fr, bw);
@@ -1331,8 +1332,13 @@ int showSettingsMenu(void *altscreenBuffer, size_t altscreenBufferSize)
                 printf("Wrote %d bytes to swapfile.DAT\n", bw);
             }
             f_close(&fil);
+            printf("%d bytes successfully written to swapfile.DAT.\n", altscreenBufferSize);
         } else {
             printf("Error opening swapfile.DAT for writing: %d\n", fr);
+        }
+        // exit if file operation failed
+        if (fr != FR_OK || bw != altscreenBufferSize) {
+            return 0;
         }
         screenBuffer = (charCell *)altscreenBuffer;
         scaleMode8_7_ = Frens::applyScreenMode(ScreenMode::NOSCANLINE_1_1);
