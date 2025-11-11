@@ -1318,6 +1318,7 @@ int showSettingsMenu(void *altscreenBuffer, size_t altscreenBufferSize)
     int marginbottom = 0;
     // write contents of altScreenbuffer to file when not nullptr
     if (altscreenBuffer) {
+#if 0
         assert(altscreenBufferSize >= screenbufferSize);
         FIL fil;
         FRESULT fr;
@@ -1341,6 +1342,9 @@ int showSettingsMenu(void *altscreenBuffer, size_t altscreenBufferSize)
             return 0;
         }
         screenBuffer = (charCell *)altscreenBuffer;
+#else
+        screenBuffer = (charCell *) Frens::f_malloc(screenbufferSize);
+#endif
 #if !HSTX
         margintop = dvi_->getBlankSettings().top;
         marginbottom = dvi_->getBlankSettings().bottom;
@@ -1938,6 +1942,7 @@ int showSettingsMenu(void *altscreenBuffer, size_t altscreenBufferSize)
     Frens::f_free(workingDyn);
     // restore contents of swap file back to altScreenbuffer when not nullptr
     if (altscreenBuffer) {
+#if 0
         FIL fil;
         FRESULT fr;
         fr = f_open(&fil, "/swapfile.DAT", FA_READ);
@@ -1960,6 +1965,9 @@ int showSettingsMenu(void *altscreenBuffer, size_t altscreenBufferSize)
         } else {
             printf("Error opening swapfile.DAT for reading: %d\n", fr);
         }
+#else
+        Frens::f_free((void *)screenBuffer);
+#endif
         ClearScreen(CBLACK); // Removes artifacts from previous screen
                          // Wait until user has released all buttons
         waitForNoButtonPress();
