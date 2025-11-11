@@ -31,8 +31,8 @@ struct settings
         unsigned short frameSkip : 1;        // 1 = enable frame skipping, 0 = disable frame skipping
         unsigned short scanlineOn : 1;        // 1 = scanlines on, 0 = scanlines off
         unsigned short fruitJamEnableInternalSpeaker : 1; // 1 = enable Fruit Jam internal speaker, 0 = disable
-        unsigned short rapdFireOnA : 1;      // 1 = rapid fire on A button, 0 = off
-        unsigned short rapdFireOnB : 1;      // 1 = rapid fire on B button, 0 = off
+        unsigned short rapidFireOnA : 1;      // 1 = rapid fire on A button, 0 = off
+        unsigned short rapidFireOnB : 1;      // 1 = rapid fire on B button, 0 = off
         unsigned short reserved : 3;         // keep struct size the same
     } flags; // Total 16 bits
 };
