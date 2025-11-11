@@ -1341,7 +1341,6 @@ int showSettingsMenu(void *altscreenBuffer, size_t altscreenBufferSize)
             return 0;
         }
         screenBuffer = (charCell *)altscreenBuffer;
-        scaleMode8_7_ = Frens::applyScreenMode(ScreenMode::NOSCANLINE_1_1);
 #if !HSTX
         margintop = dvi_->getBlankSettings().top;
         marginbottom = dvi_->getBlankSettings().bottom;
