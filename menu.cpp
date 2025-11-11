@@ -1310,14 +1310,14 @@ void waitForNoButtonPress()
 // --- Settings Menu Implementation ---
 // returns 0 if no changes, 1 if settings applied
 //         2 start screensaver
-int showSettingsMenu(void *altscreenBuffer, size_t altscreenBufferSize)
+int showSettingsMenu(bool allocateScreenBuffer)
 {
     bool settingsChanged = false;
     int rval =0;
     int margintop = 0;
     int marginbottom = 0;
     // write contents of altScreenbuffer to file when not nullptr
-    if (altscreenBuffer) {
+    if (allocateScreenBuffer) {
 #if 0
         assert(altscreenBufferSize >= screenbufferSize);
         FIL fil;
@@ -1702,6 +1702,7 @@ int showSettingsMenu(void *altscreenBuffer, size_t altscreenBufferSize)
             drawline(lineNr, selectedRowLocal);
         }
     }; // redraw lambda
+    waitForNoButtonPress();
     int startFrames = -1;
     while (!exitMenu)
     {
@@ -1941,7 +1942,7 @@ int showSettingsMenu(void *altscreenBuffer, size_t altscreenBufferSize)
     }
     Frens::f_free(workingDyn);
     // restore contents of swap file back to altScreenbuffer when not nullptr
-    if (altscreenBuffer) {
+    if (allocateScreenBuffer) {
 #if 0
         FIL fil;
         FRESULT fr;
