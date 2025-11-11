@@ -1616,6 +1616,18 @@ int showSettingsMenu(void *altscreenBuffer, size_t altscreenBufferSize)
                 value = working.flags.frameSkip ? "ON" : "OFF";
                 break;
             }   
+            case MenuSettingsIndex::MOPT_RAPID_FIRE_ON_A:
+            {
+                label = "Rapid Fire on A";
+                value = working.flags.rapidFireOnA ? "ON" : "OFF";
+                break;
+            }
+            case MenuSettingsIndex::MOPT_RAPID_FIRE_ON_B:
+            {
+                label = "Rapid Fire on B";
+                value = working.flags.rapidFireOnB ? "ON" : "OFF";
+                break;
+            }
             default:
                 label = "Unknown";
                 value = "";
@@ -1864,6 +1876,16 @@ int showSettingsMenu(void *altscreenBuffer, size_t altscreenBufferSize)
                     case MOPT_FRUITJAM_INTERNAL_SPEAKER:
                     {
                         working.flags.fruitJamEnableInternalSpeaker = !working.flags.fruitJamEnableInternalSpeaker;
+                        break;
+                    }
+                    case MOPT_RAPID_FIRE_ON_A:
+                    {
+                        working.flags.rapidFireOnA = !working.flags.rapidFireOnA;
+                        break;
+                    }
+                    case MOPT_RAPID_FIRE_ON_B:
+                    {
+                        working.flags.rapidFireOnB = !working.flags.rapidFireOnB;
                         break;
                     }
                     default:
