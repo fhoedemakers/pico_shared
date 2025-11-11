@@ -1696,7 +1696,11 @@ int showSettingsMenu(bool allocateScreenBuffer)
         hlen = (int)strlen(line);
         col = (SCREEN_COLS - hlen) / 2; if (col < 0) col = 0;
         putText(col, row++, line, CBLACK, CWHITE);
-
+        snprintf(line, sizeof(line),
+                 "To open settings in-game: START + %s", buttonLabel2);
+        hlen = (int)strlen(line);
+        col = (SCREEN_COLS - hlen) / 2; if (col < 0) col = 0;
+        putText(col, row++, line, CBLACK,   CWHITE);
         for (int lineNr = 0; lineNr < 240; ++lineNr)
         {
             drawline(lineNr, selectedRowLocal);
