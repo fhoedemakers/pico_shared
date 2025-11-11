@@ -1621,13 +1621,21 @@ int showSettingsMenu(bool allocateScreenBuffer)
             }   
             case MenuSettingsIndex::MOPT_RAPID_FIRE_ON_A:
             {
-                label = "Rapid Fire on A";
+                if ( strcmp(buttonLabel1, "B") == 0) {
+                    label = "Rapid Fire on B";
+                } else {
+                    label = "Rapid Fire on A";
+                }
                 value = working.flags.rapidFireOnA ? "ON" : "OFF";
                 break;
             }
             case MenuSettingsIndex::MOPT_RAPID_FIRE_ON_B:
             {
-                label = "Rapid Fire on B";
+                if ( strcmp(buttonLabel2, "A") == 0) {
+                    label = "Rapid Fire on A";
+                } else {
+                    label = "Rapid Fire on B";
+                }
                 value = working.flags.rapidFireOnB ? "ON" : "OFF";
                 break;
             }
