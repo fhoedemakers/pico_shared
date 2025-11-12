@@ -5,7 +5,8 @@
 // Value 1 in g_option_visibility means the option is shown, 0 means hidden for current emulator.
 
 enum MenuSettingsIndex {
-    MOPT_SCREENMODE = 0,
+    MOPT_EXIT_GAME = 0,
+    MOPT_SCREENMODE,
     MOPT_SCANLINES,
     MOPT_FPS_OVERLAY,
     MOPT_AUDIO_ENABLE,
