@@ -1310,14 +1310,16 @@ void waitForNoButtonPress()
 // --- Settings Menu Implementation ---
 // returns 0 if no changes, 1 if settings applied
 //         2 start screensaver
-int showSettingsMenu(bool allocateScreenBuffer)
+//         3 exit to menu
+int showSettingsMenu(bool calledFromGame)
 {
     bool settingsChanged = false;
-    int rval =0;
+    int rval = 0;
     int margintop = 0;
     int marginbottom = 0;
     // write contents of altScreenbuffer to file when not nullptr
-    if (allocateScreenBuffer) {
+    if (calledFromGame)
+    {
 #if 0
         assert(altscreenBufferSize >= screenbufferSize);
         FIL fil;
@@ -1343,7 +1345,7 @@ int showSettingsMenu(bool allocateScreenBuffer)
         }
         screenBuffer = (charCell *)altscreenBuffer;
 #else
-        screenBuffer = (charCell *) Frens::f_malloc(screenbufferSize);
+        screenBuffer = (charCell *)Frens::f_malloc(screenbufferSize);
 #endif
 #if !HSTX
         margintop = dvi_->getBlankSettings().top;
@@ -1357,19 +1359,19 @@ int showSettingsMenu(bool allocateScreenBuffer)
         hstx_setScanLines(false);
 #endif
     }
-    
+
     // Preserve stack by using static buffers (RP2040 has limited stack)
     static char buttonLabel1[2]; // e.g., "A", "B", "X", "O"
     static char buttonLabel2[2]; // e.g., "A", "B", "
     static char line[41];
-    static char valueBuf[16];     // NEW: separate buffer for numeric values
+    static char valueBuf[16]; // NEW: separate buffer for numeric values
     // Local working copy of settings (changes applied only after SAVE/DEFAULT)
-    struct settings *workingDyn = (struct settings*)Frens::f_malloc(sizeof(settings));
+    struct settings *workingDyn = (struct settings *)Frens::f_malloc(sizeof(settings));
     if (!workingDyn)
     {
         return false; // allocation failed
     }
-    *workingDyn = settings;          // copy current settings into dynamic block
+    *workingDyn = settings;                 // copy current settings into dynamic block
     struct settings &working = *workingDyn; // keep existing code unchanged (reference alias)
     // Ensure current screenMode is valid; if not, pick first available
 #if !HSTX
@@ -1399,7 +1401,7 @@ int showSettingsMenu(bool allocateScreenBuffer)
     int visibleCount = 0;
     for (int i = 0; i < MOPT_COUNT; ++i)
     {
-        if (g_settings_visibility[i])
+        if (g_settings_visibility[i] || (i == MenuSettingsIndex::MOPT_EXIT_GAME && calledFromGame))
         {
             visibleIndices[visibleCount++] = i;
         }
@@ -1450,10 +1452,10 @@ int showSettingsMenu(bool allocateScreenBuffer)
     auto redraw = [&]()
     {
         ClearScreen(CWHITE); // Always white background
-      
+
         int row = 0;
 
-         if (strcmp(connectedGamePadName, "Dual Shock 4") == 0 || strcmp(connectedGamePadName, "Dual Sense") == 0 || strcmp(connectedGamePadName, "PSClassic") == 0)
+        if (strcmp(connectedGamePadName, "Dual Shock 4") == 0 || strcmp(connectedGamePadName, "Dual Sense") == 0 || strcmp(connectedGamePadName, "PSClassic") == 0)
         {
             strcpy(buttonLabel1, "O");
             strcpy(buttonLabel2, "X");
@@ -1489,6 +1491,19 @@ int showSettingsMenu(bool allocateScreenBuffer)
             const char *value = "";
             switch (optIndex)
             {
+            case MenuSettingsIndex::MOPT_EXIT_GAME:
+            {
+                if (calledFromGame)
+                {
+                    label = "Quit game";
+                }
+                else
+                {
+                    label = "Back to main menu";
+                }
+                value = "";
+                break;
+            }
             case MenuSettingsIndex::MOPT_SCREENMODE:
             {
                 label = "Screen Mode";
@@ -1618,12 +1633,15 @@ int showSettingsMenu(bool allocateScreenBuffer)
                 label = "Frame Skip";
                 value = working.flags.frameSkip ? "ON" : "OFF";
                 break;
-            }   
+            }
             case MenuSettingsIndex::MOPT_RAPID_FIRE_ON_A:
             {
-                if ( strcmp(buttonLabel1, "B") == 0) {
+                if (strcmp(buttonLabel1, "B") == 0)
+                {
                     label = "Rapid Fire on B";
-                } else {
+                }
+                else
+                {
                     label = "Rapid Fire on A";
                 }
                 value = working.flags.rapidFireOnA ? "ON" : "OFF";
@@ -1631,9 +1649,12 @@ int showSettingsMenu(bool allocateScreenBuffer)
             }
             case MenuSettingsIndex::MOPT_RAPID_FIRE_ON_B:
             {
-                if ( strcmp(buttonLabel2, "A") == 0) {
+                if (strcmp(buttonLabel2, "A") == 0)
+                {
                     label = "Rapid Fire on A";
-                } else {
+                }
+                else
+                {
                     label = "Rapid Fire on B";
                 }
                 value = working.flags.rapidFireOnB ? "ON" : "OFF";
@@ -1644,7 +1665,7 @@ int showSettingsMenu(bool allocateScreenBuffer)
                 value = "";
                 break;
             }
-            snprintf(line, sizeof(line), "%s: %s", label, value);
+            snprintf(line, sizeof(line), "%s%s%s", label, (vi == MOPT_EXIT_GAME) ? "" : ": ", value);
             putText(0, row++, line, CBLACK, CWHITE);
         }
         // Blank spacer after last option
@@ -1691,24 +1712,50 @@ int showSettingsMenu(bool allocateScreenBuffer)
         putText(0, row++, "CANCEL", CBLACK, CWHITE);
         putText(0, row++, "DEFAULT", CBLACK, CWHITE);
         // Help text (dynamic button labels)
-       strcpy(line, "UP/DOWN: Move  LEFT/RIGHT: Change");
-        
+        if (selectedRowLocal == rowStartOptions && calledFromGame)
+        {
+            snprintf(line, sizeof(line), "UP/DOWN: Move, %s quit game", buttonLabel1);
+        }
+        else
+        {
+            if (selectedRowLocal < saveRowScreen) {
+                strcpy(line, "UP/DOWN: Move, LEFT/RIGHT: Change");
+            }
+            else  {  
+                strcpy(line, "UP/DOWN: Move");
+            }
+        }
         int helpCount = 2;
         row = SCREEN_ROWS - helpCount - 1; // leave one blank row at bottom
         int hlen = (int)strlen(line);
-        int col = (SCREEN_COLS - hlen) / 2; if (col < 0) col = 0;
+        int col = (SCREEN_COLS - hlen) / 2;
+        if (col < 0)
+            col = 0;
+        putText(col, row++, line, CBLACK, CWHITE);
+        if (selectedRowLocal == saveRowScreen) {
+            snprintf(line, sizeof(line), "%s: Confirm changes", buttonLabel1);
+        } else if (selectedRowLocal == cancelRowScreen) {
+            snprintf(line, sizeof(line), "%s: Discard changes", buttonLabel1);
+        } else if (selectedRowLocal == defaultRowScreen) {
+            snprintf(line, sizeof(line), "%s: Restore defaults", buttonLabel1);
+        } else {
+            strcpy(line, ""); // no second line
+        }
+        // snprintf(line, sizeof(line),
+        //          "%s: SAVE/CANCEL/DEFAULT,  %s: Cancel",
+        //          buttonLabel1, buttonLabel2);
+        hlen = (int)strlen(line);
+        col = (SCREEN_COLS - hlen) / 2;
+        if (col < 0)
+            col = 0;
         putText(col, row++, line, CBLACK, CWHITE);
         snprintf(line, sizeof(line),
-                 "%s: SAVE/CANCEL/DEFAULT   %s: Cancel",
-                 buttonLabel1, buttonLabel2);
+                 "Press %s to abort", buttonLabel2);
         hlen = (int)strlen(line);
-        col = (SCREEN_COLS - hlen) / 2; if (col < 0) col = 0;
+        col = (SCREEN_COLS - hlen) / 2;
+        if (col < 0)
+            col = 0;
         putText(col, row++, line, CBLACK, CWHITE);
-        snprintf(line, sizeof(line),
-                 "To open settings in-game: START + %s", buttonLabel2);
-        hlen = (int)strlen(line);
-        col = (SCREEN_COLS - hlen) / 2; if (col < 0) col = 0;
-        putText(col, row++, line, CBLACK,   CWHITE);
         for (int lineNr = 0; lineNr < 240; ++lineNr)
         {
             drawline(lineNr, selectedRowLocal);
@@ -1729,6 +1776,11 @@ int showSettingsMenu(bool allocateScreenBuffer)
             startFrames = frameCount;
         }
         bool pushed = pad != 0;
+        int optIndex = -1;
+        if (selectedRowLocal >= rowStartOptions && selectedRowLocal < rowStartOptions + visibleCount)
+        {
+            optIndex = visibleIndices[selectedRowLocal - rowStartOptions]; // map screen row to option index
+        }
         if (pushed)
         {
             startFrames = frameCount; // reset idle counter
@@ -1739,6 +1791,7 @@ int showSettingsMenu(bool allocateScreenBuffer)
                     do
                     {
                         selectedRowLocal--;
+                        // printf("Selected row: %d\n", selectedRowLocal);
                     } while (
                         selectedRowLocal == spacerAfterOptionsRow ||
                         (selectedRowLocal >= paletteStartRow && selectedRowLocal < paletteStartRow + paletteRowCount) ||
@@ -1757,6 +1810,7 @@ int showSettingsMenu(bool allocateScreenBuffer)
                     do
                     {
                         selectedRowLocal++;
+                        // printf("Selected row: %d\n", selectedRowLocal);
                     } while (
                         selectedRowLocal == spacerAfterOptionsRow ||
                         (selectedRowLocal >= paletteStartRow && selectedRowLocal < paletteStartRow + paletteRowCount) ||
@@ -1768,14 +1822,20 @@ int showSettingsMenu(bool allocateScreenBuffer)
                     selectedRowLocal = rowStartOptions; // wrap
                 }
             }
-            else if (pad & LEFT || pad & RIGHT)
+            else if (pad & LEFT || pad & RIGHT || ((pad & A) && optIndex == MOPT_EXIT_GAME))
             {
-                if (selectedRowLocal >= rowStartOptions && selectedRowLocal < rowStartOptions + visibleCount)
+                if (optIndex != -1)
                 {
-                    int optIndex = visibleIndices[selectedRowLocal - rowStartOptions]; // map screen row to option index
+                    // int optIndex = visibleIndices[selectedRowLocal - rowStartOptions]; // map screen row to option index
                     bool right = pad & RIGHT;
                     switch (optIndex)
                     {
+                    case MOPT_EXIT_GAME:
+                    {
+                        rval = 3; // exit to main menu
+                        exitMenu = true;
+                        break;
+                    }
                     case MOPT_SCREENMODE:
                     {
                         // Filter cycling: skip unavailable modes using enumeration order (0..3)
@@ -1933,16 +1993,16 @@ int showSettingsMenu(bool allocateScreenBuffer)
                 exitMenu = true;
             }
         }
-         if (frameCount - startFrames > 3600)
+        if (frameCount - startFrames > 3600)
         {
             // if no input for 3600 frames, start screensaver
             rval = 2;
             break;
         }
     }
-    if (applySettings && rval !=2)
+    if (applySettings && rval == 0)
     {
-        // Copy working settings into global settings and persist.    
+        // Copy working settings into global settings and persist.
         // Preserve directory navigation fields that user did not edit here.
         working.firstVisibleRowINDEX = settings.firstVisibleRowINDEX;
         working.selectedRow = settings.selectedRow;
@@ -1954,7 +2014,8 @@ int showSettingsMenu(bool allocateScreenBuffer)
     }
     Frens::f_free(workingDyn);
     // restore contents of swap file back to altScreenbuffer when not nullptr
-    if (allocateScreenBuffer) {
+    if (calledFromGame)
+    {
 #if 0
         FIL fil;
         FRESULT fr;
@@ -1982,7 +2043,7 @@ int showSettingsMenu(bool allocateScreenBuffer)
         Frens::f_free((void *)screenBuffer);
 #endif
         ClearScreen(CBLACK); // Removes artifacts from previous screen
-                         // Wait until user has released all buttons
+                             // Wait until user has released all buttons
         waitForNoButtonPress();
 #if !HSTX
         scaleMode8_7_ = Frens::applyScreenMode(settings.screenMode);
@@ -1995,7 +2056,6 @@ int showSettingsMenu(bool allocateScreenBuffer)
             dvi_->getBlankSettings().bottom = marginbottom;
         }
 #endif
-        
     }
     return rval;
 }
@@ -2040,7 +2100,7 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
 
     printf("Starting Menu\n");
     // allocate buffers
-   
+
     printf("Allocating %d bytes for screenbuffer\n", screenbufferSize);
     screenBuffer = (charCell *)Frens::f_malloc(screenbufferSize); // (charCell *)InfoNes_GetRAM(&ramsize);
     size_t directoryContentsBufferSize = 32768;
