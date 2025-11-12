@@ -34,6 +34,6 @@ void menu(const char *title, char *errorMessage, bool isFatalError, bool showSpl
 void ClearScreen(int color);
 void putText(int x, int y, const char *text, int fgcolor, int bgcolor, bool wraplines = false, int offset = 0);
 void splash();  // is emulator specific
-int showSettingsMenu(bool allocateScreenBuffer = false);
+int showSettingsMenu(bool calledFromGame = false);
 
 #endif
