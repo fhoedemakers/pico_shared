@@ -118,6 +118,30 @@ void resetColors(int prevfgColor, int prevbgColor)
     }
 }
 
+static void getButtonLabels(char *buttonLabel1, char *buttonLabel2)
+{
+     if (strcmp(connectedGamePadName, "Dual Shock 4") == 0 || strcmp(connectedGamePadName, "Dual Sense") == 0 || strcmp(connectedGamePadName, "PSClassic") == 0)
+        {
+            strcpy(buttonLabel1, "O");
+            strcpy(buttonLabel2, "X");
+        }
+        else if (strcmp(connectedGamePadName, "XInput") == 0 || strncmp(connectedGamePadName, "Genesis", 7) == 0 || strcmp(connectedGamePadName, "MDArcade") == 0)
+        {
+            strcpy(buttonLabel1, "B");
+            strcpy(buttonLabel2, "A");
+        }
+        else if (strcmp(connectedGamePadName, "Keyboard") == 0)
+        {
+            strcpy(buttonLabel1, "X");
+            strcpy(buttonLabel2, "Z");
+        }
+        else
+        {
+            strcpy(buttonLabel1, "A");
+            strcpy(buttonLabel2, "B");
+        }
+}
+
 static bool isArtWorkEnabled()
 {
     FILINFO fi;
@@ -515,7 +539,9 @@ void DrawScreen(int selectedRow, int w = 0, int h = 0, uint16_t *imagebuffer = n
     const char *spaces = "                   ";
     char tmpstr[sizeof(connectedGamePadName) + 4];
     char s[SCREEN_COLS + 1];
-
+    char buttonLabel1[2];
+    char buttonLabel2[2];
+    getButtonLabels(buttonLabel1, buttonLabel2);    
     if (selectedRow != -1)
     {
         if (EXT_AUDIO_DACERROR())
@@ -527,22 +553,8 @@ void DrawScreen(int selectedRow, int w = 0, int h = 0, uint16_t *imagebuffer = n
         putText(SCREEN_COLS / 2 - strlen(tmpstr) / 2, SCREEN_ROWS - 1, tmpstr, CBLUE, CWHITE);
         snprintf(s, sizeof(s), "%c%dK %c", Frens::isPsramEnabled() ? 'P' : 'F', maxRomSize / 1024, WIIPAD_IS_CONNECTED() ? 'W' : ' ');
         putText(1, SCREEN_ROWS - 1, s, settings.fgcolor, settings.bgcolor);
-        if (strcmp(connectedGamePadName, "Dual Shock 4") == 0 || strcmp(connectedGamePadName, "Dual Sense") == 0 || strcmp(connectedGamePadName, "PSClassic") == 0)
-        {
-            strcpy(s, "O:Select X:Back");
-        }
-        else if (strcmp(connectedGamePadName, "XInput") == 0 || strncmp(connectedGamePadName, "Genesis", 7) == 0 || strcmp(connectedGamePadName, "MDArcade") == 0)
-        {
-            strcpy(s, "B:Select A:Back");
-        }
-        else if (strcmp(connectedGamePadName, "Keyboard") == 0)
-        {
-            strcpy(s, "X:Select Z:Back");
-        }
-        else
-        {
-            strcpy(s, "A:Select B:Back");
-        }
+        snprintf(s, sizeof(s), "%s:Open %s:Back", buttonLabel1, buttonLabel2);
+       
         putText(1, ENDROW + 2, s, settings.fgcolor, settings.bgcolor);
         if (artworkEnabled)
         {
@@ -920,6 +932,11 @@ int showartwork(uint32_t crc, FSIZE_t romsize)
     char *PATH = (char *)Frens::f_malloc(FF_MAX_LFN + 1);
     int stars = -1;
     int startGame = 0;
+    char buttonLabel1[2];
+    char buttonLabel2[2];
+
+    getButtonLabels(buttonLabel1, buttonLabel2);
+
     // bool startscreensaver = false;
     FIL fil;
     FRESULT fr;
@@ -1055,8 +1072,10 @@ int showartwork(uint32_t crc, FSIZE_t romsize)
     putText(firstCharColumnIndex, 14, "Size:", settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex);
     putText(firstCharColumnIndex + 6, 14, info, settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex + 6);
     putText(firstCharColumnIndex, 16, "SELECT: Full description", settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex);
-    putText(firstCharColumnIndex, 17, "START or A: Start game", settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex);
-    putText(firstCharColumnIndex, 18, "B: Back to rom list", settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex);
+    snprintf(info, sizeof(info), "START or %s: Start game", buttonLabel1);
+    putText(firstCharColumnIndex, 17, info, settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex);
+    snprintf(info, sizeof(info), "%s: Back to rom list", buttonLabel2);
+    putText(firstCharColumnIndex, 18, info, settings.fgcolor, settings.bgcolor, true, firstCharColumnIndex);
     bool skipImage = false;
     int startFrames = -1;
     while (true)
@@ -1365,6 +1384,7 @@ int showSettingsMenu(bool calledFromGame)
     static char buttonLabel2[2]; // e.g., "A", "B", "
     static char line[41];
     static char valueBuf[16]; // NEW: separate buffer for numeric values
+    
     // Local working copy of settings.
     struct settings *workingDyn = (struct settings *)Frens::f_malloc(sizeof(settings));
     if (!workingDyn)
@@ -1391,6 +1411,7 @@ int showSettingsMenu(bool calledFromGame)
         }
     }
 #endif
+   
     // Screen row indices:
     // 0: Title (non-selectable)
     // 1..visibleCount: options
@@ -1432,30 +1453,13 @@ int showSettingsMenu(bool calledFromGame)
     // lambda to redraw the entire menu
     auto redraw = [&]()
     {
+        getButtonLabels(buttonLabel1, buttonLabel2);
         ClearScreen(CWHITE); // Always white background
 
         int row = 0;
 
-        if (strcmp(connectedGamePadName, "Dual Shock 4") == 0 || strcmp(connectedGamePadName, "Dual Sense") == 0 || strcmp(connectedGamePadName, "PSClassic") == 0)
-        {
-            strcpy(buttonLabel1, "O");
-            strcpy(buttonLabel2, "X");
-        }
-        else if (strcmp(connectedGamePadName, "XInput") == 0 || strncmp(connectedGamePadName, "Genesis", 7) == 0 || strcmp(connectedGamePadName, "MDArcade") == 0)
-        {
-            strcpy(buttonLabel1, "B");
-            strcpy(buttonLabel2, "A");
-        }
-        else if (strcmp(connectedGamePadName, "Keyboard") == 0)
-        {
-            strcpy(buttonLabel1, "X");
-            strcpy(buttonLabel2, "Z");
-        }
-        else
-        {
-            strcpy(buttonLabel1, "A");
-            strcpy(buttonLabel2, "B");
-        }
+       
+
         // Centered Title
         constexpr int titleLen = 13; // "-- Settings --"
         int titleCol = (SCREEN_COLS - titleLen) / 2;
@@ -1731,7 +1735,7 @@ int showSettingsMenu(bool calledFromGame)
             col = 0;
         putText(col, row++, line, CBLACK, CWHITE);
         snprintf(line, sizeof(line),
-                 "Press %s to abort", buttonLabel2);
+                 "Press %s to go back.", buttonLabel2);
         hlen = (int)strlen(line);
         col = (SCREEN_COLS - hlen) / 2;
         if (col < 0)
