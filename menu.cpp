@@ -1317,7 +1317,7 @@ int showSettingsMenu(bool calledFromGame)
     int rval = 0;
     int margintop = 0;
     int marginbottom = 0;
-    // write contents of altScreenbuffer to file when not nullptr
+    // Allocate screen buffer if called from game
     if (calledFromGame)
     {
 #if 0
@@ -1365,7 +1365,7 @@ int showSettingsMenu(bool calledFromGame)
     static char buttonLabel2[2]; // e.g., "A", "B", "
     static char line[41];
     static char valueBuf[16]; // NEW: separate buffer for numeric values
-    // Local working copy of settings (changes applied only after SAVE/DEFAULT)
+    // Local working copy of settings.
     struct settings *workingDyn = (struct settings *)Frens::f_malloc(sizeof(settings));
     if (!workingDyn)
     {
