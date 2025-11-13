@@ -1429,26 +1429,7 @@ int showSettingsMenu(bool calledFromGame)
     int selectedRowLocal = rowStartOptions; // first selectable option row
     bool exitMenu = false;
     bool applySettings = false; // true when SAVE, false when CANCEL
-    // Helper lambdas
-    auto isScanlinesOn = [&](ScreenMode sm)
-    {
-        return sm == ScreenMode::SCANLINE_1_1 || sm == ScreenMode::SCANLINE_8_7;
-    };
-    auto isModeEightSeven = [&](ScreenMode sm)
-    {
-        return sm == ScreenMode::SCANLINE_8_7 || sm == ScreenMode::NOSCANLINE_8_7;
-    };
-    auto setScreenMode = [&](bool eightSeven, bool scanlines)
-    {
-        if (scanlines)
-        {
-            working.screenMode = eightSeven ? ScreenMode::SCANLINE_8_7 : ScreenMode::SCANLINE_1_1;
-        }
-        else
-        {
-            working.screenMode = eightSeven ? ScreenMode::NOSCANLINE_8_7 : ScreenMode::NOSCANLINE_1_1;
-        }
-    };
+    // lambda to redraw the entire menu
     auto redraw = [&]()
     {
         ClearScreen(CWHITE); // Always white background
