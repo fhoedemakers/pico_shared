@@ -1765,6 +1765,16 @@ int showSettingsMenu(bool calledFromGame)
         if (pushed)
         {
             startFrames = frameCount; // reset idle counter
+            // detect SELECT + START
+            if ((pad & SELECT) && (pad & START))
+            {
+                // abort without changes
+                exitMenu = true;
+                applySettings = false;
+                rval = 3; // exit to main menu
+                continue;
+            }
+       
             if (pad & UP)
             {
                 if (selectedRowLocal > rowStartOptions)
