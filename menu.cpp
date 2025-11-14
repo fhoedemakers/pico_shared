@@ -1650,7 +1650,7 @@ int showSettingsMenu(bool calledFromGame)
                 value = "";
                 break;
             }
-            snprintf(line, sizeof(line), "%s%s%s", label, (vi == MOPT_EXIT_GAME) ? "" : ": ", value);
+            snprintf(line, sizeof(line), "%s%s%s", label, (optIndex == MOPT_EXIT_GAME ) ? "" : ": ", value);
             putText(0, row++, line, CBLACK, CWHITE);
         }
         // Blank spacer after last option
