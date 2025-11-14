@@ -22,6 +22,24 @@ enum MenuSettingsIndex {
     MOPT_RAPID_FIRE_ON_B,
     MOPT_COUNT
 };
+// Create and initialize an array which explains each option in a short description of max 40 characters
+const char* const g_settings_descriptions[MOPT_COUNT] = {
+    "Exit game and return to main menu",
+    "Screen scaling & scanline mode",
+    "Toggle scanlines effect",
+    "Show FPS (frame rate)",
+    "Toggle game audio",
+    "Skip frames for speed",
+    "Play audio over audio line out jack",
+    "Menu text color (0-63)",
+    "Menu background color (0-63)",
+    "RGB LEDs show audio level (VU)",
+    "Enable Fruit Jam speaker",
+    "Color Palette for mono / DMG games",
+    "Select border artwork",
+    "Enable rapid fire for this button",
+    "Enable rapid fire for this button"
+};
 
 extern const uint8_t g_settings_visibility[MOPT_COUNT];
 
