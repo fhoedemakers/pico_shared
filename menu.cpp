@@ -120,26 +120,26 @@ void resetColors(int prevfgColor, int prevbgColor)
 
 static void getButtonLabels(char *buttonLabel1, char *buttonLabel2)
 {
-     if (strcmp(connectedGamePadName, "Dual Shock 4") == 0 || strcmp(connectedGamePadName, "Dual Sense") == 0 || strcmp(connectedGamePadName, "PSClassic") == 0)
-        {
-            strcpy(buttonLabel1, "O");
-            strcpy(buttonLabel2, "X");
-        }
-        else if (strcmp(connectedGamePadName, "XInput") == 0 || strncmp(connectedGamePadName, "Genesis", 7) == 0 || strcmp(connectedGamePadName, "MDArcade") == 0)
-        {
-            strcpy(buttonLabel1, "B");
-            strcpy(buttonLabel2, "A");
-        }
-        else if (strcmp(connectedGamePadName, "Keyboard") == 0)
-        {
-            strcpy(buttonLabel1, "X");
-            strcpy(buttonLabel2, "Z");
-        }
-        else
-        {
-            strcpy(buttonLabel1, "A");
-            strcpy(buttonLabel2, "B");
-        }
+    if (strcmp(connectedGamePadName, "Dual Shock 4") == 0 || strcmp(connectedGamePadName, "Dual Sense") == 0 || strcmp(connectedGamePadName, "PSClassic") == 0)
+    {
+        strcpy(buttonLabel1, "O");
+        strcpy(buttonLabel2, "X");
+    }
+    else if (strcmp(connectedGamePadName, "XInput") == 0 || strncmp(connectedGamePadName, "Genesis", 7) == 0 || strcmp(connectedGamePadName, "MDArcade") == 0)
+    {
+        strcpy(buttonLabel1, "B");
+        strcpy(buttonLabel2, "A");
+    }
+    else if (strcmp(connectedGamePadName, "Keyboard") == 0)
+    {
+        strcpy(buttonLabel1, "X");
+        strcpy(buttonLabel2, "Z");
+    }
+    else
+    {
+        strcpy(buttonLabel1, "A");
+        strcpy(buttonLabel2, "B");
+    }
 }
 
 static bool isArtWorkEnabled()
@@ -541,7 +541,7 @@ void DrawScreen(int selectedRow, int w = 0, int h = 0, uint16_t *imagebuffer = n
     char s[SCREEN_COLS + 1];
     char buttonLabel1[2];
     char buttonLabel2[2];
-    getButtonLabels(buttonLabel1, buttonLabel2);    
+    getButtonLabels(buttonLabel1, buttonLabel2);
     if (selectedRow != -1)
     {
         if (EXT_AUDIO_DACERROR())
@@ -554,7 +554,7 @@ void DrawScreen(int selectedRow, int w = 0, int h = 0, uint16_t *imagebuffer = n
         snprintf(s, sizeof(s), "%c%dK %c", Frens::isPsramEnabled() ? 'P' : 'F', maxRomSize / 1024, WIIPAD_IS_CONNECTED() ? 'W' : ' ');
         putText(1, SCREEN_ROWS - 1, s, settings.fgcolor, settings.bgcolor);
         snprintf(s, sizeof(s), "%s:Open %s:Back", buttonLabel1, buttonLabel2);
-       
+
         putText(1, ENDROW + 2, s, settings.fgcolor, settings.bgcolor);
         if (artworkEnabled)
         {
@@ -1384,7 +1384,7 @@ int showSettingsMenu(bool calledFromGame)
     static char buttonLabel2[2]; // e.g., "A", "B", "
     static char line[41];
     static char valueBuf[16]; // NEW: separate buffer for numeric values
-    
+
     // Local working copy of settings.
     struct settings *workingDyn = (struct settings *)Frens::f_malloc(sizeof(settings));
     if (!workingDyn)
@@ -1411,7 +1411,7 @@ int showSettingsMenu(bool calledFromGame)
         }
     }
 #endif
-   
+
     // Screen row indices:
     // 0: Title (non-selectable)
     // 1..visibleCount: options
@@ -1447,7 +1447,8 @@ int showSettingsMenu(bool calledFromGame)
     const int saveRowScreen = spacerAfterPaletteRow + 1;
     const int cancelRowScreen = saveRowScreen + 1;
     const int defaultRowScreen = cancelRowScreen + 1;
-    int selectedRowLocal = rowStartOptions; // first selectable option row
+    const int helpRowScreen = defaultRowScreen + 2; // extra spacer before help line
+    int selectedRowLocal = rowStartOptions;         // first selectable option row
     bool exitMenu = false;
     bool applySettings = false; // true when SAVE, false when CANCEL
     // lambda to redraw the entire menu
@@ -1457,8 +1458,6 @@ int showSettingsMenu(bool calledFromGame)
         ClearScreen(CWHITE); // Always white background
 
         int row = 0;
-
-       
 
         // Centered Title
         constexpr int titleLen = 13; // "-- Settings --"
@@ -1650,7 +1649,7 @@ int showSettingsMenu(bool calledFromGame)
                 value = "";
                 break;
             }
-            snprintf(line, sizeof(line), "%s%s%s", label, (optIndex == MOPT_EXIT_GAME ) ? "" : ": ", value);
+            snprintf(line, sizeof(line), "%s%s%s", label, (optIndex == MOPT_EXIT_GAME) ? "" : ": ", value);
             putText(0, row++, line, CBLACK, CWHITE);
         }
         // Blank spacer after last option
@@ -1703,10 +1702,12 @@ int showSettingsMenu(bool calledFromGame)
         }
         else
         {
-            if (selectedRowLocal < saveRowScreen) {
+            if (selectedRowLocal < saveRowScreen)
+            {
                 strcpy(line, "UP/DOWN: Move, LEFT/RIGHT: Change");
             }
-            else  {  
+            else
+            {
                 strcpy(line, "UP/DOWN: Move");
             }
         }
@@ -1717,14 +1718,30 @@ int showSettingsMenu(bool calledFromGame)
         if (col < 0)
             col = 0;
         putText(col, row++, line, CBLACK, CWHITE);
-        if (selectedRowLocal == saveRowScreen) {
+        if (selectedRowLocal == saveRowScreen)
+        {
             snprintf(line, sizeof(line), "%s: Confirm changes", buttonLabel1);
-        } else if (selectedRowLocal == cancelRowScreen) {
+        }
+        else if (selectedRowLocal == cancelRowScreen)
+        {
             snprintf(line, sizeof(line), "%s: Discard changes", buttonLabel1);
-        } else if (selectedRowLocal == defaultRowScreen) {
+        }
+        else if (selectedRowLocal == defaultRowScreen)
+        {
             snprintf(line, sizeof(line), "%s: Restore defaults", buttonLabel1);
-        } else {
+        }
+        else
+        {
             strcpy(line, ""); // no second line
+        }
+        // display helptext
+        if (selectedRowLocal >= rowStartOptions && selectedRowLocal < rowStartOptions + visibleCount)
+        {
+            putText(0, helpRowScreen, g_settings_descriptions[visibleIndices[selectedRowLocal - rowStartOptions]], CBLACK, CWHITE);
+        }
+        else
+        {
+            putText(0, helpRowScreen, "                                        ", CBLACK, CWHITE);
         }
         // snprintf(line, sizeof(line),
         //          "%s: SAVE/CANCEL/DEFAULT,  %s: Cancel",
@@ -1778,7 +1795,7 @@ int showSettingsMenu(bool calledFromGame)
                 rval = 3; // exit to main menu
                 continue;
             }
-       
+
             if (pad & UP)
             {
                 if (selectedRowLocal > rowStartOptions)
@@ -1951,12 +1968,16 @@ int showSettingsMenu(bool calledFromGame)
                     }
                     case MOPT_RAPID_FIRE_ON_A:
                     {
+
                         working.flags.rapidFireOnA = !working.flags.rapidFireOnA;
+
                         break;
                     }
                     case MOPT_RAPID_FIRE_ON_B:
                     {
+
                         working.flags.rapidFireOnB = !working.flags.rapidFireOnB;
+
                         break;
                     }
                     default:
