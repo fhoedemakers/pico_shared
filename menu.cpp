@@ -1365,6 +1365,9 @@ int showSettingsMenu(bool calledFromGame)
         screenBuffer = (charCell *)altscreenBuffer;
 #else
         screenBuffer = (charCell *)Frens::f_malloc(screenbufferSize);
+#if ENABLE_VU_METER
+        turnOffAllLeds();
+#endif
 #endif
 #if !HSTX
         margintop = dvi_->getBlankSettings().top;
