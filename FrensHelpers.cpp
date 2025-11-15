@@ -566,7 +566,6 @@ namespace Frens
 #else
     hstx_setScanLines(settings.flags.scanlineOn);
 #endif
-    printf("Restoring scanlines: %s\n", settings.flags.scanlineOn ? "enabled" : "disabled");
     }
 
     /// @brief Allocates memory from PSRAM if available, otherwise uses malloc
