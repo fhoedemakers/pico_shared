@@ -2074,7 +2074,13 @@ int showSettingsMenu(bool calledFromGame)
             dvi_->getBlankSettings().top = margintop;
             dvi_->getBlankSettings().bottom = marginbottom;
         }
+#else   
+        // Restore scanline setting
+        hstx_setScanLines(settings.flags.scanlineOn);
 #endif
+          // Speaker can be muted/unmuted from settings menu
+        EXT_AUDIO_MUTE_INTERNAL_SPEAKER(settings.flags.fruitJamEnableInternalSpeaker == 0);
+        Frens::PaceFrames60fps(true);
     }
     return rval;
 }
