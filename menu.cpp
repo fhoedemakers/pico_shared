@@ -1766,8 +1766,8 @@ int showSettingsMenu(bool calledFromGame)
   
         putText(0, helpRowScreen + 3, "System info:", CBLACK, CWHITE);
         Frens::getFsInfo(line);
-        putText(2, helpRowScreen + 3 , "SD:", CBLACK, CWHITE);
-        putText(6, helpRowScreen + 3, line, CBLACK, CWHITE);
+        putText(2, helpRowScreen + 4 , "SD:", CBLACK, CWHITE);
+        putText(6, helpRowScreen + 4, line, CBLACK, CWHITE);
         for (int lineNr = 0; lineNr < 240; ++lineNr)
         {
             drawline(lineNr, selectedRowLocal);
