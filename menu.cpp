@@ -1746,6 +1746,7 @@ int showSettingsMenu(bool calledFromGame)
         {
             putText(0, helpRowScreen, "                                        ", CBLACK, CWHITE);
         }
+       
         // snprintf(line, sizeof(line),
         //          "%s: SAVE/CANCEL/DEFAULT,  %s: Cancel",
         //          buttonLabel1, buttonLabel2);
@@ -1761,6 +1762,12 @@ int showSettingsMenu(bool calledFromGame)
         if (col < 0)
             col = 0;
         putText(col, row++, line, CBLACK, CWHITE);
+
+  
+        putText(0, helpRowScreen + 3, "System info:", CBLACK, CWHITE);
+        Frens::getFsInfo(line);
+        putText(2, helpRowScreen + 3 , "SD:", CBLACK, CWHITE);
+        putText(6, helpRowScreen + 3, line, CBLACK, CWHITE);
         for (int lineNr = 0; lineNr < 240; ++lineNr)
         {
             drawline(lineNr, selectedRowLocal);
