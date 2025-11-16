@@ -54,6 +54,7 @@ namespace Frens
 {
     static uint32_t crcOfRom = 0;
     static FATFS fs;
+    static bool  fatfsUsesPioSpi = false;
 #if !HSTX && FRAMEBUFFERISPOSSIBLE
     // uint8_t *framebuffer1; // [320 * 240];
     // uint8_t *framebuffer2; // [320 * 240];
@@ -376,8 +377,33 @@ namespace Frens
         }
     }
 
-    // End of variuos helper functions
-
+    void getFsInfo(char *fstype) {
+        
+        switch (fs.fs_type)
+        {
+        case FS_FAT12:
+            strcpy(fstype, "FAT12");
+            break;
+        case FS_FAT16:
+            strcpy(fstype, "FAT16");
+            break;
+        case FS_FAT32:
+            strcpy(fstype, "FAT32");
+            break;
+        case FS_EXFAT:
+            strcpy(fstype, "EXFAT");
+            break;
+        default:
+            strcpy(fstype, "Unknown");
+            break;
+        }
+        if (fatfsUsesPioSpi) {
+            strcat(fstype, " (PIO SPI)");
+        } else {
+            strcat(fstype, " (SPI)");
+        }
+    }
+    
     // Initialize the SD card
     bool initSDCard()
     {
@@ -402,12 +428,14 @@ namespace Frens
         if (spi_configured)
         {
             printf("using SPI...");
+            fatfsUsesPioSpi = false;
         }
         else
         {
             // fall back to PIO SPI
             pico_fatfs_config_spi_pio(SDCARD_PIO, pio_claim_unused_sm(SDCARD_PIO, true));
             printf("using SPI PIO...");
+            fatfsUsesPioSpi = true;
         }
 
         fr = f_mount(&fs, "", 1);
