@@ -55,6 +55,8 @@ namespace Frens
     static uint32_t crcOfRom = 0;
     static FATFS fs;
     static bool  fatfsUsesPioSpi = false;
+    static DWORD totalSpace = 0;
+    static DWORD freeSpace = 0;
 #if !HSTX && FRAMEBUFFERISPOSSIBLE
     // uint8_t *framebuffer1; // [320 * 240];
     // uint8_t *framebuffer2; // [320 * 240];
@@ -377,31 +379,16 @@ namespace Frens
         }
     }
 
-    void getFsInfo(char *fstype) {
-        
-        switch (fs.fs_type)
-        {
-        case FS_FAT12:
-            strcpy(fstype, "FAT12");
-            break;
-        case FS_FAT16:
-            strcpy(fstype, "FAT16");
-            break;
-        case FS_FAT32:
-            strcpy(fstype, "FAT32");
-            break;
-        case FS_EXFAT:
-            strcpy(fstype, "EXFAT");
-            break;
-        default:
-            strcpy(fstype, "Unknown");
-            break;
+    void getFsInfo(char *fstype, size_t fstypeSize) {
+        const char *base;
+        switch (fs.fs_type) {
+        case FS_FAT12: base = "FAT12"; break;
+        case FS_FAT16: base = "FAT16"; break;
+        case FS_FAT32: base = "FAT32"; break;
+        case FS_EXFAT: base = "EXFAT"; break;
+        default:       base = "Unknown"; break;
         }
-        if (fatfsUsesPioSpi) {
-            strcat(fstype, " (PIO SPI)");
-        } else {
-            strcat(fstype, " (SPI)");
-        }
+        snprintf(fstype, fstypeSize, "%s %sSPI %7.2fGB Free:%7.2fGB", base, fatfsUsesPioSpi ? "PIO " : "", totalSpace / 1024.0 / 1024.0, freeSpace / 1024.0 / 1024.0);
     }
     
     // Initialize the SD card
@@ -472,6 +459,8 @@ namespace Frens
         fre_sect = fre_clust * fstemp->csize;
 
         /* Print the free space (assuming 512 bytes/sector) */
+        totalSpace = tot_sect / 2;
+        freeSpace = fre_sect / 2;
         printf("%10lu KiB (%7.2f GB) total drive space.\n%10lu KiB available.\n", tot_sect / 2, fstemp->csize * fstemp->n_fatent * 512E-9, fre_sect / 2);
         fr = f_chdir("/"); // f_chdir("/");
         if (fr != FR_OK)
