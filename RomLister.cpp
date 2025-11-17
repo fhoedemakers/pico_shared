@@ -144,7 +144,7 @@ namespace Frens
 				}
 				else
 				{
-					printf("Filename too long: %s\n", pFile->fname);
+					//#printf("Filename too long: %s\n", pFile->fname);
 				}
 			}
 			else
