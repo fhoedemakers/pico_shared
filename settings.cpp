@@ -179,4 +179,8 @@ namespace FrensSettings
         }
         printsettings();
     }
+    emulators getEmulatorType()
+    {
+        return emulatorType;
+    }
 }
