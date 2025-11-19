@@ -58,5 +58,6 @@ namespace FrensSettings
     void loadsettings();
     void resetsettings(struct settings *settings = nullptr);
     emulators getEmulatorType();
+    const char *getEmulatorTypeString();
 }
 #endif

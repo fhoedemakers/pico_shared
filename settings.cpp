@@ -183,4 +183,9 @@ namespace FrensSettings
     {
         return emulatorType;
     }
+
+    const char *getEmulatorTypeString()
+    {
+        return emulatorstrings[static_cast<int>(emulatorType)];
+    }
 }
