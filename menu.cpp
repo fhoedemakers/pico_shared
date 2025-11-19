@@ -76,7 +76,6 @@ static char *selectedRomOrFolder;
 static bool errorInSavingRom = false;
 static char *globalErrorMessage;
 
-static char emulator[32];
 static bool artworkEnabled = false;
 static uint8_t crcOffset = 0; // Default offset for CRC calculation
 #define LONG_PRESS_TRESHOLD (500)
@@ -148,40 +147,32 @@ static bool isArtWorkEnabled()
     char PATH[FF_MAX_LFN];
     bool exists = false;
     PATH[0] = 0;
-    if (strcmp(emulator, "NES") == 0)
+    const char *emulator = FrensSettings::getEmulatorTypeString();
+    switch (FrensSettings::getEmulatorType())
     {
-        sprintf(PATH, "/Metadata/%s/Images/320/D/D0E96F6B.444", emulator);
-    }
-    else if (strcmp(emulator, "SMS") == 0)
-    {
-        sprintf(PATH, "/Metadata/%s/Images/160/6/6A5A1E39.444", emulator);
-    }
-    else if (strcmp(emulator, "MD") == 0)
-    {
-        sprintf(PATH, "/Metadata/%s/Images/160/5/56976261.444", emulator);
-    }
-    else if (strcmp(emulator, "GB") == 0)
-    {
-        sprintf(PATH, "/Metadata/%s/Images/160/0/00A9001E.444", emulator);
-    }
-    else
-    {
+    case FrensSettings::emulators::NES:
+        snprintf(PATH, sizeof(PATH), "/Metadata/%s/Images/320/D/D0E96F6B.444", emulator);
+        break;
+    case FrensSettings::emulators::SMS:
+        snprintf(PATH, sizeof(PATH), "/Metadata/%s/Images/160/6/6A5A1E39.444", emulator);
+        break;
+    case FrensSettings::emulators::GENESIS:
+        snprintf(PATH, sizeof(PATH), "/Metadata/%s/Images/160/5/56976261.444", emulator);
+        break;
+    case FrensSettings::emulators::GAMEBOY:
+        snprintf(PATH, sizeof(PATH), "/Metadata/%s/Images/160/0/00A9001E.444", emulator);
+        break;
+    default:
         return false;
     }
-    if (strlen(PATH) > 0)
+    if (PATH[0])
     {
         FRESULT res = f_stat(PATH, &fi);
-        exists = (res == FR_OK);
-        if (exists)
-        {
-            printf("Artwork enabled for %s\n", emulator);
-        }
-        else
-        {
-            printf("Artwork not found for %s\n", emulator);
-        }
+        bool exists = (res == FR_OK);
+        printf("Artwork %s for %s\n", exists ? "enabled" : "not found", emulator);
+        return exists;
     }
-    return exists;
+    return false;
 }
 
 int Menu_LoadFrame()
@@ -572,25 +563,23 @@ void DrawScreen(int selectedRow, int w = 0, int h = 0, uint16_t *imagebuffer = n
         }
 #endif
 #endif
-        if (showSettingsbutton)
-        {
             if (strcmp(connectedGamePadName, "Genesis Mini 2") == 0 || strcmp(connectedGamePadName, "MDArcade") == 0)
             {
-                strcpy(s, "Mode:Settings");
+                strcpy(s, showSettingsbutton ?  "Mode:Settings" : "Press MODE+START in-game for settings");
             }
             else
             {
                 if (strncmp(connectedGamePadName, "Genesis", 7) == 0)
                 {
-                    strcpy(s, "C:Settings");
+                    strcpy(s, showSettingsbutton ? "C:Settings" :"Press C+START in-game for settings");
                 }
                 else
                 {
-                    strcpy(s, "SELECT:Settings");
+                    strcpy(s,  showSettingsbutton ? "SELECT:Settings" : "Press SELECT+START in-game for settings");
                 }
             }
-            putText(17, optionsRow, s, settings.fgcolor, settings.bgcolor);
-        }
+            putText(showSettingsbutton ? 17 : 1, optionsRow, s, settings.fgcolor, settings.bgcolor);
+    
     }
 
     for (auto line = 0; line < 240; line++)
@@ -798,7 +787,7 @@ void screenSaverWithArt(bool showdefault = false)
             if (showdefault == false)
             {
                 fld = (char)(rand() % 15);
-                snprintf(PATH, (FF_MAX_LFN + 1) * sizeof(char), "/metadata/%s/images/160/%X", emulator, fld);
+                snprintf(PATH, (FF_MAX_LFN + 1) * sizeof(char), "/metadata/%s/images/160/%X", FrensSettings::getEmulatorTypeString(), fld);
                 printf("Scanning random folder: %s\n", PATH);
                 fr = Frens::pick_random_file_fullpath(PATH, CHOSEN, (FF_MAX_LFN + 1) * sizeof(char));
             }
@@ -956,7 +945,7 @@ int showartwork(uint32_t crc, FSIZE_t romsize)
     uint8_t *buffer = nullptr;
     char *metadatabuffer = nullptr;
     snprintf(CRC, sizeof(CRC), "%08X", crc);
-    snprintf(PATH, (FF_MAX_LFN + 1) * sizeof(char), ARTWORKFILE, emulator, 160, CRC[0], CRC);
+    snprintf(PATH, (FF_MAX_LFN + 1) * sizeof(char), ARTWORKFILE, FrensSettings::getEmulatorTypeString(), 160, CRC[0], CRC);
     // open the image
     fr = f_open(&fil, PATH, FA_READ);
     FSIZE_t fsize;
@@ -988,7 +977,7 @@ int showartwork(uint32_t crc, FSIZE_t romsize)
     printf("Image size: %d x %d pixels\n", width, height);
 
     // open the file with metadata info
-    snprintf(PATH, (FF_MAX_LFN + 1) * sizeof(char), METADDATAFILE, emulator, CRC[0], CRC);
+    snprintf(PATH, (FF_MAX_LFN + 1) * sizeof(char), METADDATAFILE, FrensSettings::getEmulatorTypeString(), CRC[0], CRC);
     fr = f_open(&fil, PATH, FA_READ);
     if (fr == FR_OK)
     {
@@ -2105,7 +2094,7 @@ int showSettingsMenu(bool calledFromGame)
     return rval;
 }
 
-void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, const char *allowedExtensions, char *rompath, const char *emulatorType)
+void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, const char *allowedExtensions, char *rompath)
 {
     FRESULT fr;
     FIL fil;
@@ -2117,10 +2106,9 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
 #if ENABLE_VU_METER
     turnOffAllLeds();
 #endif
-    strcpy(emulator, emulatorType);
     artworkEnabled = isArtWorkEnabled();
-    crcOffset = strcmp(emulator, "NES") == 0 ? 16 : 0; // for sms the crc is at offset 0x1E, for nes it is at offset 0x0C
-    printf("Emulator: %s, crcOffset: %d\n", emulator, crcOffset);
+    crcOffset = FrensSettings::getEmulatorType() == FrensSettings::emulators::NES ? 16 : 0; // for sms the crc is at offset 0x1E, for nes it is at offset 0x0C
+    printf("Emulator: %s, crcOffset: %d\n", FrensSettings::getEmulatorTypeString(), crcOffset);
 #if !HSTX
     int margintop = dvi_->getBlankSettings().top;
     int marginbottom = dvi_->getBlankSettings().bottom;
