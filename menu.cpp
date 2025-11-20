@@ -2107,7 +2107,7 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
     turnOffAllLeds();
 #endif
     artworkEnabled = isArtWorkEnabled();
-    crcOffset = FrensSettings::getEmulatorType() == FrensSettings::emulators::NES ? 16 : 0; // for sms the crc is at offset 0x1E, for nes it is at offset 0x0C
+    crcOffset = FrensSettings::getEmulatorType() == FrensSettings::emulators::NES ? 16 : 0; // crc offset according to  https://github.com/ducalex/retro-go-covers
     printf("Emulator: %s, crcOffset: %d\n", FrensSettings::getEmulatorTypeString(), crcOffset);
 #if !HSTX
     int margintop = dvi_->getBlankSettings().top;
