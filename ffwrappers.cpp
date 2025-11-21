@@ -100,7 +100,7 @@ static TCHAR current_dir[FF_MAX_LFN] = "/"; // Static variable to store the curr
 // Wrapper function for f_chdir that tracks the current directory
 FRESULT my_chdir(const TCHAR *path)
 {
-#if 1
+#if 0
     TCHAR *temp = (TCHAR *)Frens::f_malloc(BUFFERSIZE);
     TCHAR *normalized = (TCHAR *)Frens::f_malloc(BUFFERSIZE);
     FRESULT fr;
@@ -150,7 +150,7 @@ FRESULT my_chdir(const TCHAR *path)
 // Returns FR_OK on success, or FR_INVALID_PARAMETER if the buffer is too small.
 FRESULT my_getcwd(TCHAR *buffer, UINT len)
 {
-#if 1
+#if 0
     // char tempdir[FF_MAX_LFN];
     if (len < strlen(current_dir) + 1)
     {

@@ -112,6 +112,7 @@ namespace Frens
     uint64_t time_us();
     uint32_t time_ms();
     bool isFrameBufferUsed();
+    void getFsInfo(char *fstype, size_t fstypeSize);
 #if !HSTX && 0
     
     void markFrameReadyForReendering(bool waitForFrameReady = false);

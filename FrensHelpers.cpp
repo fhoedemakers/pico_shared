@@ -6,7 +6,9 @@
 #include "pico/rand.h"
 #include "hardware/flash.h"
 #include "hardware/watchdog.h"
+#if PICO_RP2350
 #include "hardware/structs/qmi.h"
+#endif
 #include "util/exclusive_proc.h"
 #include "FrensHelpers.h"
 #if CFG_TUH_RPI_PIO_USB && PICO_RP2350
@@ -20,6 +22,7 @@
 #include "nespad.h"
 #include "wiipad.h"
 #include "settings.h"
+#include "menu_settings.h" // for g_available_screen_modes visibility
 
 #include "PicoPlusPsram.h"
 #include "vumeter.h"
@@ -51,6 +54,9 @@ namespace Frens
 {
     static uint32_t crcOfRom = 0;
     static FATFS fs;
+    static bool  fatfsUsesPioSpi = false;
+    static DWORD totalSpace = 0;
+    static DWORD freeSpace = 0;
 #if !HSTX && FRAMEBUFFERISPOSSIBLE
     // uint8_t *framebuffer1; // [320 * 240];
     // uint8_t *framebuffer2; // [320 * 240];
@@ -373,8 +379,18 @@ namespace Frens
         }
     }
 
-    // End of variuos helper functions
-
+    void getFsInfo(char *fstype, size_t fstypeSize) {
+        const char *base;
+        switch (fs.fs_type) {
+        case FS_FAT12: base = "FAT12"; break;
+        case FS_FAT16: base = "FAT16"; break;
+        case FS_FAT32: base = "FAT32"; break;
+        case FS_EXFAT: base = "EXFAT"; break;
+        default:       base = "Unknown"; break;
+        }
+        snprintf(fstype, fstypeSize, "%s %sSPI %7.2fGB Free:%7.2fGB", base, fatfsUsesPioSpi ? "PIO " : "", totalSpace / 1024.0 / 1024.0, freeSpace / 1024.0 / 1024.0);
+    }
+    
     // Initialize the SD card
     bool initSDCard()
     {
@@ -399,12 +415,14 @@ namespace Frens
         if (spi_configured)
         {
             printf("using SPI...");
+            fatfsUsesPioSpi = false;
         }
         else
         {
             // fall back to PIO SPI
             pico_fatfs_config_spi_pio(SDCARD_PIO, pio_claim_unused_sm(SDCARD_PIO, true));
             printf("using SPI PIO...");
+            fatfsUsesPioSpi = true;
         }
 
         fr = f_mount(&fs, "", 1);
@@ -441,8 +459,10 @@ namespace Frens
         fre_sect = fre_clust * fstemp->csize;
 
         /* Print the free space (assuming 512 bytes/sector) */
+        totalSpace = tot_sect / 2;
+        freeSpace = fre_sect / 2;
         printf("%10lu KiB (%7.2f GB) total drive space.\n%10lu KiB available.\n", tot_sect / 2, fstemp->csize * fstemp->n_fatent * 512E-9, fre_sect / 2);
-        fr = my_chdir("/"); // f_chdir("/");
+        fr = f_chdir("/"); // f_chdir("/");
         if (fr != FR_OK)
         {
             snprintf(ErrorMessage, ERRORMESSAGESIZE, "Cannot change dir to / : %d", fr);
@@ -452,7 +472,7 @@ namespace Frens
         // for f_getcwd to work, set
         //   #define FF_FS_RPATH		2
         // in drivers/fatfs/ffconf.h
-        fr = my_getcwd(str, sizeof(str));
+        fr = f_getcwd(str, sizeof(str));
         ; // f_getcwd(str, sizeof(str));
         if (fr != FR_OK)
         {
@@ -521,10 +541,29 @@ namespace Frens
 
     bool screenMode(int incr)
     {
-        bool scaleMode8_7_;
-        settings.screenMode = static_cast<ScreenMode>((static_cast<int>(settings.screenMode) + incr) & 3);
-        scaleMode8_7_ = Frens::applyScreenMode(settings.screenMode);
-        savesettings();
+        // Determine next (or previous) available screen mode based on g_available_screen_modes.
+        // Only modes with value 1 are selectable. Order must match ScreenMode enum.
+        constexpr int kModeCount = 4; // Mask logic (&3) previously assumed 4 modes.
+        int current = static_cast<int>(settings.screenMode);
+        int attempts = 0;
+        do
+        {
+            current = (current + incr) & 3; // wrap 0..3
+            attempts++;
+            // Break if this mode is available
+            if (g_available_screen_modes[current])
+                break;
+        } while (attempts < kModeCount); // prevent infinite loop if none available
+
+        // If no available mode found (all disabled), keep original
+        if (!g_available_screen_modes[current])
+        {
+            current = static_cast<int>(settings.screenMode);
+        }
+
+        settings.screenMode = static_cast<ScreenMode>(current);
+        bool scaleMode8_7_ = Frens::applyScreenMode(settings.screenMode);
+        FrensSettings::savesettings();
         return scaleMode8_7_;
     }
 #endif
@@ -532,19 +571,18 @@ namespace Frens
     {
 #if !HSTX
 #else
-        settings.scanlineOn = settings.scanlineOn != 0 ? 0 : 1; // toggle scanlineOn
-        savesettings();
-        hstx_setScanLines(settings.scanlineOn);
-        printf("Scanlines %s\n", settings.scanlineOn ? "enabled" : "disabled");
+    settings.flags.scanlineOn = settings.flags.scanlineOn ? 0 : 1; // toggle
+    FrensSettings::savesettings();
+    hstx_setScanLines(settings.flags.scanlineOn);
+    printf("Scanlines %s\n", settings.flags.scanlineOn ? "enabled" : "disabled");
 #endif
     }
     void restoreScanlines()
     {
 #if !HSTX
 #else
-        hstx_setScanLines(settings.scanlineOn > 0);
+    hstx_setScanLines(settings.flags.scanlineOn);
 #endif
-        printf("Restoring scanlines: %s\n", settings.scanlineOn ? "enabled" : "disabled");
     }
 
     /// @brief Allocates memory from PSRAM if available, otherwise uses malloc
@@ -1000,8 +1038,7 @@ namespace Frens
         gpio_put(LED_GPIO_PIN, on);
 #elif defined(PICO_DEFAULT_LED_PIN)
         gpio_put(PICO_DEFAULT_LED_PIN, on);
-#elif defined(CYW43_WL_GPIO_LED_PIN) && !USE_I2S_AUDIO
-        // Because of a conflict with the i2s audio, there is no led support when using i2s audio
+#elif defined(CYW43_WL_GPIO_LED_PIN) // && !USE_I2S_AUDIO https://github.com/fhoedemakers/pico-infonesPlus/issues/132 Solved?
         cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, on);
 #else
         // No LED pin defined
@@ -1029,9 +1066,7 @@ namespace Frens
         gpio_init(PICO_DEFAULT_LED_PIN);
         gpio_set_dir(PICO_DEFAULT_LED_PIN, GPIO_OUT);
         gpio_put(PICO_DEFAULT_LED_PIN, 1);
-#elif defined(CYW43_WL_GPIO_LED_PIN) && !USE_I2S_AUDIO
-        // For Pico W devices we need to initialize the driver
-        // Because of a conflict with the i2s audio, there is no led support when using i2s audio
+#elif defined(CYW43_WL_GPIO_LED_PIN) //  && !USE_I2S_AUDIO https://github.com/fhoedemakers/pico-infonesPlus/issues/132 Solved?
         return cyw43_arch_init();
 #endif
 #endif
@@ -1220,11 +1255,11 @@ namespace Frens
         // auto cap = storage_get_flash_capacity();
         // printf("Total flash size: %d bytes (%d Kbytes)\n", cap,cap/ 1024);
         // reset settings to default in case SD card could not be mounted
-        resetsettings();
+        FrensSettings::resetsettings();
         if (initSDCard())
         {
             ok = true;
-            loadsettings();
+             FrensSettings::loadsettings();
             // When a game is started from the menu, the menu will reboot the device.
             // After reboot the emulator will start the selected game.
             // The watchdog timer is used to detect if the reboot was caused by the menu.

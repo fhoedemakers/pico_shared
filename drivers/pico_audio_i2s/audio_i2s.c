@@ -875,3 +875,14 @@ bool audio_i2s_dacError()
 {
 	return dacError;
 }
+void audio_i2s_muteInternalSpeaker(bool mute)
+{
+#if  USE_I2S_AUDIO == PICO_AUDIO_I2S_DRIVER_TLV320
+	speakerIsMuted = mute;
+	if (speakerIsMuted) {
+		speakerMute();
+	} else {
+		speakerUnmute();
+	}
+#endif
+}

@@ -223,7 +223,7 @@ void __not_in_flash_func(HSTXCore)(void)
 {
     int last_line = 2, load_line, line_to_load, Line_dup;
 
-    // Configure HSTX's TMDS encoder for RGB332
+    // Configure HSTX's TMDS encoder for RGB555
     hstx_ctrl_hw->expand_tmds =
         29 << HSTX_CTRL_EXPAND_TMDS_L0_ROT_LSB |
         4 << HSTX_CTRL_EXPAND_TMDS_L0_NBITS_LSB |

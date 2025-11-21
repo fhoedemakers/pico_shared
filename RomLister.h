@@ -38,6 +38,9 @@ namespace Frens {
 		int numberOfExtensions;
 		char **extensions;
 		size_t buffersize;
+		FILINFO *pFile = nullptr;
+		DIR *pDir = nullptr;
+		RomEntry *pTemp = nullptr;
 
 	};
 }
