@@ -410,7 +410,7 @@ elseif ( HW_CONFIG EQUAL 10 )
     set(PIO_DP_PLUS_PIN 20 CACHE STRING "PIO USB DP pin.")
 elseif ( HW_CONFIG EQUAL 11 )
    # --------------------------------------------------------------------
-	# WaveShare RP2350-USB-A
+	# WaveShare RP2350-USB-A - OLD config with different SD pins, now deprecated.
 	# --------------------------------------------------------------------
 	set(DVICONFIG "dviConfig_WaveShare2350USBA_OLDConfig" CACHE STRING
     "Select a default pin configuration from common_dvi_pin_configs.h")
