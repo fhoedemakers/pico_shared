@@ -50,7 +50,7 @@ static audio_i2s_hw_t audio_i2s = {
 static int samplefreq = PICO_AUDIO_I2S_FREQ;
 #define TLV320_ADDR 0x18 // I2C address for the TLV320AIC3204 codec
 
-#define I2C_PORT i2c0 // hardcoded I2C port for the TLV320 codec, must be configurable in the future
+#define I2C_PORT WIIPAD_I2C // hardcoded I2C port for the TLV320 codec, must be configurable in the future
 #define I2C_ADDR 0x18
 #define DAC_I2C_ADDR I2C_ADDR
 #if 0
@@ -273,10 +273,10 @@ static void tlv320_init()
 	printf("Initializing TLV320AIC3204 audio DAC...\n");
 	i2c_init(I2C_PORT, 400 * 1000); // Initialize I2C at 400kHz
 	sleep_ms(1000);					// Wait for I2C to stabilize
-	gpio_set_function(20, GPIO_FUNC_I2C);
-    gpio_set_function(21, GPIO_FUNC_I2C);
-    gpio_pull_up(20);
-    gpio_pull_up(21);
+	gpio_set_function(WII_PIN_SDA, GPIO_FUNC_I2C);
+    gpio_set_function(WII_PIN_SCL, GPIO_FUNC_I2C);
+    gpio_pull_up(WII_PIN_SDA);
+    gpio_pull_up(WII_PIN_SCL);
 #if 0
     // Old setup, from DataSheet
 	// 1. Define starting point:
