@@ -6,6 +6,7 @@
 
 enum MenuSettingsIndex {
     MOPT_EXIT_GAME = 0,
+    MOPT_SAVE_RESTORE_STATE,
     MOPT_SCREENMODE,
     MOPT_SCANLINES,
     MOPT_FPS_OVERLAY,
@@ -25,6 +26,7 @@ enum MenuSettingsIndex {
 // Create and initialize an array which explains each option in a short description of max 40 characters
 const char* const g_settings_descriptions[MOPT_COUNT] = {
     "Exit game and return to main menu",
+    "Save or restore emulator state",
     "Screen scaling & scanline mode",
     "Toggle scanlines effect",
     "Show FPS (frame rate)",
@@ -41,7 +43,7 @@ const char* const g_settings_descriptions[MOPT_COUNT] = {
     "Enable rapid fire for this button"
 };
 
-extern const uint8_t g_settings_visibility[MOPT_COUNT];
+extern const int8_t g_settings_visibility[MOPT_COUNT];
 
 // Available screen modes for selection in settings menu
 extern const uint8_t g_available_screen_modes[];
