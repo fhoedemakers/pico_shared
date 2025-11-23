@@ -563,23 +563,22 @@ void DrawScreen(int selectedRow, int w = 0, int h = 0, uint16_t *imagebuffer = n
         }
 #endif
 #endif
-            if (strcmp(connectedGamePadName, "Genesis Mini 2") == 0 || strcmp(connectedGamePadName, "MDArcade") == 0)
+        if (strcmp(connectedGamePadName, "Genesis Mini 2") == 0 || strcmp(connectedGamePadName, "MDArcade") == 0)
+        {
+            strcpy(s, showSettingsbutton ? "Mode:Settings" : "Press MODE+START in-game for settings");
+        }
+        else
+        {
+            if (strncmp(connectedGamePadName, "Genesis", 7) == 0)
             {
-                strcpy(s, showSettingsbutton ?  "Mode:Settings" : "Press MODE+START in-game for settings");
+                strcpy(s, showSettingsbutton ? "C:Settings" : "Press C+START in-game for settings");
             }
             else
             {
-                if (strncmp(connectedGamePadName, "Genesis", 7) == 0)
-                {
-                    strcpy(s, showSettingsbutton ? "C:Settings" :"Press C+START in-game for settings");
-                }
-                else
-                {
-                    strcpy(s,  showSettingsbutton ? "SELECT:Settings" : "Press SELECT+START in-game for settings");
-                }
+                strcpy(s, showSettingsbutton ? "SELECT:Settings" : "Press SELECT+START in-game for settings");
             }
-            putText(showSettingsbutton ? 17 : 1, optionsRow, s, settings.fgcolor, settings.bgcolor);
-    
+        }
+        putText(showSettingsbutton ? 17 : 1, optionsRow, s, settings.fgcolor, settings.bgcolor);
     }
 
     for (auto line = 0; line < 240; line++)
@@ -1328,6 +1327,75 @@ void waitForNoButtonPress()
         }
     }
 }
+static inline void drawAllLines(int selected)
+{
+    for (int lineNr = 0; lineNr < 240; ++lineNr)
+    {
+        drawline(lineNr, selected);
+    }
+}
+
+int showSaveStateMenu()
+{
+    int margintop = 0;
+    int marginbottom = 0;
+    // Placeholder implementation
+
+    screenBuffer = (charCell *)Frens::f_malloc(screenbufferSize);
+#if ENABLE_VU_METER
+    turnOffAllLeds();
+#endif
+#if !HSTX
+    margintop = dvi_->getBlankSettings().top;
+    marginbottom = dvi_->getBlankSettings().bottom;
+    printf("Top margin: %d, bottom margin: %d\n", margintop, marginbottom);
+    // Use the entire screen resolution of 320x240 pixels. This makes a 40x30 screen with 8x8 font possible.
+    scaleMode8_7_ = Frens::applyScreenMode(ScreenMode::NOSCANLINE_1_1);
+    dvi_->getBlankSettings().top = 0;
+    dvi_->getBlankSettings().bottom = 0;
+#else
+    hstx_setScanLines(false);
+#endif
+    ClearScreen(settings.bgcolor);
+    putText(0, 0, "Save State Menu (Not Implemented)", settings.fgcolor, settings.bgcolor);
+    auto crc = Frens::getCrcOfLoadedRom();
+    char crcStr[9];
+    snprintf(crcStr, sizeof(crcStr), "%08X", crc);
+    putText(0, 2, "Current ROM CRC32:", settings.fgcolor, settings.bgcolor);
+    putText(0, 3, crcStr, settings.fgcolor, settings.bgcolor);
+    putText(0, ENDROW - 1, "Press any button to return", settings.fgcolor, settings.bgcolor);
+    waitForNoButtonPress();
+    while (true)
+    {
+        auto frameCount = Menu_LoadFrame();
+        drawAllLines(-1);
+        DWORD PAD1_Latch;
+        RomSelect_PadState(&PAD1_Latch);
+        if (PAD1_Latch > 0)
+        {
+            break;
+        }
+    }
+    ClearScreen(CBLACK); // Removes artifacts from previous screen
+                         // Wait until user has released all buttons
+    waitForNoButtonPress();
+#if !HSTX
+    scaleMode8_7_ = Frens::applyScreenMode(settings.screenMode);
+    // Reset the screen mode to the original settings
+    // Do not reset the margins when framebuffer is used, this will lock up the display driver
+    // Margins will be handled by the framebuffer.
+    if (!Frens::isFrameBufferUsed())
+    {
+        dvi_->getBlankSettings().top = margintop;
+        dvi_->getBlankSettings().bottom = marginbottom;
+    }
+#else
+    // Restore scanline setting
+    hstx_setScanLines(settings.flags.scanlineOn);
+#endif
+    Frens::PaceFrames60fps(true);
+    return true;
+}
 // --- Settings Menu Implementation ---
 // returns 0 if no changes, 1 if settings applied
 //         2 start screensaver
@@ -1427,9 +1495,13 @@ int showSettingsMenu(bool calledFromGame)
     int visibleCount = 0;
     for (int i = 0; i < MOPT_COUNT; ++i)
     {
-        if (g_settings_visibility[i] || (i == MenuSettingsIndex::MOPT_EXIT_GAME && calledFromGame))
+        // -1 is always hidden
+        if (g_settings_visibility[i] >= 0)
         {
-            visibleIndices[visibleCount++] = i;
+            if (g_settings_visibility[i] || (i == MenuSettingsIndex::MOPT_EXIT_GAME || i == MenuSettingsIndex::MOPT_SAVE_RESTORE_STATE) && calledFromGame)
+            {
+                visibleIndices[visibleCount++] = i;
+            }
         }
     }
     // Layout rows:
@@ -1490,6 +1562,12 @@ int showSettingsMenu(bool calledFromGame)
                 {
                     label = "Back to main menu";
                 }
+                value = "";
+                break;
+            }
+            case MenuSettingsIndex::MOPT_SAVE_RESTORE_STATE:
+            {
+                label = "Save/Restore State";
                 value = "";
                 break;
             }
@@ -1654,7 +1732,7 @@ int showSettingsMenu(bool calledFromGame)
                 value = "";
                 break;
             }
-            snprintf(line, sizeof(line), "%s%s%s", label, (optIndex == MOPT_EXIT_GAME) ? "" : ": ", value);
+            snprintf(line, sizeof(line), "%s%s%s", label, (optIndex == MOPT_EXIT_GAME || optIndex == MOPT_SAVE_RESTORE_STATE) ? "" : ": ", value);
             putText(0, row++, line, CBLACK, CWHITE);
         }
         // Blank spacer after last option
@@ -1748,7 +1826,7 @@ int showSettingsMenu(bool calledFromGame)
         {
             putText(0, helpRowScreen, "                                        ", CBLACK, CWHITE);
         }
-       
+
         // snprintf(line, sizeof(line),
         //          "%s: SAVE/CANCEL/DEFAULT,  %s: Cancel",
         //          buttonLabel1, buttonLabel2);
@@ -1765,15 +1843,11 @@ int showSettingsMenu(bool calledFromGame)
             col = 0;
         putText(col, row++, line, CBLACK, CWHITE);
 
-  
         putText(0, helpRowScreen + 3, "System info:", CBLACK, CWHITE);
         Frens::getFsInfo(line, sizeof(line));
-        putText(1, helpRowScreen + 4 , "SD:", CBLACK, CWHITE);
+        putText(1, helpRowScreen + 4, "SD:", CBLACK, CWHITE);
         putText(5, helpRowScreen + 4, line, CBLACK, CWHITE);
-        for (int lineNr = 0; lineNr < 240; ++lineNr)
-        {
-            drawline(lineNr, selectedRowLocal);
-        }
+        drawAllLines(selectedRowLocal);
     }; // redraw lambda
     waitForNoButtonPress();
     int startFrames = -1;
@@ -1846,7 +1920,7 @@ int showSettingsMenu(bool calledFromGame)
                     selectedRowLocal = rowStartOptions; // wrap
                 }
             }
-            else if (pad & LEFT || pad & RIGHT || ((pad & A) && optIndex == MOPT_EXIT_GAME))
+            else if (pad & LEFT || pad & RIGHT || ((pad & A) && (optIndex == MOPT_EXIT_GAME || optIndex == MOPT_SAVE_RESTORE_STATE)))
             {
                 if (optIndex != -1)
                 {
@@ -1857,6 +1931,12 @@ int showSettingsMenu(bool calledFromGame)
                     case MOPT_EXIT_GAME:
                     {
                         rval = 3; // exit to main menu
+                        exitMenu = true;
+                        break;
+                    }
+                    case MOPT_SAVE_RESTORE_STATE:
+                    {
+                        rval = 4; // save/restore state
                         exitMenu = true;
                         break;
                     }
@@ -2083,11 +2163,11 @@ int showSettingsMenu(bool calledFromGame)
             dvi_->getBlankSettings().top = margintop;
             dvi_->getBlankSettings().bottom = marginbottom;
         }
-#else   
+#else
         // Restore scanline setting
         hstx_setScanLines(settings.flags.scanlineOn);
 #endif
-          // Speaker can be muted/unmuted from settings menu
+        // Speaker can be muted/unmuted from settings menu
         EXT_AUDIO_MUTE_INTERNAL_SPEAKER(settings.flags.fruitJamEnableInternalSpeaker == 0);
         Frens::PaceFrames60fps(true);
     }
@@ -2321,13 +2401,13 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
 #if PICO_RP2350
 #else
 #if HW_CONFIG == 1
-                // On RP2040 with Pimoroni Pico DV Demo base, intermittent crashes have been observed in the settings menu 
+                // On RP2040 with Pimoroni Pico DV Demo base, intermittent crashes have been observed in the settings menu
                 // from within the SMS emulator only.
                 // As a workaround, disable the settings menu for SMS emulator on HW_CONFIG 1.
                 // Settings can still be opened in-game.
                 if (FrensSettings::getEmulatorType() == FrensSettings::emulators::SMS)
                 {
-                    //printf("Settings menu not available for SMS emulator\n");
+                    // printf("Settings menu not available for SMS emulator\n");
                     continue; // skip other processing this frame
                 }
 #endif
