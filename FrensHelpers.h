@@ -58,6 +58,7 @@ enum class ScreenMode
 
 #define ERRORMESSAGESIZE 40
 #define GAMESAVEDIR "/SAVES"
+
 #define ROMINFOFILE "/currentloadedrom.txt"
 #define SCREENWIDTH 320
 #define SCREENHEIGHT 240

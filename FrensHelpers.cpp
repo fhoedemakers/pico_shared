@@ -26,6 +26,8 @@
 
 #include "PicoPlusPsram.h"
 #include "vumeter.h"
+#include "state.h"
+
 // Pico W devices use a GPIO on the WIFI chip for the LED,
 // so when building for Pico W, CYW43_WL_GPIO_LED_PIN will be defined
 // NOTE: Building for Pico2 W makes the emulator not work: ioctl timeouts and red flicker
@@ -493,6 +495,39 @@ namespace Frens
             {
                 snprintf(ErrorMessage, ERRORMESSAGESIZE, "Cannot create dir %s: %d", GAMESAVEDIR, fr);
                 printf("%s\n", ErrorMessage);
+                return false;
+            }
+        }
+        printf("Creating directory %s\n", SAVESTATEDIR);
+        fr = f_mkdir(SAVESTATEDIR);
+        if (fr != FR_OK)
+        {
+            if (fr == FR_EXIST)
+            {
+                printf("Directory already exists.\n");
+            }
+            else
+            {
+                snprintf(ErrorMessage, ERRORMESSAGESIZE, "Cannot create dir %s: %d", SAVESTATEDIR, fr);
+                printf("%s\n", ErrorMessage);
+                return false;
+            }
+        }
+        // create a subfolder in SAVESTATEDIR for the current emulator
+        // e.g., /SAVESTATES/nes/
+        snprintf(str, sizeof(str), "%s/%s", SAVESTATEDIR, FrensSettings::getEmulatorTypeString());
+        printf("Creating directory %s\n", str);
+        fr = f_mkdir(str);
+        if (fr != FR_OK)
+        {
+            if (fr == FR_EXIST)
+            {
+                printf("Directory already exists.\n");
+            }
+            else
+            {
+                snprintf(ErrorMessage, ERRORMESSAGESIZE, "Cannot create dir %s: %d", str, fr);
+                printf("%s\n", ErrorMessage);       
                 return false;
             }
         }

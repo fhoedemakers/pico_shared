@@ -22,7 +22,7 @@
 #include "ffwrappers.h"
 #include "vumeter.h"
 #include "DefaultSS.h"
-
+#include "state.h"
 #if !HSTX
 #define CC(x) (((x >> 1) & 15) | (((x >> 6) & 15) << 4) | (((x >> 11) & 15) << 8))
 const __UINT16_TYPE__ NesMenuPalette[64] = {
@@ -81,9 +81,15 @@ static uint8_t crcOffset = 0; // Default offset for CRC calculation
 #define LONG_PRESS_TRESHOLD (500)
 #define REPEAT_DELAY (40)
 
+static char buttonLabel1[2]; // e.g., "A", "B", "X", "O"
+static char buttonLabel2[2]; // e.g., "A", "B", "
+static char line[41];
+static char valueBuf[16]; // separate buffer for numeric values
+
 static WORD *WorkLineRom = nullptr;
 #if !HSTX
 // static BYTE *WorkLineRom8 = nullptr;
+
 
 void RomSelect_SetLineBuffer(WORD *p, WORD size)
 {
@@ -213,6 +219,7 @@ int Menu_LoadFrame()
 }
 
 bool resetScreenSaver = false;
+
 
 void RomSelect_PadState(DWORD *pdwPad1, bool ignorepushed = false)
 {
@@ -353,6 +360,38 @@ void RomSelect_DrawLine(int line, int selectedRow, int pixelsToSkip = 0)
     return;
 }
 
+/// @brief Renders a single 320-pixel scanline into the active video line buffer.
+///        Optionally blends (actually overwrites) an image row before drawing text.
+///        Text glyphs are only drawn when not in screensaver (image moving) mode.
+/// @param scanline Absolute scanline index (0..SCREENHEIGHT-1).
+/// @param selectedRow Menu row index that is currently selected (for inverted colors); pass -1 for no selection.
+/// @param w Image width in pixels (0 disables image drawing). Must be 1..SCREENWIDTH if imagebuffer != nullptr.
+/// @param h Image height in pixels. Must be 1..SCREENHEIGHT if imagebuffer != nullptr.
+/// @param imagebuffer Pointer to packed 16-bit pixel data (layout: row-major, RGB444/555 depending on build).
+/// @param imagex Horizontal start position (column) where the image is placed (0-based).
+/// @param imagey Vertical start position (scanline) where the top of the image is placed.
+///               When imagex or imagey are non‑zero the function treats this as screensaver mode and
+///               suppresses menu text drawing for lines overlapped or reserved by the image.
+/// Algorithm:
+///   1 Acquire destination line buffer (framebuffer or DVI line buffer).
+///   2 If an image is active:
+///        - Clear the line (only when image is moving: imagex || imagey) to prevent artifacts.
+///        - If current scanline is within image vertical bounds, memcpy the corresponding image row.
+///        - Reserve horizontal offset (offset = w) so text starts after image when image at top area (<120px).
+///   3 If not in screensaver mode (imagex==0 && imagey==0) draw text glyphs via RomSelect_DrawLine(),
+///        passing offset so text can start after embedded image when used for metadata screens.
+///   4 Submit the populated line buffer back to the video subsystem when not using full framebuffer.
+/// Notes:
+///   - Safety checks ensure w/h are within screen bounds before treating imagebuffer as valid.
+///   - Color mapping differs when useFrameBuffer is true (raw palette indices) versus false (lookup table).
+///   - Clearing only moving-image lines reduces flicker on first static metadata image display.
+///   - offset logic prevents garbled text when small images (<120px high) occupy left side.
+/// Performance:
+///   - memcpy used for image row copy (w * sizeof(uint16_t) bytes).
+///   - Glyph rendering loops over SCREEN_COLS (character cells) * 8 pixels horizontally.
+/// Edge cases:
+///   - Invalid image dimensions: image ignored; only text drawn.
+///   - scanline outside imagey..imagey+h: only text (unless reserved offset for early lines).
 void drawline(int scanline, int selectedRow, int w = 0, int h = 0, uint16_t *imagebuffer = nullptr, int imagex = 0, int imagey = 0)
 {
 #if !HSTX
@@ -1337,14 +1376,16 @@ static inline void drawAllLines(int selected)
 
 int showSaveStateMenu()
 {
+    const char *slotFormat = SAVESTATEDIR "/%s/slot%d.sta";
+    uint8_t saveslots[MAXSAVESTATESLOTS]{};
     int margintop = 0;
     int marginbottom = 0;
-    // Placeholder implementation
-
-    screenBuffer = (charCell *)Frens::f_malloc(screenbufferSize);
 #if ENABLE_VU_METER
     turnOffAllLeds();
 #endif
+  
+    screenBuffer = (charCell *)Frens::f_malloc(screenbufferSize);
+
 #if !HSTX
     margintop = dvi_->getBlankSettings().top;
     marginbottom = dvi_->getBlankSettings().bottom;
@@ -1356,6 +1397,25 @@ int showSaveStateMenu()
 #else
     hstx_setScanLines(false);
 #endif
+    FILINFO *fno = (FILINFO *)Frens::f_malloc(sizeof(FILINFO));
+    for (int i = 0; i < MAXSAVESTATESLOTS; i++)
+    {
+        char filepath[30];
+        snprintf(filepath, sizeof(filepath), slotFormat, FrensSettings::getEmulatorTypeString(), i);
+        printf("Checking save slot file: %s\n", filepath);
+        FRESULT fr = f_stat(filepath, fno);
+        if (fr == FR_OK)
+        {
+            printf("Save slot %d used, size: %lu bytes\n", i, fno->fsize);
+            saveslots[i] = 1; // slot used
+        }
+        else
+        {
+            printf("Save slot %d free\n", i);
+            saveslots[i] = 0; // slot free
+        }
+    }
+    Frens::f_free(fno);
     ClearScreen(settings.bgcolor);
     putText(0, 0, "Save State Menu (Not Implemented)", settings.fgcolor, settings.bgcolor);
     auto crc = Frens::getCrcOfLoadedRom();
@@ -1451,12 +1511,6 @@ int showSettingsMenu(bool calledFromGame)
         hstx_setScanLines(false);
 #endif
     }
-
-    // Preserve stack by using static buffers (RP2040 has limited stack)
-    static char buttonLabel1[2]; // e.g., "A", "B", "X", "O"
-    static char buttonLabel2[2]; // e.g., "A", "B", "
-    static char line[41];
-    static char valueBuf[16]; // NEW: separate buffer for numeric values
 
     // Local working copy of settings.
     struct settings *workingDyn = (struct settings *)Frens::f_malloc(sizeof(settings));
