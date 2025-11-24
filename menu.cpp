@@ -1376,7 +1376,7 @@ static inline void drawAllLines(int selected)
 
 int showSaveStateMenu()
 {
-    const char *slotFormat = SAVESTATEDIR "/%s/slot%d.sta";
+    const char *slotFormat = SAVESTATEDIR "/%s/%08X/slot%d.sta";
     uint8_t saveslots[MAXSAVESTATESLOTS]{};
     int margintop = 0;
     int marginbottom = 0;
@@ -1398,10 +1398,11 @@ int showSaveStateMenu()
     hstx_setScanLines(false);
 #endif
     FILINFO *fno = (FILINFO *)Frens::f_malloc(sizeof(FILINFO));
+    auto crc = Frens::getCrcOfLoadedRom();
     for (int i = 0; i < MAXSAVESTATESLOTS; i++)
     {
-        char filepath[30];
-        snprintf(filepath, sizeof(filepath), slotFormat, FrensSettings::getEmulatorTypeString(), i);
+        char filepath[50];
+        snprintf(filepath, sizeof(filepath), slotFormat, FrensSettings::getEmulatorTypeString(), crc, i);
         printf("Checking save slot file: %s\n", filepath);
         FRESULT fr = f_stat(filepath, fno);
         if (fr == FR_OK)
@@ -1418,7 +1419,6 @@ int showSaveStateMenu()
     Frens::f_free(fno);
     ClearScreen(settings.bgcolor);
     putText(0, 0, "Save State Menu (Not Implemented)", settings.fgcolor, settings.bgcolor);
-    auto crc = Frens::getCrcOfLoadedRom();
     char crcStr[9];
     snprintf(crcStr, sizeof(crcStr), "%08X", crc);
     putText(0, 2, "Current ROM CRC32:", settings.fgcolor, settings.bgcolor);
