@@ -1383,78 +1383,248 @@ int showSaveStateMenu()
 #if ENABLE_VU_METER
     turnOffAllLeds();
 #endif
-  
+
     screenBuffer = (charCell *)Frens::f_malloc(screenbufferSize);
 
 #if !HSTX
     margintop = dvi_->getBlankSettings().top;
     marginbottom = dvi_->getBlankSettings().bottom;
-    printf("Top margin: %d, bottom margin: %d\n", margintop, marginbottom);
-    // Use the entire screen resolution of 320x240 pixels. This makes a 40x30 screen with 8x8 font possible.
     scaleMode8_7_ = Frens::applyScreenMode(ScreenMode::NOSCANLINE_1_1);
     dvi_->getBlankSettings().top = 0;
     dvi_->getBlankSettings().bottom = 0;
 #else
     hstx_setScanLines(false);
 #endif
-    FILINFO *fno = (FILINFO *)Frens::f_malloc(sizeof(FILINFO));
+
     auto crc = Frens::getCrcOfLoadedRom();
+    FILINFO *fno = (FILINFO *)Frens::f_malloc(sizeof(FILINFO));
     for (int i = 0; i < MAXSAVESTATESLOTS; i++)
     {
-        char filepath[50];
+        char filepath[128];
         snprintf(filepath, sizeof(filepath), slotFormat, FrensSettings::getEmulatorTypeString(), crc, i);
-        printf("Checking save slot file: %s\n", filepath);
         FRESULT fr = f_stat(filepath, fno);
-        if (fr == FR_OK)
+        saveslots[i] = (fr == FR_OK) ? 1 : 0;
+    }
+    Frens::f_free(fno);
+
+    int selected = 0;
+    bool exitMenu = false;
+    bool saved = false;
+    DWORD pad = 0;
+    int idleStart = -1;
+
+    // confirmType: 0 none, 1 overwrite, 2 delete
+    auto redraw = [&](int confirmType = 0, int confirmSlot = -1)
+    {
+        char linebuf[48];
+        ClearScreen(settings.bgcolor);
+        getButtonLabels(buttonLabel1, buttonLabel2);
+        putText((SCREEN_COLS - 18) / 2, 0, "-- Save State --", settings.fgcolor, settings.bgcolor);
+        putText(0, 2, "Choose slot:", settings.fgcolor, settings.bgcolor);
+
+        for (int i = 0; i < MAXSAVESTATESLOTS && (4 + i) < ENDROW - 2; i++)
         {
-            printf("Save slot %d used, size: %lu bytes\n", i, fno->fsize);
-            saveslots[i] = 1; // slot used
+            const char *status = saveslots[i] ? "Used" : "Empty";
+            snprintf(linebuf, sizeof(linebuf), "Slot %d: %s", i + 1, status);
+            int fg = settings.fgcolor;
+            int bg = settings.bgcolor;
+            if (confirmSlot == i)
+            {
+                // Highlight slot being confirmed (overwrite/delete)
+                fg = CWHITE;
+                //bg = (confirmType == 2) ? CBLUE : CRED;
+                bg = CRED;
+            }
+            else if (i == selected && confirmSlot < 0)
+            {
+                fg = settings.bgcolor;
+                bg = settings.fgcolor;
+            }
+            putText(2, 4 + i, linebuf, fg, bg);
+        }
+
+        if (confirmSlot >= 0)
+        {
+            if (confirmType == 1)
+            {
+                putText(0, ENDROW - 4, "Overwrite existing state?", settings.fgcolor, settings.bgcolor);
+                snprintf(linebuf, sizeof(linebuf), "%s=Overwrite  %s=Cancel", buttonLabel1, buttonLabel2);
+            }
+            else
+            {
+                putText(0, ENDROW - 4, "Delete this save state?", settings.fgcolor, settings.bgcolor);
+                snprintf(linebuf, sizeof(linebuf), "%s=Delete  %s=Cancel", buttonLabel1, buttonLabel2);
+            }
+            putText(0, ENDROW - 3, linebuf, settings.fgcolor, settings.bgcolor);
         }
         else
         {
-            printf("Save slot %d free\n", i);
-            saveslots[i] = 0; // slot free
+            // General instructions
+            snprintf(linebuf, sizeof(linebuf), "%s=Save  %s=Back  SELECT=Delete", buttonLabel1, buttonLabel2);
+            putText(0, ENDROW - 4, linebuf, settings.fgcolor, settings.bgcolor);
+            putText(0, ENDROW - 3, "SELECT+START: Exit to menu", settings.fgcolor, settings.bgcolor);
         }
-    }
-    Frens::f_free(fno);
-    ClearScreen(settings.bgcolor);
-    putText(0, 0, "Save State Menu (Not Implemented)", settings.fgcolor, settings.bgcolor);
-    char crcStr[9];
-    snprintf(crcStr, sizeof(crcStr), "%08X", crc);
-    putText(0, 2, "Current ROM CRC32:", settings.fgcolor, settings.bgcolor);
-    putText(0, 3, crcStr, settings.fgcolor, settings.bgcolor);
-    putText(0, ENDROW - 1, "Press any button to return", settings.fgcolor, settings.bgcolor);
-    waitForNoButtonPress();
-    while (true)
-    {
-        auto frameCount = Menu_LoadFrame();
+
         drawAllLines(-1);
-        DWORD PAD1_Latch;
-        RomSelect_PadState(&PAD1_Latch);
-        if (PAD1_Latch > 0)
+    };
+
+    waitForNoButtonPress();
+
+    while (!exitMenu)
+    {
+        redraw();
+        RomSelect_PadState(&pad);
+        int frame = Menu_LoadFrame();
+        if (idleStart < 0) idleStart = frame;
+        if (pad) idleStart = frame;
+
+        if ((frame - idleStart) > 3600)
         {
-            break;
+            screenSaver();
+            idleStart = frame;
+            continue;
+        }
+
+        if (pad & UP)
+        {
+            selected = (selected > 0) ? selected - 1 : (MAXSAVESTATESLOTS - 1);
+        }
+        else if (pad & DOWN)
+        {
+            selected = (selected < MAXSAVESTATESLOTS - 1) ? selected + 1 : 0;
+        }
+        else if ((pad & SELECT) && (pad & START))
+        {
+            exitMenu = true;
+            saved = false;
+        }
+        else if ((pad & SELECT) && !(pad & START))
+        {
+            // Delete confirmation only when slot used
+            if (saveslots[selected])
+            {
+                redraw(2, selected);
+                while (true)
+                {
+                    RomSelect_PadState(&pad);
+                    Menu_LoadFrame();
+                    if (pad & A) // Confirm delete
+                    {
+                        char filepath[128];
+                        snprintf(filepath, sizeof(filepath), slotFormat, FrensSettings::getEmulatorTypeString(), crc, selected);
+                        printf("Deleting save state file: %s\n", filepath);
+                        f_unlink(filepath); // ignore result
+                        saveslots[selected] = 0;
+                        // Brief feedback
+                        ClearScreen(settings.bgcolor);
+                        {
+                            const char *msg = "Deleted.";
+                            const char *prompt = "Press any button to continue";
+                            int msgX = (SCREEN_COLS - (int)strlen(msg)) / 2;
+                            int msgY = SCREEN_ROWS / 2 - 1;
+                            int promptX = (SCREEN_COLS - (int)strlen(prompt)) / 2;
+                            int promptY = msgY + 2;
+                            putText(msgX < 0 ? 0 : msgX, msgY, msg, CBLUE, settings.bgcolor);
+                            putText(promptX < 0 ? 0 : promptX, promptY, prompt, settings.fgcolor, settings.bgcolor);
+                        }
+                        drawAllLines(-1);
+                        DWORD waitPad;
+                        do { RomSelect_PadState(&waitPad); Menu_LoadFrame(); } while (!waitPad);
+                        do { RomSelect_PadState(&waitPad); Menu_LoadFrame(); } while (waitPad);
+                        break;
+                    }
+                    if (pad & B) // Cancel
+                        break;
+                }
+                continue;
+            }
+        }
+        else if (pad & B)
+        {
+            exitMenu = true;
+            saved = false;
+        }
+        else if (pad & A)
+        {
+            bool proceed = true;
+            if (saveslots[selected])
+            {
+                // Overwrite confirmation
+                redraw(1, selected);
+                while (true)
+                {
+                    RomSelect_PadState(&pad);
+                    Menu_LoadFrame();
+                    if (pad & A) { proceed = true; break; }
+                    if (pad & B) { proceed = false; break; }
+                }
+                if (!proceed)
+                {
+                    continue;
+                }
+            }
+
+            // Ensure directory structure
+            char rootDir[64];
+            char emuDir[96];
+            char crcDir[128];
+            snprintf(rootDir, sizeof(rootDir), "%s", SAVESTATEDIR);
+            snprintf(emuDir, sizeof(emuDir), "%s/%s", SAVESTATEDIR, FrensSettings::getEmulatorTypeString());
+            snprintf(crcDir, sizeof(crcDir), "%s/%s/%08X", SAVESTATEDIR, FrensSettings::getEmulatorTypeString(), crc);
+            f_mkdir(rootDir);
+            f_mkdir(emuDir);
+            f_mkdir(crcDir);
+
+            // Save file
+            char filepath[128];
+            snprintf(filepath, sizeof(filepath), slotFormat, FrensSettings::getEmulatorTypeString(), crc, selected);
+            FIL fil;
+            printf("Saving state to %s\n", filepath);
+            FRESULT fr = f_open(&fil, filepath, FA_CREATE_ALWAYS | FA_WRITE);
+            if (fr == FR_OK)
+            {
+                // Placeholder save
+                const char *stub = "SAVESTATE_PLACEHOLDER";
+                UINT bw;
+                f_write(&fil, stub, strlen(stub), &bw);
+                f_close(&fil);
+                saveslots[selected] = 1;
+                saved = true;
+                exitMenu = true;
+            }
+            else
+            {
+                ClearScreen(settings.bgcolor);
+                putText(0, 0, "Save failed.", CRED, settings.bgcolor);
+                putText(0, 2, "Press any button.", settings.fgcolor, settings.bgcolor);
+                drawAllLines(-1);
+                DWORD waitPad;
+                do { RomSelect_PadState(&waitPad); Menu_LoadFrame(); } while (!waitPad);
+                do { RomSelect_PadState(&waitPad); Menu_LoadFrame(); } while (waitPad);
+            }
         }
     }
-    ClearScreen(CBLACK); // Removes artifacts from previous screen
-                         // Wait until user has released all buttons
+
+    ClearScreen(CBLACK);
     waitForNoButtonPress();
+
 #if !HSTX
     scaleMode8_7_ = Frens::applyScreenMode(settings.screenMode);
-    // Reset the screen mode to the original settings
-    // Do not reset the margins when framebuffer is used, this will lock up the display driver
-    // Margins will be handled by the framebuffer.
     if (!Frens::isFrameBufferUsed())
     {
         dvi_->getBlankSettings().top = margintop;
         dvi_->getBlankSettings().bottom = marginbottom;
     }
 #else
-    // Restore scanline setting
     hstx_setScanLines(settings.flags.scanlineOn);
 #endif
     Frens::PaceFrames60fps(true);
-    return true;
+
+    Frens::f_free(screenBuffer);
+    ClearScreen(CBLACK);
+    waitForNoButtonPress();
+
+    return saved ? (selected + 1) : 0;
 }
 // --- Settings Menu Implementation ---
 // returns 0 if no changes, 1 if settings applied
