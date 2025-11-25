@@ -90,7 +90,6 @@ static WORD *WorkLineRom = nullptr;
 #if !HSTX
 // static BYTE *WorkLineRom8 = nullptr;
 
-
 void RomSelect_SetLineBuffer(WORD *p, WORD size)
 {
     WorkLineRom = p;
@@ -219,7 +218,6 @@ int Menu_LoadFrame()
 }
 
 bool resetScreenSaver = false;
-
 
 void RomSelect_PadState(DWORD *pdwPad1, bool ignorepushed = false)
 {
@@ -1378,6 +1376,7 @@ int showSaveStateMenu()
 {
     const char *slotFormat = SAVESTATEDIR "/%s/%08X/slot%d.sta";
     uint8_t saveslots[MAXSAVESTATESLOTS]{};
+    char tmppath[40];    // /SAVESTATES/NES/XXXXXXXX/slot1.sta
     int margintop = 0;
     int marginbottom = 0;
 #if ENABLE_VU_METER
@@ -1400,9 +1399,8 @@ int showSaveStateMenu()
     FILINFO *fno = (FILINFO *)Frens::f_malloc(sizeof(FILINFO));
     for (int i = 0; i < MAXSAVESTATESLOTS; i++)
     {
-        char filepath[128];
-        snprintf(filepath, sizeof(filepath), slotFormat, FrensSettings::getEmulatorTypeString(), crc, i);
-        FRESULT fr = f_stat(filepath, fno);
+        snprintf(tmppath, sizeof(tmppath), slotFormat, FrensSettings::getEmulatorTypeString(), crc, i);
+        FRESULT fr = f_stat(tmppath, fno);
         saveslots[i] = (fr == FR_OK) ? 1 : 0;
     }
     Frens::f_free(fno);
@@ -1432,7 +1430,7 @@ int showSaveStateMenu()
             {
                 // Highlight slot being confirmed (overwrite/delete)
                 fg = CWHITE;
-                //bg = (confirmType == 2) ? CBLUE : CRED;
+                // bg = (confirmType == 2) ? CBLUE : CRED;
                 bg = CRED;
             }
             else if (i == selected && confirmSlot < 0)
@@ -1475,8 +1473,10 @@ int showSaveStateMenu()
         redraw();
         RomSelect_PadState(&pad);
         int frame = Menu_LoadFrame();
-        if (idleStart < 0) idleStart = frame;
-        if (pad) idleStart = frame;
+        if (idleStart < 0)
+            idleStart = frame;
+        if (pad)
+            idleStart = frame;
 
         if ((frame - idleStart) > 3600)
         {
@@ -1510,10 +1510,9 @@ int showSaveStateMenu()
                     Menu_LoadFrame();
                     if (pad & A) // Confirm delete
                     {
-                        char filepath[128];
-                        snprintf(filepath, sizeof(filepath), slotFormat, FrensSettings::getEmulatorTypeString(), crc, selected);
-                        printf("Deleting save state file: %s\n", filepath);
-                        f_unlink(filepath); // ignore result
+                        snprintf(tmppath, sizeof(tmppath), slotFormat, FrensSettings::getEmulatorTypeString(), crc, selected);
+                        printf("Deleting save state file: %s\n", tmppath);
+                        f_unlink(tmppath); // ignore result
                         saveslots[selected] = 0;
                         // Brief feedback
                         ClearScreen(settings.bgcolor);
@@ -1529,8 +1528,16 @@ int showSaveStateMenu()
                         }
                         drawAllLines(-1);
                         DWORD waitPad;
-                        do { RomSelect_PadState(&waitPad); Menu_LoadFrame(); } while (!waitPad);
-                        do { RomSelect_PadState(&waitPad); Menu_LoadFrame(); } while (waitPad);
+                        do
+                        {
+                            RomSelect_PadState(&waitPad);
+                            Menu_LoadFrame();
+                        } while (!waitPad);
+                        do
+                        {
+                            RomSelect_PadState(&waitPad);
+                            Menu_LoadFrame();
+                        } while (waitPad);
                         break;
                     }
                     if (pad & B) // Cancel
@@ -1555,8 +1562,16 @@ int showSaveStateMenu()
                 {
                     RomSelect_PadState(&pad);
                     Menu_LoadFrame();
-                    if (pad & A) { proceed = true; break; }
-                    if (pad & B) { proceed = false; break; }
+                    if (pad & A)
+                    {
+                        proceed = true;
+                        break;
+                    }
+                    if (pad & B)
+                    {
+                        proceed = false;
+                        break;
+                    }
                 }
                 if (!proceed)
                 {
@@ -1565,22 +1580,63 @@ int showSaveStateMenu()
             }
 
             // Ensure directory structure
-            char rootDir[64];
-            char emuDir[96];
-            char crcDir[128];
-            snprintf(rootDir, sizeof(rootDir), "%s", SAVESTATEDIR);
-            snprintf(emuDir, sizeof(emuDir), "%s/%s", SAVESTATEDIR, FrensSettings::getEmulatorTypeString());
-            snprintf(crcDir, sizeof(crcDir), "%s/%s/%08X", SAVESTATEDIR, FrensSettings::getEmulatorTypeString(), crc);
-            f_mkdir(rootDir);
-            f_mkdir(emuDir);
-            f_mkdir(crcDir);
+            FRESULT fr;
+            bool failed = false;
+            snprintf(tmppath, sizeof(tmppath), "%s", SAVESTATEDIR);
+            printf("Creating save state directory: %s\n", tmppath);
+            fr = f_mkdir(tmppath);
+            if (fr != FR_OK && fr != FR_EXIST)
+            {
+                failed = true;
+                continue;
+            }
+            if (!failed)
+            {
+                snprintf(tmppath, sizeof(tmppath), "%s/%s", SAVESTATEDIR, FrensSettings::getEmulatorTypeString());
+                printf("Creating save state directory: %s\n", tmppath);
+                fr = f_mkdir(tmppath);
+                if (fr != FR_OK && fr != FR_EXIST)
+                {
+                    failed = true;
+                }
+            }
+            if (!failed)
+            {
+                snprintf(tmppath, sizeof(tmppath), "%s/%s/%08X", SAVESTATEDIR, FrensSettings::getEmulatorTypeString(), crc);
+                printf("Creating save state directory: %s\n", tmppath);
+                fr = f_mkdir(tmppath);
+                if (fr != FR_OK && fr != FR_EXIST)
+                {
+                    failed = true;
+                }
+            }
+
+            if (failed)
+            {
+                ClearScreen(settings.bgcolor);
+                putText(0, 0, "Save failed, cannot create folder.", CRED, settings.bgcolor);
+                putText(0, 1, tmppath, CRED, settings.bgcolor);
+                putText(0, 3, "Press any button.", settings.fgcolor, settings.bgcolor);
+                drawAllLines(-1);
+                DWORD waitPad;
+                do
+                {
+                    RomSelect_PadState(&waitPad);
+                    Menu_LoadFrame();
+                } while (!waitPad);
+                do
+                {
+                    RomSelect_PadState(&waitPad);
+                    Menu_LoadFrame();
+                } while (waitPad);
+                continue;
+            }
 
             // Save file
-            char filepath[128];
-            snprintf(filepath, sizeof(filepath), slotFormat, FrensSettings::getEmulatorTypeString(), crc, selected);
+            snprintf(tmppath, sizeof(tmppath), slotFormat, SAVESTATEDIR ,FrensSettings::getEmulatorTypeString(), crc, selected);
             FIL fil;
-            printf("Saving state to %s\n", filepath);
-            FRESULT fr = f_open(&fil, filepath, FA_CREATE_ALWAYS | FA_WRITE);
+            printf("Saving state to %s\n", tmppath);
+            fr = f_open(&fil, tmppath, FA_CREATE_ALWAYS | FA_WRITE);
             if (fr == FR_OK)
             {
                 // Placeholder save
@@ -1599,8 +1655,16 @@ int showSaveStateMenu()
                 putText(0, 2, "Press any button.", settings.fgcolor, settings.bgcolor);
                 drawAllLines(-1);
                 DWORD waitPad;
-                do { RomSelect_PadState(&waitPad); Menu_LoadFrame(); } while (!waitPad);
-                do { RomSelect_PadState(&waitPad); Menu_LoadFrame(); } while (waitPad);
+                do
+                {
+                    RomSelect_PadState(&waitPad);
+                    Menu_LoadFrame();
+                } while (!waitPad);
+                do
+                {
+                    RomSelect_PadState(&waitPad);
+                    Menu_LoadFrame();
+                } while (waitPad);
             }
         }
     }
