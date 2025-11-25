@@ -1372,7 +1372,7 @@ static inline void drawAllLines(int selected)
     }
 }
 
-int showSaveStateMenu()
+int showSaveStateMenu(int (*savestatefunc)(const char *path))
 {
     const char *slotFormat = SAVESTATEDIR "/%s/%08X/slot%d.sta";
     uint8_t saveslots[MAXSAVESTATESLOTS]{};
