@@ -1374,11 +1374,12 @@ static inline void drawAllLines(int selected)
 
 int showSaveStateMenu(int (*savestatefunc)(const char *path))
 {
-    const char *slotFormat = SAVESTATEDIR "/%s/%08X/slot%d.sta";
+    const char *slotFormat =SLOTFORMAT;
     uint8_t saveslots[MAXSAVESTATESLOTS]{};
     char tmppath[40];    // /SAVESTATES/NES/XXXXXXXX/slot1.sta
     int margintop = 0;
     int marginbottom = 0;
+    bool runState = false;
 #if ENABLE_VU_METER
     turnOffAllLeds();
 #endif
@@ -1423,7 +1424,7 @@ int showSaveStateMenu(int (*savestatefunc)(const char *path))
         for (int i = 0; i < MAXSAVESTATESLOTS && (4 + i) < ENDROW - 2; i++)
         {
             const char *status = saveslots[i] ? "Used" : "Empty";
-            snprintf(linebuf, sizeof(linebuf), "Slot %d: %s", i + 1, status);
+            snprintf(linebuf, sizeof(linebuf), "Slot %d: %s%s", i + 1, status, (i == selected && saved) ? " Saved" : "");
             int fg = settings.fgcolor;
             int bg = settings.bgcolor;
             if (confirmSlot == i)
@@ -1460,7 +1461,7 @@ int showSaveStateMenu(int (*savestatefunc)(const char *path))
             // General instructions
             snprintf(linebuf, sizeof(linebuf), "%s=Save  %s=Back  SELECT=Delete", buttonLabel1, buttonLabel2);
             putText(0, ENDROW - 4, linebuf, settings.fgcolor, settings.bgcolor);
-            putText(0, ENDROW - 3, "SELECT+START: Exit to menu", settings.fgcolor, settings.bgcolor);
+            putText(0, ENDROW - 3, "START: Load state.", settings.fgcolor, settings.bgcolor);
         }
 
         drawAllLines(-1);
@@ -1488,15 +1489,23 @@ int showSaveStateMenu(int (*savestatefunc)(const char *path))
         if (pad & UP)
         {
             selected = (selected > 0) ? selected - 1 : (MAXSAVESTATESLOTS - 1);
+            saved = false;
         }
         else if (pad & DOWN)
         {
             selected = (selected < MAXSAVESTATESLOTS - 1) ? selected + 1 : 0;
-        }
-        else if ((pad & SELECT) && (pad & START))
-        {
-            exitMenu = true;
             saved = false;
+        }
+        else if (!(pad & SELECT) && (pad & START))
+        {
+            if (!saveslots[selected])
+            {
+                // No save state in this slot
+                continue;
+            }
+            printf("Loading state from slot %d\n", selected + 1);
+            runState = true;
+            break;
         }
         else if ((pad & SELECT) && !(pad & START))
         {
@@ -1633,20 +1642,13 @@ int showSaveStateMenu(int (*savestatefunc)(const char *path))
             }
 
             // Save file
-            snprintf(tmppath, sizeof(tmppath), slotFormat, SAVESTATEDIR ,FrensSettings::getEmulatorTypeString(), crc, selected);
-            FIL fil;
-            printf("Saving state to %s\n", tmppath);
-            fr = f_open(&fil, tmppath, FA_CREATE_ALWAYS | FA_WRITE);
-            if (fr == FR_OK)
+            snprintf(tmppath, sizeof(tmppath), slotFormat ,FrensSettings::getEmulatorTypeString(), crc, selected);
+           
+            if (savestatefunc(tmppath) == 0)
             {
-                // Placeholder save
-                const char *stub = "SAVESTATE_PLACEHOLDER";
-                UINT bw;
-                f_write(&fil, stub, strlen(stub), &bw);
-                f_close(&fil);
+                printf("Save state saved to slot %d: %s\n", selected + 1, tmppath);
                 saveslots[selected] = 1;
                 saved = true;
-                exitMenu = true;
             }
             else
             {
@@ -1688,7 +1690,7 @@ int showSaveStateMenu(int (*savestatefunc)(const char *path))
     ClearScreen(CBLACK);
     waitForNoButtonPress();
 
-    return saved ? (selected + 1) : 0;
+    return runState ? (selected) : -1;
 }
 // --- Settings Menu Implementation ---
 // returns 0 if no changes, 1 if settings applied
