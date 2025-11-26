@@ -490,9 +490,9 @@ void putText(int x, int y, const char *text, int fgcolor, int bgcolor, bool wrap
                 for (int i = 0; i < word_len && index < SCREENBUFCELLS && maxLen > 0; i++)
                 {
                     char ch = *text++;
-                    if ((unsigned char)ch < 32 || (unsigned char)ch > 126)
+                    if ((unsigned char)ch < 32 || (unsigned char)ch > 126 )
                         ch = ' ';
-                    screenBuffer[index].charvalue = ch;
+                    screenBuffer[index].charvalue = ( ch == '_' ? ' ' : ch);
                     screenBuffer[index].fgcolor = fgcolor;
                     screenBuffer[index].bgcolor = bgcolor;
                     cur_x++;
@@ -506,9 +506,9 @@ void putText(int x, int y, const char *text, int fgcolor, int bgcolor, bool wrap
                     if (!lastWasSpace)
                     {
                         char ch = *text;
-                        if ((unsigned char)ch < 32 || (unsigned char)ch > 126)
+                        if ((unsigned char)ch < 32 || (unsigned char)ch > 126 )
                             ch = ' ';
-                        screenBuffer[index].charvalue = ch;
+                        screenBuffer[index].charvalue = (ch == '_' ? ' ' : ch);
                         screenBuffer[index].fgcolor = fgcolor;
                         screenBuffer[index].bgcolor = bgcolor;
                         cur_x++;
@@ -527,7 +527,7 @@ void putText(int x, int y, const char *text, int fgcolor, int bgcolor, bool wrap
             else
             {
                 char ch = *text++;
-                if ((unsigned char)ch < 32 || (unsigned char)ch > 126)
+                if ((unsigned char)ch < 32 || (unsigned char)ch > 126 )
                     ch = ' ';
                 if (isspace(ch))
                 {
@@ -539,7 +539,7 @@ void putText(int x, int y, const char *text, int fgcolor, int bgcolor, bool wrap
                 {
                     lastWasSpace = false;
                 }
-                screenBuffer[index].charvalue = ch;
+                screenBuffer[index].charvalue = ( ch == '_' ? ' ' : ch) ;
                 screenBuffer[index].fgcolor = fgcolor;
                 screenBuffer[index].bgcolor = bgcolor;
                 cur_x++;
@@ -1372,14 +1372,19 @@ static inline void drawAllLines(int selected)
     }
 }
 
-int showSaveStateMenu(int (*savestatefunc)(const char *path))
+
+/// @brief Shows the save state menu
+/// @param savestatefunc The function to call to save a state
+/// @param loadstatefunc The function to call to load a state
+/// @param extraMessage Extra message to display at the bottom of the menu
+/// @return -1: Back, 0: No action, 1: State loaded
+void showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefunc)(const char *path), const char *extraMessage)
 {
     const char *slotFormat =SLOTFORMAT;
     uint8_t saveslots[MAXSAVESTATESLOTS]{};
     char tmppath[40];    // /SAVESTATES/NES/XXXXXXXX/slot1.sta
     int margintop = 0;
     int marginbottom = 0;
-    bool runState = false;
 #if ENABLE_VU_METER
     turnOffAllLeds();
 #endif
@@ -1441,27 +1446,38 @@ int showSaveStateMenu(int (*savestatefunc)(const char *path))
             }
             putText(2, 4 + i, linebuf, fg, bg);
         }
-
+        putText(0, ENDROW - 8, extraMessage ? extraMessage : " ", settings.fgcolor, settings.bgcolor);
         if (confirmSlot >= 0)
         {
             if (confirmType == 1)
             {
                 putText(0, ENDROW - 4, "Overwrite existing state?", settings.fgcolor, settings.bgcolor);
-                snprintf(linebuf, sizeof(linebuf), "%s=Overwrite  %s=Cancel", buttonLabel1, buttonLabel2);
+                snprintf(linebuf, sizeof(linebuf), "%s:Overwrite  %s:Cancel", buttonLabel1, buttonLabel2);
             }
             else
             {
                 putText(0, ENDROW - 4, "Delete this save state?", settings.fgcolor, settings.bgcolor);
-                snprintf(linebuf, sizeof(linebuf), "%s=Delete  %s=Cancel", buttonLabel1, buttonLabel2);
+                snprintf(linebuf, sizeof(linebuf), "%s:Delete  %s:Cancel", buttonLabel1, buttonLabel2);
             }
             putText(0, ENDROW - 3, linebuf, settings.fgcolor, settings.bgcolor);
         }
         else
         {
-            // General instructions
-            snprintf(linebuf, sizeof(linebuf), "%s=Save  %s=Back  SELECT=Delete", buttonLabel1, buttonLabel2);
-            putText(0, ENDROW - 4, linebuf, settings.fgcolor, settings.bgcolor);
-            putText(0, ENDROW - 3, "START: Load state.", settings.fgcolor, settings.bgcolor);
+            // General instructions (each action on its own line)
+            snprintf(linebuf, sizeof(linebuf), "%s_____:Save state", buttonLabel1);
+            putText(0, ENDROW - 6, linebuf, settings.fgcolor, settings.bgcolor);
+            if (saveslots[selected]) {
+                snprintf(linebuf, sizeof(linebuf), "SELECT:Delete state");
+                putText(0, ENDROW - 5, linebuf, settings.fgcolor, settings.bgcolor);
+                putText(0, ENDROW - 4, "START :Load state.", settings.fgcolor, settings.bgcolor);
+                // Back must be shown last when slot non-empty
+                snprintf(linebuf, sizeof(linebuf), "%s_____:Back", buttonLabel2);
+                putText(0, ENDROW - 3, linebuf, settings.fgcolor, settings.bgcolor);
+            } else {
+                // When slot is empty, show Back immediately below Save
+                snprintf(linebuf, sizeof(linebuf), "%s_____:Back", buttonLabel2);
+                putText(0, ENDROW - 5, linebuf, settings.fgcolor, settings.bgcolor);
+            }
         }
 
         drawAllLines(-1);
@@ -1503,9 +1519,33 @@ int showSaveStateMenu(int (*savestatefunc)(const char *path))
                 // No save state in this slot
                 continue;
             }
-            printf("Loading state from slot %d\n", selected + 1);
-            runState = true;
-            break;
+            
+            snprintf(tmppath, sizeof(tmppath), slotFormat, FrensSettings::getEmulatorTypeString(), crc, selected);
+            printf("Loading state  %s from slot %d\n", tmppath, selected);
+            if (loadstatefunc(tmppath) == 0)
+            {
+                printf("Save state loaded from slot %d: %s\n", selected, tmppath);
+                exitMenu = true;
+                break;
+            } else {
+                ClearScreen(settings.bgcolor);
+                putText(14, 14, "Load failed.", CRED, settings.bgcolor);
+                putText(11, 16, "Press any button.", settings.fgcolor, settings.bgcolor);
+                drawAllLines(-1);
+                DWORD waitPad;
+                do
+                {
+                    RomSelect_PadState(&waitPad);
+                    Menu_LoadFrame();
+                } while (!waitPad);
+                do
+                {
+                    RomSelect_PadState(&waitPad);
+                    Menu_LoadFrame();
+                } while (waitPad);
+                continue;
+            }
+           
         }
         else if ((pad & SELECT) && !(pad & START))
         {
@@ -1525,16 +1565,10 @@ int showSaveStateMenu(int (*savestatefunc)(const char *path))
                         saveslots[selected] = 0;
                         // Brief feedback
                         ClearScreen(settings.bgcolor);
-                        {
-                            const char *msg = "Deleted.";
-                            const char *prompt = "Press any button to continue";
-                            int msgX = (SCREEN_COLS - (int)strlen(msg)) / 2;
-                            int msgY = SCREEN_ROWS / 2 - 1;
-                            int promptX = (SCREEN_COLS - (int)strlen(prompt)) / 2;
-                            int promptY = msgY + 2;
-                            putText(msgX < 0 ? 0 : msgX, msgY, msg, CBLUE, settings.bgcolor);
-                            putText(promptX < 0 ? 0 : promptX, promptY, prompt, settings.fgcolor, settings.bgcolor);
-                        }
+                       
+                        putText(16, 14, "Deleted.", CBLUE, settings.bgcolor);
+                        putText(6, 16, "Press any button to continue", settings.fgcolor, settings.bgcolor);
+                        
                         drawAllLines(-1);
                         DWORD waitPad;
                         do
@@ -1623,9 +1657,10 @@ int showSaveStateMenu(int (*savestatefunc)(const char *path))
             if (failed)
             {
                 ClearScreen(settings.bgcolor);
-                putText(0, 0, "Save failed, cannot create folder.", CRED, settings.bgcolor);
-                putText(0, 1, tmppath, CRED, settings.bgcolor);
-                putText(0, 3, "Press any button.", settings.fgcolor, settings.bgcolor);
+                putText(2, 13, "Save failed, cannot create folder.", CRED, settings.bgcolor);
+                int pathX = (SCREEN_COLS - (int)strlen(tmppath)) / 2;
+                putText(pathX < 0 ? 0 : pathX, 14, tmppath, CRED, settings.bgcolor);
+                putText(11, 16, "Press any button.", settings.fgcolor, settings.bgcolor);
                 drawAllLines(-1);
                 DWORD waitPad;
                 do
@@ -1653,8 +1688,8 @@ int showSaveStateMenu(int (*savestatefunc)(const char *path))
             else
             {
                 ClearScreen(settings.bgcolor);
-                putText(0, 0, "Save failed.", CRED, settings.bgcolor);
-                putText(0, 2, "Press any button.", settings.fgcolor, settings.bgcolor);
+                putText(14, 14, "Save failed.", CRED, settings.bgcolor);
+                putText(11, 16, "Press any button.", settings.fgcolor, settings.bgcolor);
                 drawAllLines(-1);
                 DWORD waitPad;
                 do
@@ -1690,7 +1725,7 @@ int showSaveStateMenu(int (*savestatefunc)(const char *path))
     ClearScreen(CBLACK);
     waitForNoButtonPress();
 
-    return runState ? (selected) : -1;
+    return;
 }
 // --- Settings Menu Implementation ---
 // returns 0 if no changes, 1 if settings applied
