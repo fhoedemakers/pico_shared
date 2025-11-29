@@ -1524,7 +1524,7 @@ void showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
 
             snprintf(tmppath, sizeof(tmppath), slotFormat, FrensSettings::getEmulatorTypeString(), crc, selected);
             printf("Loading state  %s from slot %d\n", tmppath, selected);
-            if (loadstatefunc(tmppath) == 0 )
+            if (loadstatefunc(tmppath) == 0)
             {
                 printf("Save state loaded from slot %d: %s\n", selected, tmppath);
                 exitMenu = true;
@@ -2088,21 +2088,24 @@ int showSettingsMenu(bool calledFromGame)
         putText(0, row++, "CANCEL", CBLACK, CWHITE);
         putText(0, row++, "DEFAULT", CBLACK, CWHITE);
         // Help text (dynamic button labels)
-        if (selectedRowLocal == rowStartOptions && calledFromGame)
+
+        if (selectedRowLocal < saveRowScreen)
         {
-            snprintf(line, sizeof(line), "UP/DOWN: Move, %s quit game", buttonLabel1);
-        }
-        else
-        {
-            if (selectedRowLocal < saveRowScreen)
+            if (visibleIndices[selectedRowLocal - rowStartOptions] == MOPT_EXIT_GAME ||
+                visibleIndices[selectedRowLocal - rowStartOptions] == MOPT_SAVE_RESTORE_STATE)
             {
-                strcpy(line, "UP/DOWN: Move, LEFT/RIGHT: Change");
+                snprintf(line, sizeof(line), "UP/DOWN: Move, %s: select", buttonLabel1);
             }
             else
             {
-                strcpy(line, "UP/DOWN: Move");
+                strcpy(line, "UP/DOWN: Move, LEFT/RIGHT: Change");
             }
         }
+        else
+        {
+            strcpy(line, "UP/DOWN: Move");
+        }
+
         int helpCount = 2;
         row = SCREEN_ROWS - helpCount - 1; // leave one blank row at bottom
         int hlen = (int)strlen(line);
@@ -2151,11 +2154,12 @@ int showSettingsMenu(bool calledFromGame)
         if (col < 0)
             col = 0;
         putText(col, row++, line, CBLACK, CWHITE);
-
+#if 0
         putText(0, helpRowScreen + 3, "System info:", CBLACK, CWHITE);
         Frens::getFsInfo(line, sizeof(line));
         putText(1, helpRowScreen + 4, "SD:", CBLACK, CWHITE);
         putText(5, helpRowScreen + 4, line, CBLACK, CWHITE);
+#endif
         drawAllLines(selectedRowLocal);
     }; // redraw lambda
     waitForNoButtonPress();
