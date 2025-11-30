@@ -73,6 +73,12 @@ namespace {
         .pinClock = 8,
         .invert = true,
     };
+    // Murmulator M2 without HSTX 
+    constexpr dvi::Config dviConfig_Murmulator_M2 = {
+        .pinTMDS = {14, 16, 18},
+        .pinClock = 12,
+        .invert = true,
+    };
 }
 #ifndef DVICONFIG
 #define DVICONFIG dviConfig_PimoroniDemoDVSock
