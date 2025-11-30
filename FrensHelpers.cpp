@@ -848,6 +848,7 @@ namespace Frens
                 fr = f_open(&fil, selectedRom, FA_READ);
                 bool onOff = true;
                 UINT bytesRead;
+                int crcOffset = FrensSettings::getEmulatorType() == FrensSettings::emulators::NES ? 16 : 0;
                 if (fr == FR_OK)
                 {
                     FSIZE_t filesize = f_size(&fil);
@@ -867,7 +868,8 @@ namespace Frens
                                     break;
                                 }
                                 // Wat met offset bij NES roms?
-                                crcOfRom = update_crc32(crcOfRom, buffer, bytesRead);
+                                crcOfRom = update_crc32(crcOfRom, buffer + crcOffset, bytesRead - crcOffset);
+                                crcOffset = 0; // only offset for first block
                                 if (swapbytes)
                                 {
                                     for (int i = 0; i < bytesRead; i += 2)
