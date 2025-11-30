@@ -689,34 +689,60 @@ void displayRoms(Frens::RomLister &romlister, int startIndex)
     }
 }
 
-void DisplayFatalError(char *error)
+
+static inline void drawAllLines(int selected)
 {
-    ClearScreen(settings.bgcolor);
-    putText(0, 0, "Fatal error:", settings.fgcolor, settings.bgcolor);
-    putText(1, 3, error, settings.fgcolor, settings.bgcolor);
-    while (true)
+    for (int lineNr = 0; lineNr < 240; ++lineNr)
     {
-        auto frameCount = Menu_LoadFrame();
-        DrawScreen(-1);
+        drawline(lineNr, selected);
     }
 }
 
-void DisplayEmulatorErrorMessage(char *error)
+static inline int centerColClamped(int textLen) {
+    int col = (SCREEN_COLS - textLen) / 2;
+    return col < 0 ? 0 : col;
+}
+static void showMessageBox(const char *message1, unsigned short fgcolor, const char *message2, const char *message3)
 {
-    DWORD PAD1_Latch;
+   
     ClearScreen(settings.bgcolor);
-    putText(0, 0, "Error occured:", settings.fgcolor, settings.bgcolor);
-    putText(0, 3, error, settings.fgcolor, settings.bgcolor);
-    putText(0, ENDROW, "Press a button to continue.", settings.fgcolor, settings.bgcolor);
-    while (true)
+    int row = SCREEN_ROWS / 2 - 1;
+    putText(centerColClamped(strlen(message1)), row, message1, fgcolor, settings.bgcolor);
+    if (message2)
     {
-        auto frameCount = Menu_LoadFrame();
-        DrawScreen(-1);
-        RomSelect_PadState(&PAD1_Latch);
-        if (PAD1_Latch > 0)
-        {
-            return;
-        }
+        row+=2;
+        putText(centerColClamped(strlen(message2)), row, message2, settings.fgcolor, settings.bgcolor);
+    }
+    if (message3) {
+        row+=2;
+        putText(centerColClamped(strlen(message3)), row, message3, settings.fgcolor, settings.bgcolor);
+    }
+    DWORD waitPad;
+    do
+    {
+        drawAllLines(-1);
+        RomSelect_PadState(&waitPad);
+        Menu_LoadFrame();
+    } while (!waitPad);
+}
+
+static void showMessageBox(const char *message1, unsigned short fgcolor)
+{
+    const char *defaultMessage = "Press any button to continue.";
+    showMessageBox(message1, fgcolor, defaultMessage, nullptr);
+}
+
+static void showMessageBox(const char *message1, int fgcolor, const char *message2)
+{
+    const char *defaultMessage = "Press any button to continue.";
+    showMessageBox(message1, fgcolor, message2, defaultMessage);
+}
+
+void DisplayFatalError(char *error)
+{
+    while(true)
+    {
+        showMessageBox("Fatal error:", CRED, error, "Please correct and restart.");
     }
 }
 
@@ -1364,53 +1390,9 @@ void waitForNoButtonPress()
         }
     }
 }
-static inline void drawAllLines(int selected)
-{
-    for (int lineNr = 0; lineNr < 240; ++lineNr)
-    {
-        drawline(lineNr, selected);
-    }
-}
 
-static inline int centerColClamped(int textLen) {
-    int col = (SCREEN_COLS - textLen) / 2;
-    return col < 0 ? 0 : col;
-}
-static void showMessageBox(const char *message1, unsigned short fgcolor, const char *message2, const char *message3)
-{
-   
-    ClearScreen(settings.bgcolor);
-    int row = SCREEN_ROWS / 2 - 1;
-    putText(centerColClamped(strlen(message1)), row, message1, fgcolor, settings.bgcolor);
-    if (message2)
-    {
-        row+=2;
-        putText(centerColClamped(strlen(message2)), row, message2, settings.fgcolor, settings.bgcolor);
-    }
-    if (message3) {
-        row+=2;
-        putText(centerColClamped(strlen(message3)), row, message3, settings.fgcolor, settings.bgcolor);
-    }
-    DWORD waitPad;
-    do
-    {
-        drawAllLines(-1);
-        RomSelect_PadState(&waitPad);
-        Menu_LoadFrame();
-    } while (!waitPad);
-}
 
-static void showMessageBox(const char *message1, unsigned short fgcolor)
-{
-    const char *defaultMessage = "Press any button to continue.";
-    showMessageBox(message1, fgcolor, defaultMessage, nullptr);
-}
 
-static void showMessageBox(const char *message1, int fgcolor, const char *message2)
-{
-    const char *defaultMessage = "Press any button to continue.";
-    showMessageBox(message1, fgcolor, message2, defaultMessage);
-}
 
 /// @brief Shows the save state menu
 /// @param savestatefunc The function to call to save a state
@@ -2540,7 +2522,7 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
         }
         else
         {
-            DisplayEmulatorErrorMessage(errorMessage); // Emulator cannot start, show error
+            showMessageBox("An error has occured", CRED, errorMessage);
         }
         showSplash = false;
     }
