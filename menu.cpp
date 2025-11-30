@@ -1372,6 +1372,46 @@ static inline void drawAllLines(int selected)
     }
 }
 
+static inline int centerColClamped(int textLen) {
+    int col = (SCREEN_COLS - textLen) / 2;
+    return col < 0 ? 0 : col;
+}
+static void showMessageBox(const char *message1, unsigned short fgcolor, const char *message2, const char *message3)
+{
+   
+    ClearScreen(settings.bgcolor);
+    int row = SCREEN_ROWS / 2 - 1;
+    putText(centerColClamped(strlen(message1)), row, message1, fgcolor, settings.bgcolor);
+    if (message2)
+    {
+        row+=2;
+        putText(centerColClamped(strlen(message2)), row, message2, settings.fgcolor, settings.bgcolor);
+    }
+    if (message3) {
+        row+=2;
+        putText(centerColClamped(strlen(message3)), row, message3, settings.fgcolor, settings.bgcolor);
+    }
+    DWORD waitPad;
+    do
+    {
+        drawAllLines(-1);
+        RomSelect_PadState(&waitPad);
+        Menu_LoadFrame();
+    } while (!waitPad);
+}
+
+static void showMessageBox(const char *message1, unsigned short fgcolor)
+{
+    const char *defaultMessage = "Press any button to continue.";
+    showMessageBox(message1, fgcolor, defaultMessage, nullptr);
+}
+
+static void showMessageBox(const char *message1, int fgcolor, const char *message2)
+{
+    const char *defaultMessage = "Press any button to continue.";
+    showMessageBox(message1, fgcolor, message2, defaultMessage);
+}
+
 /// @brief Shows the save state menu
 /// @param savestatefunc The function to call to save a state
 /// @param loadstatefunc The function to call to load a state
@@ -1527,22 +1567,13 @@ void showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
             if (loadstatefunc(tmppath) == 0)
             {
                 printf("Save state loaded from slot %d: %s\n", selected, tmppath);
+                showMessageBox("Loaded state from", CBLUE, tmppath, "Press any button to resume game.");
                 exitMenu = true;
                 break;
             }
             else
             {
-                ClearScreen(settings.bgcolor);
-                putText(14, 14, "Load failed.", CRED, settings.bgcolor);
-                putText(11, 16, "Press any button.", settings.fgcolor, settings.bgcolor);
-
-                DWORD waitPad;
-                do
-                {
-                    drawAllLines(-1);
-                    RomSelect_PadState(&waitPad);
-                    Menu_LoadFrame();
-                } while (!waitPad);
+                showMessageBox("Load failed.", CRED);
                 continue;
             }
         }
@@ -1563,18 +1594,7 @@ void showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
                         printf("Deleting save state file: %s\n", tmppath);
                         f_unlink(tmppath); // ignore result
                         saveslots[selected] = 0;
-                        // Brief feedback
-                        ClearScreen(settings.bgcolor);
-
-                        putText(16, 14, "Deleted.", CBLUE, settings.bgcolor);
-                        putText(6, 16, "Press any button to continue", settings.fgcolor, settings.bgcolor);
-                        DWORD waitPad;
-                        do
-                        {
-                            drawAllLines(-1);
-                            RomSelect_PadState(&waitPad);
-                            Menu_LoadFrame();
-                        } while (!waitPad);
+                        showMessageBox("Save state deleted.", CBLUE);
                         break;
                     }
                     if (pad & B) // Cancel
@@ -1651,19 +1671,8 @@ void showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
 
             if (failed)
             {
-                ClearScreen(settings.bgcolor);
-                putText(2, 13, "Save failed, cannot create folder.", CRED, settings.bgcolor);
-                int pathX = (SCREEN_COLS - (int)strlen(tmppath)) / 2;
-                putText(pathX < 0 ? 0 : pathX, 14, tmppath, CRED, settings.bgcolor);
-                putText(11, 16, "Press any button.", settings.fgcolor, settings.bgcolor);
-
-                DWORD waitPad;
-                do
-                {
-                    drawAllLines(-1);
-                    RomSelect_PadState(&waitPad);
-                    Menu_LoadFrame();
-                } while (!waitPad);
+                printf("Error creating save state directory structure: %s\n", tmppath);
+                showMessageBox("Save failed, cannot create folder.", CRED, tmppath);
                 continue;
             }
 
@@ -1678,17 +1687,7 @@ void showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
             }
             else
             {
-                ClearScreen(settings.bgcolor);
-                putText(14, 14, "Save failed.", CRED, settings.bgcolor);
-                putText(11, 16, "Press any button.", settings.fgcolor, settings.bgcolor);
-
-                DWORD waitPad;
-                do
-                {
-                    drawAllLines(-1);
-                    RomSelect_PadState(&waitPad);
-                    Menu_LoadFrame();
-                } while (!waitPad);
+                showMessageBox("Save failed.", CRED);
             }
         }
     }
