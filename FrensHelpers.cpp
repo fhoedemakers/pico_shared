@@ -867,7 +867,6 @@ namespace Frens
                                 {
                                     break;
                                 }
-                                // Wat met offset bij NES roms?
                                 crcOfRom = update_crc32(crcOfRom, buffer + crcOffset, bytesRead - crcOffset);
                                 crcOffset = 0; // only offset for first block
                                 if (swapbytes)
