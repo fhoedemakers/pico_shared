@@ -36,6 +36,9 @@ function usage() {
 	echo "     8: Adafruit Fruit Jam - PIO USB enabled, -u implied."
 	echo "     9: WaveShare RP2350-USBA - PIO USB enabled, -u implied."
 	echo "     10: Spotpear HDMI board. https://spotpear.com/index/product/detail/id/1207.html"
+	echo "     11: RP2350-USB-A - OLD config with different SD pins. Deprecated, do not use."
+	echo "     12: Murmulator M1"
+	echo "     13: Murmulator M2 (rp2350 only)"
 	echo "  -m: Run cmake only, do not build the project"
 	echo "  -h: display this help"
 	echo ""
@@ -98,8 +101,8 @@ while getopts "muwhd2rc:t:p:s:" opt; do
       ;;
     c)
       HWCONFIG=$OPTARG
-	  # imply pico2 for HWCONFIG 5, 7, 8 and 9
-	  if [[ $HWCONFIG -eq 5 || $HWCONFIG -eq 7 || $HWCONFIG -eq 8 || $HWCONFIG -eq 9 ]] ; then
+	  # imply pico2 for HWCONFIG 5, 7, 8, 9 and 13
+	  if [[ $HWCONFIG -eq 5 || $HWCONFIG -eq 7 || $HWCONFIG -eq 8 || $HWCONFIG -eq 9 || $HWCONFIG -eq 13 ]] ; then
 		  PICO_BOARD=pico2
 		  PICO_PLATFORM=rp2350-arm-s
 		  picoarmIsSet=0    # not set via command line argument
@@ -295,8 +298,19 @@ case $HWCONFIG in
 	10)
 		UF2="SpotpearHDMI"
 		;;
+	11)
+		UF2="RP2350USBA-Old"
+		USESIMPLEFILENAMES=1
+		;;
+	12)
+		UF2="MurmulatorM1"
+		;;
+	13)
+		UF2="MurmulatorM2"
+		USESIMPLEFILENAMES=1
+		;;
 	*)
-		echo "Invalid value: $HWCONFIG specified for option -c, must be 1, 2, 3 or 4"
+		echo "Invalid value: $HWCONFIG specified for option -c, must be 1 to 13"
 		exit 1
 		;;
 esac
