@@ -28,6 +28,9 @@ struct charCell
     uint8_t bgcolor;
     char charvalue;
 };
+#define SAVESTATEDIR "/SAVESTATES"
+#define SLOTFORMAT SAVESTATEDIR "/%s/%08X/slot%d.sta"
+#define QUICKSAVEFILEFORMAT SAVESTATEDIR "/%s/%08X/quick.sta"
 enum PerformQuickSave { NONE, SAVE, LOAD};
 extern charCell *screenBuffer;
 #define screenbufferSize  (sizeof(charCell) * SCREEN_COLS * SCREEN_ROWS)
