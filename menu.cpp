@@ -689,7 +689,6 @@ void displayRoms(Frens::RomLister &romlister, int startIndex)
     }
 }
 
-
 static inline void drawAllLines(int selected)
 {
     for (int lineNr = 0; lineNr < 240; ++lineNr)
@@ -698,23 +697,25 @@ static inline void drawAllLines(int selected)
     }
 }
 
-static inline int centerColClamped(int textLen) {
+static inline int centerColClamped(int textLen)
+{
     int col = (SCREEN_COLS - textLen) / 2;
     return col < 0 ? 0 : col;
 }
 static void showMessageBox(const char *message1, unsigned short fgcolor, const char *message2, const char *message3)
 {
-   
+
     ClearScreen(settings.bgcolor);
     int row = SCREEN_ROWS / 2 - 1;
     putText(centerColClamped(strlen(message1)), row, message1, fgcolor, settings.bgcolor);
     if (message2)
     {
-        row+=2;
+        row += 2;
         putText(centerColClamped(strlen(message2)), row, message2, settings.fgcolor, settings.bgcolor);
     }
-    if (message3) {
-        row+=2;
+    if (message3)
+    {
+        row += 2;
         putText(centerColClamped(strlen(message3)), row, message3, settings.fgcolor, settings.bgcolor);
     }
     DWORD waitPad;
@@ -740,7 +741,7 @@ static void showMessageBox(const char *message1, int fgcolor, const char *messag
 
 void DisplayFatalError(char *error)
 {
-    while(true)
+    while (true)
     {
         showMessageBox("Fatal error:", CRED, error, "Please correct and restart.");
     }
@@ -1391,25 +1392,24 @@ void waitForNoButtonPress()
     }
 }
 
-
-
-
 /// @brief Shows the save state menu
 /// @param savestatefunc The function to call to save a state
 /// @param loadstatefunc The function to call to load a state
 /// @param extraMessage Extra message to display at the bottom of the menu
 /// @return -1: Back, 0: No action, 1: State loaded
-void showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefunc)(const char *path), const char *extraMessage)
+void showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefunc)(const char *path), const char *extraMessage, PerformQuickSave quickSave)
 {
     const char *slotFormat = SLOTFORMAT;
+    const char *quickSaveFormat = QUICKSAVEFILEFORMAT;
     uint8_t saveslots[MAXSAVESTATESLOTS]{};
     char tmppath[40]; // /SAVESTATES/NES/XXXXXXXX/slot1.sta
     int margintop = 0;
     int marginbottom = 0;
+    FILINFO *fno;
 #if ENABLE_VU_METER
     turnOffAllLeds();
 #endif
-
+   
     screenBuffer = (charCell *)Frens::f_malloc(screenbufferSize);
 
 #if !HSTX
@@ -1421,259 +1421,301 @@ void showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
 #else
     hstx_setScanLines(false);
 #endif
-
-    auto crc = Frens::getCrcOfLoadedRom();
-    FILINFO *fno = (FILINFO *)Frens::f_malloc(sizeof(FILINFO));
-    for (int i = 0; i < MAXSAVESTATESLOTS; i++)
+    // Handle quicsave and quick load
+    if (quickSave == PerformQuickSave::LOAD || quickSave == PerformQuickSave::SAVE)
     {
-        snprintf(tmppath, sizeof(tmppath), slotFormat, FrensSettings::getEmulatorTypeString(), crc, i);
-        FRESULT fr = f_stat(tmppath, fno);
-        saveslots[i] = (fr == FR_OK) ? 1 : 0;
-    }
-    Frens::f_free(fno);
-
-    int selected = 0;
-    bool exitMenu = false;
-    bool saved = false;
-    DWORD pad = 0;
-    int idleStart = -1;
-
-    // confirmType: 0 none, 1 overwrite, 2 delete
-    auto redraw = [&](int confirmType = 0, int confirmSlot = -1)
-    {
-        char linebuf[48];
-        ClearScreen(settings.bgcolor);
-        getButtonLabels(buttonLabel1, buttonLabel2);
-        putText(9, 0, "-- Save/Load State --", settings.fgcolor, settings.bgcolor);
-        putText(0, 2, "Choose slot:", settings.fgcolor, settings.bgcolor);
-
-        for (int i = 0; i < MAXSAVESTATESLOTS && (4 + i) < ENDROW - 2; i++)
+        // If quick save/load is requested, we assume the user wants to use slot 0
+        snprintf(tmppath, sizeof(tmppath), quickSaveFormat, FrensSettings::getEmulatorTypeString(), Frens::getCrcOfLoadedRom());
+        printf("Quick save/load path: %s\n", tmppath);
+        if (quickSave == PerformQuickSave::LOAD)
         {
-            const char *status = saveslots[i] ? "Used" : "Empty";
-            snprintf(linebuf, sizeof(linebuf), "Slot %d: %s%s", i + 1, status, (i == selected && saved) ? " Saved" : "");
-            int fg = settings.fgcolor;
-            int bg = settings.bgcolor;
-            if (confirmSlot == i)
+            fno = (FILINFO *)Frens::f_malloc(sizeof(FILINFO));
+            // do nothing if file does not exist
+            if (f_stat(tmppath, fno) == FR_OK)
             {
-                // Highlight slot being confirmed (overwrite/delete)
-                fg = CWHITE;
-                // bg = (confirmType == 2) ? CBLUE : CRED;
-                bg = CRED;
+                showLoadingScreen("Loading quick save...");
+
+                if (loadstatefunc(tmppath) == 0)
+                {
+                    showMessageBox("State loaded successfully.", CWHITE);
+                }
+                else    
+                {
+                    showMessageBox("Failed to load state.", CRED);
+                }
+            } else {
+                printf("Quick save file does not exist\n");
             }
-            else if (i == selected && confirmSlot < 0)
-            {
-                fg = settings.bgcolor;
-                bg = settings.fgcolor;
-            }
-            putText(2, 4 + i, linebuf, fg, bg);
+            Frens::f_free(fno);
         }
-        putText(0, ENDROW - 8, extraMessage ? extraMessage : " ", settings.fgcolor, settings.bgcolor);
-        if (confirmSlot >= 0)
+        else if (quickSave == PerformQuickSave::SAVE)
         {
-            if (confirmType == 1)
+
+            if (savestatefunc(tmppath) == 0)
             {
-                putText(0, ENDROW - 4, "Overwrite existing state?", settings.fgcolor, settings.bgcolor);
-                snprintf(linebuf, sizeof(linebuf), "%s:Overwrite  %s:Cancel", buttonLabel1, buttonLabel2);
+                showMessageBox("State saved successfully.", CWHITE);
             }
             else
             {
-                putText(0, ENDROW - 4, "Delete this save state?", settings.fgcolor, settings.bgcolor);
-                snprintf(linebuf, sizeof(linebuf), "%s:Delete  %s:Cancel", buttonLabel1, buttonLabel2);
+                showMessageBox("Failed to save state.", CRED);
             }
-            putText(0, ENDROW - 3, linebuf, settings.fgcolor, settings.bgcolor);
         }
-        else
+        
+    }
+    else
+    {
+        auto crc = Frens::getCrcOfLoadedRom();
+        fno = (FILINFO *)Frens::f_malloc(sizeof(FILINFO));
+        for (int i = 0; i < MAXSAVESTATESLOTS; i++)
         {
-            // General instructions (each action on its own line)
-            snprintf(linebuf, sizeof(linebuf), "%s_____:Save state", buttonLabel1);
-            putText(0, ENDROW - 6, linebuf, settings.fgcolor, settings.bgcolor);
-            if (saveslots[selected])
+            snprintf(tmppath, sizeof(tmppath), slotFormat, FrensSettings::getEmulatorTypeString(), crc, i);
+            FRESULT fr = f_stat(tmppath, fno);
+            saveslots[i] = (fr == FR_OK) ? 1 : 0;
+        }
+        Frens::f_free(fno);
+
+        int selected = 0;
+        bool exitMenu = false;
+        bool saved = false;
+        DWORD pad = 0;
+        int idleStart = -1;
+
+        // confirmType: 0 none, 1 overwrite, 2 delete
+        auto redraw = [&](int confirmType = 0, int confirmSlot = -1)
+        {
+            char linebuf[48];
+            ClearScreen(settings.bgcolor);
+            getButtonLabels(buttonLabel1, buttonLabel2);
+            putText(9, 0, "-- Save/Load State --", settings.fgcolor, settings.bgcolor);
+            putText(0, 2, "Choose slot:", settings.fgcolor, settings.bgcolor);
+
+            for (int i = 0; i < MAXSAVESTATESLOTS && (4 + i) < ENDROW - 2; i++)
             {
-                snprintf(linebuf, sizeof(linebuf), "SELECT:Delete state");
-                putText(0, ENDROW - 5, linebuf, settings.fgcolor, settings.bgcolor);
-                putText(0, ENDROW - 4, "START :Load state.", settings.fgcolor, settings.bgcolor);
-                // Back must be shown last when slot non-empty
-                snprintf(linebuf, sizeof(linebuf), "%s_____:Back", buttonLabel2);
+                const char *status = saveslots[i] ? "Used" : "Empty";
+                snprintf(linebuf, sizeof(linebuf), "Slot %d: %s%s", i + 1, status, (i == selected && saved) ? " Saved" : "");
+                int fg = settings.fgcolor;
+                int bg = settings.bgcolor;
+                if (confirmSlot == i)
+                {
+                    // Highlight slot being confirmed (overwrite/delete)
+                    fg = CWHITE;
+                    // bg = (confirmType == 2) ? CBLUE : CRED;
+                    bg = CRED;
+                }
+                else if (i == selected && confirmSlot < 0)
+                {
+                    fg = settings.bgcolor;
+                    bg = settings.fgcolor;
+                }
+                putText(2, 4 + i, linebuf, fg, bg);
+            }
+            putText(0, ENDROW - 8, extraMessage ? extraMessage : " ", settings.fgcolor, settings.bgcolor);
+            if (confirmSlot >= 0)
+            {
+                if (confirmType == 1)
+                {
+                    putText(0, ENDROW - 4, "Overwrite existing state?", settings.fgcolor, settings.bgcolor);
+                    snprintf(linebuf, sizeof(linebuf), "%s:Overwrite  %s:Cancel", buttonLabel1, buttonLabel2);
+                }
+                else
+                {
+                    putText(0, ENDROW - 4, "Delete this save state?", settings.fgcolor, settings.bgcolor);
+                    snprintf(linebuf, sizeof(linebuf), "%s:Delete  %s:Cancel", buttonLabel1, buttonLabel2);
+                }
                 putText(0, ENDROW - 3, linebuf, settings.fgcolor, settings.bgcolor);
             }
             else
             {
-                // When slot is empty, show Back immediately below Save
-                snprintf(linebuf, sizeof(linebuf), "%s_____:Back", buttonLabel2);
-                putText(0, ENDROW - 5, linebuf, settings.fgcolor, settings.bgcolor);
-            }
-        }
-
-        drawAllLines(-1);
-    };
-
-    waitForNoButtonPress();
-
-    while (!exitMenu)
-    {
-        redraw();
-        RomSelect_PadState(&pad);
-        int frame = Menu_LoadFrame();
-        if (idleStart < 0)
-            idleStart = frame;
-        if (pad)
-            idleStart = frame;
-
-        if ((frame - idleStart) > 3600)
-        {
-            exitMenu = true;
-            idleStart = frame;
-            continue;
-        }
-
-        if (pad & UP)
-        {
-            selected = (selected > 0) ? selected - 1 : (MAXSAVESTATESLOTS - 1);
-            saved = false;
-        }
-        else if (pad & DOWN)
-        {
-            selected = (selected < MAXSAVESTATESLOTS - 1) ? selected + 1 : 0;
-            saved = false;
-        }
-        else if (!(pad & SELECT) && (pad & START))
-        {
-            if (!saveslots[selected])
-            {
-                // No save state in this slot
-                continue;
+                // General instructions (each action on its own line)
+                snprintf(linebuf, sizeof(linebuf), "%s_____:Save state", buttonLabel1);
+                putText(0, ENDROW - 6, linebuf, settings.fgcolor, settings.bgcolor);
+                if (saveslots[selected])
+                {
+                    snprintf(linebuf, sizeof(linebuf), "SELECT:Delete state");
+                    putText(0, ENDROW - 5, linebuf, settings.fgcolor, settings.bgcolor);
+                    putText(0, ENDROW - 4, "START :Load state.", settings.fgcolor, settings.bgcolor);
+                    // Back must be shown last when slot non-empty
+                    snprintf(linebuf, sizeof(linebuf), "%s_____:Back", buttonLabel2);
+                    putText(0, ENDROW - 3, linebuf, settings.fgcolor, settings.bgcolor);
+                }
+                else
+                {
+                    // When slot is empty, show Back immediately below Save
+                    snprintf(linebuf, sizeof(linebuf), "%s_____:Back", buttonLabel2);
+                    putText(0, ENDROW - 5, linebuf, settings.fgcolor, settings.bgcolor);
+                }
             }
 
-            snprintf(tmppath, sizeof(tmppath), slotFormat, FrensSettings::getEmulatorTypeString(), crc, selected);
-            printf("Loading state  %s from slot %d\n", tmppath, selected);
-            if (loadstatefunc(tmppath) == 0)
+            drawAllLines(-1);
+        };
+
+        waitForNoButtonPress();
+
+        while (!exitMenu)
+        {
+            redraw();
+            RomSelect_PadState(&pad);
+            int frame = Menu_LoadFrame();
+            if (idleStart < 0)
+                idleStart = frame;
+            if (pad)
+                idleStart = frame;
+
+            if ((frame - idleStart) > 3600)
             {
-                printf("Save state loaded from slot %d: %s\n", selected, tmppath);
-                showMessageBox("Loaded state from", CBLUE, tmppath, "Press any button to resume game.");
                 exitMenu = true;
-                break;
-            }
-            else
-            {
-                showMessageBox("Load failed.", CRED);
+                idleStart = frame;
                 continue;
             }
-        }
-        else if ((pad & SELECT) && !(pad & START))
-        {
-            // Delete confirmation only when slot used
-            if (saveslots[selected])
-            {
 
-                while (true)
-                {
-                    redraw(2, selected);
-                    RomSelect_PadState(&pad);
-                    Menu_LoadFrame();
-                    if (pad & A) // Confirm delete
-                    {
-                        snprintf(tmppath, sizeof(tmppath), slotFormat, FrensSettings::getEmulatorTypeString(), crc, selected);
-                        printf("Deleting save state file: %s\n", tmppath);
-                        f_unlink(tmppath); // ignore result
-                        saveslots[selected] = 0;
-                        showMessageBox("Save state deleted.", CBLUE);
-                        break;
-                    }
-                    if (pad & B) // Cancel
-                        break;
-                }
-                continue;
+            if (pad & UP)
+            {
+                selected = (selected > 0) ? selected - 1 : (MAXSAVESTATESLOTS - 1);
+                saved = false;
             }
-        }
-        else if (pad & B)
-        {
-            exitMenu = true;
-            saved = false;
-        }
-        else if (pad & A)
-        {
-            bool proceed = true;
-            if (saveslots[selected])
+            else if (pad & DOWN)
             {
-
-                while (true)
+                selected = (selected < MAXSAVESTATESLOTS - 1) ? selected + 1 : 0;
+                saved = false;
+            }
+            else if (!(pad & SELECT) && (pad & START))
+            {
+                if (!saveslots[selected])
                 {
-                    // Overwrite confirmation
-                    redraw(1, selected);
-                    RomSelect_PadState(&pad);
-                    Menu_LoadFrame();
-                    if (pad & A)
-                    {
-                        proceed = true;
-                        break;
-                    }
-                    if (pad & B)
-                    {
-                        proceed = false;
-                        break;
-                    }
+                    // No save state in this slot
+                    continue;
                 }
-                if (!proceed)
+
+                snprintf(tmppath, sizeof(tmppath), slotFormat, FrensSettings::getEmulatorTypeString(), crc, selected);
+                printf("Loading state  %s from slot %d\n", tmppath, selected);
+                if (loadstatefunc(tmppath) == 0)
                 {
+                    printf("Save state loaded from slot %d: %s\n", selected, tmppath);
+                    showMessageBox("Loaded state from", CBLUE, tmppath, "Press any button to resume game.");
+                    exitMenu = true;
+                    break;
+                }
+                else
+                {
+                    showMessageBox("Load failed.", CRED);
                     continue;
                 }
             }
+            else if ((pad & SELECT) && !(pad & START))
+            {
+                // Delete confirmation only when slot used
+                if (saveslots[selected])
+                {
 
-            // Ensure directory structure
-            FRESULT fr;
-            bool failed = false;
-            snprintf(tmppath, sizeof(tmppath), "%s", SAVESTATEDIR);
-            printf("Creating save state directory: %s\n", tmppath);
-            fr = f_mkdir(tmppath);
-            if (fr != FR_OK && fr != FR_EXIST)
-            {
-                failed = true;
-                continue;
+                    while (true)
+                    {
+                        redraw(2, selected);
+                        RomSelect_PadState(&pad);
+                        Menu_LoadFrame();
+                        if (pad & A) // Confirm delete
+                        {
+                            snprintf(tmppath, sizeof(tmppath), slotFormat, FrensSettings::getEmulatorTypeString(), crc, selected);
+                            printf("Deleting save state file: %s\n", tmppath);
+                            f_unlink(tmppath); // ignore result
+                            saveslots[selected] = 0;
+                            showMessageBox("Save state deleted.", CBLUE);
+                            break;
+                        }
+                        if (pad & B) // Cancel
+                            break;
+                    }
+                    continue;
+                }
             }
-            if (!failed)
+            else if (pad & B)
             {
-                snprintf(tmppath, sizeof(tmppath), "%s/%s", SAVESTATEDIR, FrensSettings::getEmulatorTypeString());
+                exitMenu = true;
+                saved = false;
+            }
+            else if (pad & A)
+            {
+                bool proceed = true;
+                if (saveslots[selected])
+                {
+
+                    while (true)
+                    {
+                        // Overwrite confirmation
+                        redraw(1, selected);
+                        RomSelect_PadState(&pad);
+                        Menu_LoadFrame();
+                        if (pad & A)
+                        {
+                            proceed = true;
+                            break;
+                        }
+                        if (pad & B)
+                        {
+                            proceed = false;
+                            break;
+                        }
+                    }
+                    if (!proceed)
+                    {
+                        continue;
+                    }
+                }
+
+                // Ensure directory structure
+                FRESULT fr;
+                bool failed = false;
+                snprintf(tmppath, sizeof(tmppath), "%s", SAVESTATEDIR);
                 printf("Creating save state directory: %s\n", tmppath);
                 fr = f_mkdir(tmppath);
                 if (fr != FR_OK && fr != FR_EXIST)
                 {
                     failed = true;
+                    continue;
                 }
-            }
-            if (!failed)
-            {
-                snprintf(tmppath, sizeof(tmppath), "%s/%s/%08X", SAVESTATEDIR, FrensSettings::getEmulatorTypeString(), crc);
-                printf("Creating save state directory: %s\n", tmppath);
-                fr = f_mkdir(tmppath);
-                if (fr != FR_OK && fr != FR_EXIST)
+                if (!failed)
                 {
-                    failed = true;
+                    snprintf(tmppath, sizeof(tmppath), "%s/%s", SAVESTATEDIR, FrensSettings::getEmulatorTypeString());
+                    printf("Creating save state directory: %s\n", tmppath);
+                    fr = f_mkdir(tmppath);
+                    if (fr != FR_OK && fr != FR_EXIST)
+                    {
+                        failed = true;
+                    }
                 }
-            }
+                if (!failed)
+                {
+                    snprintf(tmppath, sizeof(tmppath), "%s/%s/%08X", SAVESTATEDIR, FrensSettings::getEmulatorTypeString(), crc);
+                    printf("Creating save state directory: %s\n", tmppath);
+                    fr = f_mkdir(tmppath);
+                    if (fr != FR_OK && fr != FR_EXIST)
+                    {
+                        failed = true;
+                    }
+                }
 
-            if (failed)
-            {
-                printf("Error creating save state directory structure: %s\n", tmppath);
-                showMessageBox("Save failed, cannot create folder.", CRED, tmppath);
-                continue;
-            }
+                if (failed)
+                {
+                    printf("Error creating save state directory structure: %s\n", tmppath);
+                    showMessageBox("Save failed, cannot create folder.", CRED, tmppath);
+                    continue;
+                }
 
-            // Save file
-            snprintf(tmppath, sizeof(tmppath), slotFormat, FrensSettings::getEmulatorTypeString(), crc, selected);
+                // Save file
+                snprintf(tmppath, sizeof(tmppath), slotFormat, FrensSettings::getEmulatorTypeString(), crc, selected);
 
-            if (savestatefunc(tmppath) == 0)
-            {
-                printf("Save state saved to slot %d: %s\n", selected + 1, tmppath);
-                saveslots[selected] = 1;
-                saved = true;
-            }
-            else
-            {
-                showMessageBox("Save failed.", CRED);
+                if (savestatefunc(tmppath) == 0)
+                {
+                    printf("Save state saved to slot %d: %s\n", selected + 1, tmppath);
+                    saveslots[selected] = 1;
+                    saved = true;
+                }
+                else
+                {
+                    showMessageBox("Save failed.", CRED);
+                }
             }
         }
     }
-
     ClearScreen(CBLACK);
     waitForNoButtonPress();
 

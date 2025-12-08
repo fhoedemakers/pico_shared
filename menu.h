@@ -28,6 +28,7 @@ struct charCell
     uint8_t bgcolor;
     char charvalue;
 };
+enum PerformQuickSave { NONE, SAVE, LOAD};
 extern charCell *screenBuffer;
 #define screenbufferSize  (sizeof(charCell) * SCREEN_COLS * SCREEN_ROWS)
 void menu(const char *title, char *errorMessage, bool isFatalError, bool showSplash, const char *allowedExtensions, char *rompath);
@@ -35,6 +36,6 @@ void ClearScreen(int color);
 void putText(int x, int y, const char *text, int fgcolor, int bgcolor, bool wraplines = false, int offset = 0);
 void splash();  // is emulator specific
 int showSettingsMenu(bool calledFromGame = false);
-void showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefunc)(const char *path), const char *extraMessage);
+void showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefunc)(const char *path), const char *extraMessage, PerformQuickSave quickSave);
 
 #endif
