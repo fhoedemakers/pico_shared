@@ -761,14 +761,14 @@ static bool showDialogYesNo(const char *message)
     ClearScreen(settings.bgcolor);
     int row = SCREEN_ROWS / 2 - 1;
     putText(centerColClamped(strlen(message)), row, message, settings.fgcolor, settings.bgcolor);
-    
+
     getButtonLabels(buttonLabel1, buttonLabel2);
-    snprintf(tmpMsg,sizeof(tmpMsg), "%s:Yes", buttonLabel1);
+    snprintf(tmpMsg, sizeof(tmpMsg), "%s:Yes", buttonLabel1);
     const char *optionNo = buttonLabel2;
     row += 2;
     putText(centerColClamped(strlen(tmpMsg)), row, tmpMsg, settings.fgcolor, settings.bgcolor);
     row += 1;
-    snprintf(tmpMsg,sizeof(tmpMsg), "%s:No_", buttonLabel2);
+    snprintf(tmpMsg, sizeof(tmpMsg), "%s:No_", buttonLabel2);
     putText(centerColClamped(strlen(tmpMsg)), row, tmpMsg, settings.fgcolor, settings.bgcolor);
     waitForNoButtonPress();
     DWORD waitPad;
@@ -1426,7 +1426,6 @@ void DisplayDacError()
     }
 }
 
-
 /// @brief Shows the save state menu
 /// @param savestatefunc The function to call to save a state
 /// @param loadstatefunc The function to call to load a state
@@ -1444,7 +1443,7 @@ void showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
 #if ENABLE_VU_METER
     turnOffAllLeds();
 #endif
-   
+
     screenBuffer = (charCell *)Frens::f_malloc(screenbufferSize);
 
 #if !HSTX
@@ -1466,7 +1465,7 @@ void showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
         printf("Path: %s\n", tmppath);
         if (quickSave == PerformQuickSave::LOAD)
         {
-           
+
             // do nothing if file does not exist
             if (f_stat(tmppath, fno) == FR_OK)
             {
@@ -1486,11 +1485,12 @@ void showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
                         showMessageBox("Failed to load state.", CRED);
                     }
                 }
-            } else {
+            }
+            else
+            {
                 showMessageBox("Quick save file does not exist.", CRED);
                 printf("Quick save file does not exist\n");
             }
-            
         }
         else if (quickSave == PerformQuickSave::SAVE)
         {
@@ -1515,7 +1515,6 @@ void showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
             }
         }
         Frens::f_free(fno);
-        
     }
     else
     {
@@ -1527,6 +1526,10 @@ void showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
             FRESULT fr = f_stat(tmppath, fno);
             saveslots[i] = (fr == FR_OK) ? 1 : 0;
         }
+        // check if auto save is enabled
+        snprintf(tmppath, sizeof(tmppath), "%s/%s/AUTO", SAVESTATEDIR, FrensSettings::getEmulatorTypeString());
+        FRESULT fr = f_stat(tmppath, fno);
+        bool autosaveEnabled = (fr == FR_OK);
         Frens::f_free(fno);
 
         int selected = 0;
@@ -1592,6 +1595,7 @@ void showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
                     // Back must be shown last when slot non-empty
                     snprintf(linebuf, sizeof(linebuf), "%s_____:Back", buttonLabel2);
                     putText(0, ENDROW - 3, linebuf, settings.fgcolor, settings.bgcolor);
+                    putText(0, ENDROW - 2, "SELECT + START: Toggle auto save", settings.fgcolor, settings.bgcolor);
                 }
                 else
                 {
@@ -1686,6 +1690,46 @@ void showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
                     }
                     continue;
                 }
+            } // SELECT + START toggles auto save
+            else if ((pad & SELECT) && (pad & START))
+            {
+                // Create a file AUTO in the savestate directory to indicate auto save is enabled
+                snprintf(tmppath, sizeof(tmppath), "%s/%s/AUTO", SAVESTATEDIR, FrensSettings::getEmulatorTypeString());
+                FIL fil;
+                FRESULT fr;
+                // check if the file exists, use f_open with FA_OPEN_EXISTING
+                fr = f_open(&fil, tmppath, FA_OPEN_EXISTING);
+                if (fr == FR_OK)
+                {
+                    f_close(&fil);
+                    // File exists, so auto save is enabled, delete it to disable auto save
+                    fr = f_unlink(tmppath);
+                    if (fr != FR_OK)
+                    {
+                        showMessageBox("Failed to disable auto save.", CRED);
+                    }
+                    else
+                    {
+                        autosaveEnabled = false;
+                        showMessageBox("Auto save disabled.", CBLUE);
+                    }
+                }
+                else
+                {
+                    // File does not exist, create it to enable auto save
+                    fr = f_open(&fil, tmppath, FA_WRITE | FA_CREATE_ALWAYS);
+                    if (fr == FR_OK)
+                    {
+                        f_close(&fil);
+                        autosaveEnabled = true;
+                        showMessageBox("Auto save enabled.", CBLUE);
+                    }
+                    else
+                    {
+                        showMessageBox("Failed to enable auto save.", CRED);
+                    }
+                }
+                continue;
             }
             else if (pad & B)
             {
