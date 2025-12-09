@@ -124,6 +124,8 @@ void resetColors(int prevfgColor, int prevbgColor)
 
 static void getButtonLabels(char *buttonLabel1, char *buttonLabel2)
 {
+    auto &gp = io::getCurrentGamePadState(0);
+    strcpy(connectedGamePadName, gp.GamePadName);
     if (strcmp(connectedGamePadName, "Dual Shock 4") == 0 || strcmp(connectedGamePadName, "Dual Sense") == 0 || strcmp(connectedGamePadName, "PSClassic") == 0)
     {
         strcpy(buttonLabel1, "O");
@@ -696,7 +698,20 @@ static inline void drawAllLines(int selected)
         drawline(lineNr, selected);
     }
 }
-
+void waitForNoButtonPress()
+{
+    DWORD PAD1_Latch;
+    while (true)
+    {
+        DrawScreen(-1);
+        Menu_LoadFrame();
+        RomSelect_PadState(&PAD1_Latch);
+        if (PAD1_Latch == 0)
+        {
+            return;
+        }
+    }
+}
 static inline int centerColClamped(int textLen)
 {
     int col = (SCREEN_COLS - textLen) / 2;
@@ -706,6 +721,7 @@ static void showMessageBox(const char *message1, unsigned short fgcolor, const c
 {
 
     ClearScreen(settings.bgcolor);
+    waitForNoButtonPress();
     int row = SCREEN_ROWS / 2 - 1;
     putText(centerColClamped(strlen(message1)), row, message1, fgcolor, settings.bgcolor);
     if (message2)
@@ -739,6 +755,38 @@ static void showMessageBox(const char *message1, int fgcolor, const char *messag
     showMessageBox(message1, fgcolor, message2, defaultMessage);
 }
 
+static bool showDialogYesNo(const char *message)
+{
+    char tmpMsg[10];
+    ClearScreen(settings.bgcolor);
+    int row = SCREEN_ROWS / 2 - 1;
+    putText(centerColClamped(strlen(message)), row, message, settings.fgcolor, settings.bgcolor);
+    
+    getButtonLabels(buttonLabel1, buttonLabel2);
+    snprintf(tmpMsg,sizeof(tmpMsg), "%s:Yes", buttonLabel1);
+    const char *optionNo = buttonLabel2;
+    row += 2;
+    putText(centerColClamped(strlen(tmpMsg)), row, tmpMsg, settings.fgcolor, settings.bgcolor);
+    row += 1;
+    snprintf(tmpMsg,sizeof(tmpMsg), "%s:No_", buttonLabel2);
+    putText(centerColClamped(strlen(tmpMsg)), row, tmpMsg, settings.fgcolor, settings.bgcolor);
+    waitForNoButtonPress();
+    DWORD waitPad;
+    while (true)
+    {
+        drawAllLines(-1);
+        RomSelect_PadState(&waitPad);
+        Menu_LoadFrame();
+        if (waitPad & A)
+        {
+            return true;
+        }
+        else if (waitPad & B)
+        {
+            return false;
+        }
+    }
+}
 void DisplayFatalError(char *error)
 {
     while (true)
@@ -1377,20 +1425,7 @@ void DisplayDacError()
         DrawScreen(-1);
     }
 }
-void waitForNoButtonPress()
-{
-    DWORD PAD1_Latch;
-    while (true)
-    {
-        DrawScreen(-1);
-        Menu_LoadFrame();
-        RomSelect_PadState(&PAD1_Latch);
-        if (PAD1_Latch == 0)
-        {
-            return;
-        }
-    }
-}
+
 
 /// @brief Shows the save state menu
 /// @param savestatefunc The function to call to save a state
@@ -1421,45 +1456,65 @@ void showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
 #else
     hstx_setScanLines(false);
 #endif
-    // Handle quicsave and quick load
+    // Handle quicksave and quick load
     if (quickSave == PerformQuickSave::LOAD || quickSave == PerformQuickSave::SAVE)
     {
-        // If quick save/load is requested, we assume the user wants to use slot 0
+        fno = (FILINFO *)Frens::f_malloc(sizeof(FILINFO));
+        // construct the quicksave path
         snprintf(tmppath, sizeof(tmppath), quickSaveFormat, FrensSettings::getEmulatorTypeString(), Frens::getCrcOfLoadedRom());
-        printf("Quick save/load path: %s\n", tmppath);
+        printf("Performing quick save/load operation...\n");
+        printf("Path: %s\n", tmppath);
         if (quickSave == PerformQuickSave::LOAD)
         {
-            fno = (FILINFO *)Frens::f_malloc(sizeof(FILINFO));
+           
             // do nothing if file does not exist
             if (f_stat(tmppath, fno) == FR_OK)
             {
-                showLoadingScreen("Loading quick save...");
-
-                if (loadstatefunc(tmppath) == 0)
+                bool ok = true;
+                ok = showDialogYesNo("Load quick save state?");
+                if (ok)
                 {
-                    showMessageBox("State loaded successfully.", CWHITE);
-                }
-                else    
-                {
-                    showMessageBox("Failed to load state.", CRED);
+                    printf("Loading quick save from %s\n", tmppath);
+                    if (loadstatefunc(tmppath) == 0)
+                    {
+                        printf("Quick load successful\n");
+                        showMessageBox("State loaded successfully.", settings.fgcolor);
+                    }
+                    else
+                    {
+                        printf("Quick load failed\n");
+                        showMessageBox("Failed to load state.", CRED);
+                    }
                 }
             } else {
+                showMessageBox("Quick save file does not exist.", CRED);
                 printf("Quick save file does not exist\n");
             }
-            Frens::f_free(fno);
+            
         }
         else if (quickSave == PerformQuickSave::SAVE)
         {
-
-            if (savestatefunc(tmppath) == 0)
+            bool ok = true;
+            if (f_stat(tmppath, fno) == FR_OK)
             {
-                showMessageBox("State saved successfully.", CWHITE);
+                ok = showDialogYesNo("Overwrite existing quick save?");
             }
-            else
+            if (ok)
             {
-                showMessageBox("Failed to save state.", CRED);
+                printf("Saving quick save to %s\n", tmppath);
+                if (savestatefunc(tmppath) == 0)
+                {
+                    printf("Quick save successful\n");
+                    showMessageBox("State saved successfully.", settings.fgcolor);
+                }
+                else
+                {
+                    printf("Quick save failed\n");
+                    showMessageBox("Failed to save state.", CRED);
+                }
             }
         }
+        Frens::f_free(fno);
         
     }
     else
@@ -1544,6 +1599,11 @@ void showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
                     snprintf(linebuf, sizeof(linebuf), "%s_____:Back", buttonLabel2);
                     putText(0, ENDROW - 5, linebuf, settings.fgcolor, settings.bgcolor);
                 }
+                putText(0, SCREEN_ROWS - 4, "In-Game Quick Save/Restore: ", settings.fgcolor, settings.bgcolor);
+                snprintf(linebuf, sizeof(linebuf), "SELECT + %s : Quick Save", buttonLabel1);
+                putText(1, SCREEN_ROWS - 3, linebuf, settings.fgcolor, settings.bgcolor);
+                snprintf(linebuf, sizeof(linebuf), "SELECT + %s : Quick Load", buttonLabel2);
+                putText(1, SCREEN_ROWS - 2, linebuf, settings.fgcolor, settings.bgcolor);
             }
 
             drawAllLines(-1);
