@@ -1567,6 +1567,20 @@ void showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
                 }
                 putText(2, 4 + i, linebuf, fg, bg);
             }
+            // Add toggle option after the slots
+            {
+                int toggleRow = 4 + MAXSAVESTATESLOTS;
+                const char *toggleStatus = autosaveEnabled ? "Enabled" : "Disabled";
+                snprintf(linebuf, sizeof(linebuf), "Auto Save: %s  (A: Toggle)", toggleStatus);
+                int fg = settings.fgcolor;
+                int bg = settings.bgcolor;
+                if (confirmSlot < 0 && selected == MAXSAVESTATESLOTS)
+                {
+                    fg = settings.bgcolor;
+                    bg = settings.fgcolor;
+                }
+                putText(2, toggleRow, linebuf, fg, bg);
+            }
             putText(0, ENDROW - 8, extraMessage ? extraMessage : " ", settings.fgcolor, settings.bgcolor);
             if (confirmSlot >= 0)
             {
@@ -1595,7 +1609,7 @@ void showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
                     // Back must be shown last when slot non-empty
                     snprintf(linebuf, sizeof(linebuf), "%s_____:Back", buttonLabel2);
                     putText(0, ENDROW - 3, linebuf, settings.fgcolor, settings.bgcolor);
-                    putText(0, ENDROW - 2, "SELECT + START: Toggle auto save", settings.fgcolor, settings.bgcolor);
+                    // Toggle auto save now handled via menu line with A
                 }
                 else
                 {
@@ -1634,12 +1648,12 @@ void showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
 
             if (pad & UP)
             {
-                selected = (selected > 0) ? selected - 1 : (MAXSAVESTATESLOTS - 1);
+                selected = (selected > 0) ? selected - 1 : (MAXSAVESTATESLOTS); // include toggle line
                 saved = false;
             }
             else if (pad & DOWN)
             {
-                selected = (selected < MAXSAVESTATESLOTS - 1) ? selected + 1 : 0;
+                selected = (selected < MAXSAVESTATESLOTS) ? selected + 1 : 0; // include toggle line
                 saved = false;
             }
             else if (!(pad & SELECT) && (pad & START))
@@ -1690,19 +1704,17 @@ void showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
                     }
                     continue;
                 }
-            } // SELECT + START toggles auto save
-            else if ((pad & SELECT) && (pad & START))
+            }
+            else if ((pad & A) && selected == MAXSAVESTATESLOTS)
             {
-                // Create a file AUTO in the savestate directory to indicate auto save is enabled
+                // Toggle auto save by creating/deleting AUTO file
                 snprintf(tmppath, sizeof(tmppath), "%s/%s/AUTO", SAVESTATEDIR, FrensSettings::getEmulatorTypeString());
                 FIL fil;
                 FRESULT fr;
-                // check if the file exists, use f_open with FA_OPEN_EXISTING
                 fr = f_open(&fil, tmppath, FA_OPEN_EXISTING);
                 if (fr == FR_OK)
                 {
                     f_close(&fil);
-                    // File exists, so auto save is enabled, delete it to disable auto save
                     fr = f_unlink(tmppath);
                     if (fr != FR_OK)
                     {
@@ -1716,7 +1728,6 @@ void showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
                 }
                 else
                 {
-                    // File does not exist, create it to enable auto save
                     fr = f_open(&fil, tmppath, FA_WRITE | FA_CREATE_ALWAYS);
                     if (fr == FR_OK)
                     {
