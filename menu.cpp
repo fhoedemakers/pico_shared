@@ -1426,6 +1426,54 @@ void DisplayDacError()
     }
 }
 
+// Helper: ensure the directory structure for save states exists.
+// Returns true on success, false on failure (and shows a message box).
+static bool ensureSaveStateDirectories(uint32_t crc)
+{
+    FRESULT fr;
+    char tmppath[40];
+
+    // /SAVESTATES
+    snprintf(tmppath, sizeof(tmppath), "%s", SAVESTATEDIR);
+    fr = f_mkdir(tmppath);
+    if (fr != FR_OK && fr != FR_EXIST)
+    {
+        printf("Error creating save state directory: %s (fr=%d)\n", tmppath, fr);
+        showMessageBox("Save failed, cannot create folder.", CRED, tmppath);
+        return false;
+    }
+    if ( fr == FR_OK ) {
+        printf("Save state base directory created: %s\n", tmppath);
+    }
+    // /SAVESTATES/<emulator>
+    snprintf(tmppath, sizeof(tmppath), "%s/%s", SAVESTATEDIR, FrensSettings::getEmulatorTypeString());
+    
+    fr = f_mkdir(tmppath);
+    if (fr != FR_OK && fr != FR_EXIST)
+    {
+        printf("Error creating save state directory: %s (fr=%d)\n", tmppath, fr);
+        showMessageBox("Save failed, cannot create folder.", CRED, tmppath);
+        return false;
+    }
+    if ( fr == FR_OK ) {
+        printf("Save state emulator directory created: %s\n", tmppath);
+    }   
+    // /SAVESTATES/<emulator>/<CRC>
+    snprintf(tmppath, sizeof(tmppath), "%s/%s/%08X", SAVESTATEDIR, FrensSettings::getEmulatorTypeString(), crc);
+    fr = f_mkdir(tmppath);
+    if (fr != FR_OK && fr != FR_EXIST)
+    {
+        printf("Error creating save state directory: %s (fr=%d)\n", tmppath, fr);
+        showMessageBox("Save failed, cannot create folder.", CRED, tmppath);
+        return false;
+    }
+    if ( fr == FR_OK ) {
+        printf("Save state CRC directory created: %s\n", tmppath);
+    }   
+
+    return true;
+}
+
 /// @brief Shows the save state menu
 /// @param savestatefunc The function to call to save a state
 /// @param loadstatefunc The function to call to load a state
@@ -1435,6 +1483,7 @@ void showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
 {
     const char *slotFormat = SLOTFORMAT;
     const char *quickSaveFormat = QUICKSAVEFILEFORMAT;
+    const char *autoSavePathFormat = AUTOSAVEFILEFORMAT;
     uint8_t saveslots[MAXSAVESTATESLOTS]{};
     char tmppath[40]; // /SAVESTATES/NES/XXXXXXXX/slot1.sta
     int margintop = 0;
@@ -1445,7 +1494,7 @@ void showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
 #endif
 
     screenBuffer = (charCell *)Frens::f_malloc(screenbufferSize);
-
+    auto crc = Frens::getCrcOfLoadedRom();
 #if !HSTX
     margintop = dvi_->getBlankSettings().top;
     marginbottom = dvi_->getBlankSettings().bottom;
@@ -1460,7 +1509,7 @@ void showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
     {
         fno = (FILINFO *)Frens::f_malloc(sizeof(FILINFO));
         // construct the quicksave path
-        snprintf(tmppath, sizeof(tmppath), quickSaveFormat, FrensSettings::getEmulatorTypeString(), Frens::getCrcOfLoadedRom());
+        snprintf(tmppath, sizeof(tmppath), quickSaveFormat, FrensSettings::getEmulatorTypeString(), crc);
         printf("Performing quick save/load operation...\n");
         printf("Path: %s\n", tmppath);
         if (quickSave == PerformQuickSave::LOAD)
@@ -1494,23 +1543,26 @@ void showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
         }
         else if (quickSave == PerformQuickSave::SAVE)
         {
-            bool ok = true;
-            if (f_stat(tmppath, fno) == FR_OK)
+            if (ensureSaveStateDirectories(crc))
             {
-                ok = showDialogYesNo("Overwrite existing quick save?");
-            }
-            if (ok)
-            {
-                printf("Saving quick save to %s\n", tmppath);
-                if (savestatefunc(tmppath) == 0)
+                bool ok = true;
+                if (f_stat(tmppath, fno) == FR_OK)
                 {
-                    printf("Quick save successful\n");
-                    showMessageBox("State saved successfully.", settings.fgcolor);
+                    ok = showDialogYesNo("Overwrite existing quick save?");
                 }
-                else
+                if (ok)
                 {
-                    printf("Quick save failed\n");
-                    showMessageBox("Failed to save state.", CRED);
+                    printf("Saving quick save to %s\n", tmppath);
+                    if (savestatefunc(tmppath) == 0)
+                    {
+                        printf("Quick save successful\n");
+                        showMessageBox("State saved successfully.", settings.fgcolor);
+                    }
+                    else
+                    {
+                        printf("Quick save failed\n");
+                        showMessageBox("Failed to save state.", CRED);
+                    }
                 }
             }
         }
@@ -1518,7 +1570,7 @@ void showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
     }
     else
     {
-        auto crc = Frens::getCrcOfLoadedRom();
+       
         fno = (FILINFO *)Frens::f_malloc(sizeof(FILINFO));
         for (int i = 0; i < MAXSAVESTATESLOTS; i++)
         {
@@ -1527,7 +1579,9 @@ void showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
             saveslots[i] = (fr == FR_OK) ? 1 : 0;
         }
         // check if auto save is enabled
-        snprintf(tmppath, sizeof(tmppath), "%s/%s/AUTO", SAVESTATEDIR, FrensSettings::getEmulatorTypeString());
+        printf("Checking if auto save is enabled...\n");
+        snprintf(tmppath, sizeof(tmppath), autoSavePathFormat, FrensSettings::getEmulatorTypeString(), crc);
+        printf("Auto save path: %s\n", tmppath);
         FRESULT fr = f_stat(tmppath, fno);
         bool autosaveEnabled = (fr == FR_OK);
         Frens::f_free(fno);
@@ -1571,7 +1625,7 @@ void showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
             {
                 int toggleRow = 4 + MAXSAVESTATESLOTS;
                 const char *toggleStatus = autosaveEnabled ? "Enabled" : "Disabled";
-                snprintf(linebuf, sizeof(linebuf), "Auto Save: %s  (A: Toggle)", toggleStatus);
+                snprintf(linebuf, sizeof(linebuf), "Auto Save: %s", toggleStatus);
                 int fg = settings.fgcolor;
                 int bg = settings.bgcolor;
                 if (confirmSlot < 0 && selected == MAXSAVESTATESLOTS)
@@ -1705,10 +1759,16 @@ void showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
                     continue;
                 }
             }
-            else if ((pad & A) && selected == MAXSAVESTATESLOTS)
+            else if ((pad & LEFT || pad & RIGHT) && selected == MAXSAVESTATESLOTS)
             {
+                if (ensureSaveStateDirectories(crc) == false)
+                {
+                    continue;
+                }
                 // Toggle auto save by creating/deleting AUTO file
-                snprintf(tmppath, sizeof(tmppath), "%s/%s/AUTO", SAVESTATEDIR, FrensSettings::getEmulatorTypeString());
+                printf("Toggling auto save...\n");
+                snprintf(tmppath, sizeof(tmppath), autoSavePathFormat, FrensSettings::getEmulatorTypeString(), crc);
+                printf("Auto save file path: %s\n", tmppath);
                 FIL fil;
                 FRESULT fr;
                 fr = f_open(&fil, tmppath, FA_OPEN_EXISTING);
@@ -1776,57 +1836,23 @@ void showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
                     }
                 }
 
-                // Ensure directory structure
-                FRESULT fr;
-                bool failed = false;
-                snprintf(tmppath, sizeof(tmppath), "%s", SAVESTATEDIR);
-                printf("Creating save state directory: %s\n", tmppath);
-                fr = f_mkdir(tmppath);
-                if (fr != FR_OK && fr != FR_EXIST)
+                // Ensure save state directories exist
+                if (ensureSaveStateDirectories(crc))
                 {
-                    failed = true;
-                    continue;
-                }
-                if (!failed)
-                {
-                    snprintf(tmppath, sizeof(tmppath), "%s/%s", SAVESTATEDIR, FrensSettings::getEmulatorTypeString());
-                    printf("Creating save state directory: %s\n", tmppath);
-                    fr = f_mkdir(tmppath);
-                    if (fr != FR_OK && fr != FR_EXIST)
+
+                    // Save file
+                    snprintf(tmppath, sizeof(tmppath), slotFormat, FrensSettings::getEmulatorTypeString(), crc, selected);
+
+                    if (savestatefunc(tmppath) == 0)
                     {
-                        failed = true;
+                        printf("Save state saved to slot %d: %s\n", selected + 1, tmppath);
+                        saveslots[selected] = 1;
+                        saved = true;
                     }
-                }
-                if (!failed)
-                {
-                    snprintf(tmppath, sizeof(tmppath), "%s/%s/%08X", SAVESTATEDIR, FrensSettings::getEmulatorTypeString(), crc);
-                    printf("Creating save state directory: %s\n", tmppath);
-                    fr = f_mkdir(tmppath);
-                    if (fr != FR_OK && fr != FR_EXIST)
+                    else
                     {
-                        failed = true;
+                        showMessageBox("Save failed.", CRED);
                     }
-                }
-
-                if (failed)
-                {
-                    printf("Error creating save state directory structure: %s\n", tmppath);
-                    showMessageBox("Save failed, cannot create folder.", CRED, tmppath);
-                    continue;
-                }
-
-                // Save file
-                snprintf(tmppath, sizeof(tmppath), slotFormat, FrensSettings::getEmulatorTypeString(), crc, selected);
-
-                if (savestatefunc(tmppath) == 0)
-                {
-                    printf("Save state saved to slot %d: %s\n", selected + 1, tmppath);
-                    saveslots[selected] = 1;
-                    saved = true;
-                }
-                else
-                {
-                    showMessageBox("Save failed.", CRED);
                 }
             }
         }

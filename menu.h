@@ -31,6 +31,7 @@ struct charCell
 #define SAVESTATEDIR "/SAVESTATES"
 #define SLOTFORMAT SAVESTATEDIR "/%s/%08X/slot%d.sta"
 #define QUICKSAVEFILEFORMAT SAVESTATEDIR "/%s/%08X/quick.sta"
+#define AUTOSAVEFILEFORMAT SAVESTATEDIR "/%s/%08X/AUTO"
 enum PerformQuickSave { NONE, SAVE, LOAD};
 extern charCell *screenBuffer;
 #define screenbufferSize  (sizeof(charCell) * SCREEN_COLS * SCREEN_ROWS)
