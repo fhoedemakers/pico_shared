@@ -1694,7 +1694,8 @@ void showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
             {
                 int toggleRow = 4 + MAXSAVESTATESLOTS;
                 const char *toggleStatus = autosaveEnabled ? "Enabled" : "Disabled";
-                snprintf(linebuf, sizeof(linebuf), "Auto Save : %s", toggleStatus);
+                const char *autosaveUsed = autosaveFileExists ? "Used" : "Empty";
+                snprintf(linebuf, sizeof(linebuf), "Auto Save : %s -  %s", autosaveUsed, toggleStatus);
                 int fg = settings.fgcolor;
                 int bg = settings.bgcolor;
                 if (confirmSlot < 0 && selected == MAXSAVESTATESLOTS)
