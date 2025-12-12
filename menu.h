@@ -28,9 +28,11 @@ struct charCell
     uint8_t bgcolor;
     char charvalue;
 };
+// Maximum number of save state slots
+#define MAXSAVESTATESLOTS 6
 #define SAVESTATEDIR "/SAVESTATES"
 #define SLOTFORMAT SAVESTATEDIR "/%s/%08X/slot%d.sta"
-#define QUICKSAVEFILEFORMAT SAVESTATEDIR "/%s/%08X/quick.sta"
+#define QUICKSAVEFILEFORMAT SAVESTATEDIR "/%s/%08X/slot%d.sta"
 #define AUTOSAVEFILEISCONFIGUREDFORMAT SAVESTATEDIR "/%s/%08X/AUTO.cfg"
 #define AUTOSAVEFILEFORMAT SAVESTATEDIR "/%s/%08X/auto.sta"
 enum SaveStateTypes { NONE, SAVE, LOAD, SAVE_AND_EXIT, LOAD_AND_START };
