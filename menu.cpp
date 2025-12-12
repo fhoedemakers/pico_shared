@@ -1695,7 +1695,7 @@ void showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
                 int toggleRow = 4 + MAXSAVESTATESLOTS;
                 const char *toggleStatus = autosaveEnabled ? "Enabled" : "Disabled";
                 const char *autosaveUsed = autosaveFileExists ? "Used" : "Empty";
-                snprintf(linebuf, sizeof(linebuf), "Auto Save : %s -  %s", autosaveUsed, toggleStatus);
+                snprintf(linebuf, sizeof(linebuf), "Auto Save : %s -  %s%s", autosaveUsed, toggleStatus, (selected == MAXSAVESTATESLOTS && saved) ? " Saved" : "");
                 int fg = settings.fgcolor;
                 int bg = settings.bgcolor;
                 if (confirmSlot < 0 && selected == MAXSAVESTATESLOTS)
@@ -1735,12 +1735,12 @@ void showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
                 }
                 // General instructions (each action on its own line)
                 if ( selected == MAXSAVESTATESLOTS ) {
-                    putText(0, ENDROW - 6, "LEFT/RIGHT: Toggle autosave", settings.fgcolor, settings.bgcolor);
+                    putText(0, ENDROW - 7, "LEFT/RIGHT: Toggle autosave", settings.fgcolor, settings.bgcolor);
                 } 
-                if ( selected < MAXSAVESTATESLOTS) {
+                //if ( selected < MAXSAVESTATESLOTS) {
                     snprintf(linebuf, sizeof(linebuf), "%s_____:Save state", buttonLabel1);
                     putText(0, ENDROW - 6, linebuf, settings.fgcolor, settings.bgcolor);
-                }
+                //}
                 if (saveSlotHasData)
                 {                 
                     snprintf(linebuf, sizeof(linebuf), "SELECT:Delete state");
@@ -1875,7 +1875,7 @@ void showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
                 // Toggle auto save by creating/deleting AUTO file
                 printf("Toggling auto save...\n");
                 getAutoSaveIsConfiguredPath(tmppath, sizeof(tmppath));
-                printf("Auto save file path: %s\n", tmppath);
+                printf("Auto save config file path: %s\n", tmppath);
                 FIL fil;
                 FRESULT fr;
                 fr = f_open(&fil, tmppath, FA_OPEN_EXISTING);
@@ -1914,10 +1914,20 @@ void showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
                 exitMenu = true;
                 saved = false;
             }
-            else if (pad & A && selected < MAXSAVESTATESLOTS)
+            else if (pad & A)
             {
+                bool saveSlotHasData = false;
+                if ( selected < MAXSAVESTATESLOTS )
+                {
+                    saveSlotHasData = saveslots[selected];
+                    getSaveStatePath(tmppath, sizeof(tmppath), selected);
+                } else {
+                    // Auto save slot
+                    getAutoSaveStatePath(tmppath, sizeof(tmppath));
+                    saveSlotHasData = autosaveFileExists;
+                }
                 bool proceed = true;
-                if (saveslots[selected])
+                if (saveSlotHasData)
                 {
 
                     while (true)
@@ -1948,12 +1958,16 @@ void showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
                 {
 
                     // Save file
-                    getSaveStatePath(tmppath, sizeof(tmppath), selected);
                     printf("Saving state to slot %d: %s\n", selected, tmppath);
                     if (savestatefunc(tmppath) == 0)
                     {
                         printf("Save state saved to slot %d: %s\n", selected + 1, tmppath);
-                        saveslots[selected] = 1;
+                        if ( selected < MAXSAVESTATESLOTS )
+                        {
+                            saveslots[selected] = 1;
+                        } else {
+                            autosaveFileExists = true;
+                        }
                         saved = true;
                     }
                     else
