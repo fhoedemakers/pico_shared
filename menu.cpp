@@ -22,7 +22,6 @@
 #include "ffwrappers.h"
 #include "vumeter.h"
 #include "DefaultSS.h"
-#include "state.h"
 #if !HSTX
 #define CC(x) (((x >> 1) & 15) | (((x >> 6) & 15) << 4) | (((x >> 11) & 15) << 8))
 const __UINT16_TYPE__ NesMenuPalette[64] = {
