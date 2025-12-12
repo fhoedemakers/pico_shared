@@ -1644,6 +1644,15 @@ namespace Frens
         return crcOfRom;
     }
 
+    /// @brief Check if a file exists
+    /// @param filepath 
+    /// @return 
+    bool fileExists(const char *filepath)
+    {
+        FILINFO fno;   
+        return (f_stat(filepath, &fno) == FR_OK);
+    }   
+
 }
 // C-compatible wrappers
 extern "C"

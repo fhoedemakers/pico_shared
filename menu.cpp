@@ -1426,6 +1426,33 @@ void DisplayDacError()
     }
 }
 
+void getQuickSavePath(char *path, size_t pathsize)
+{
+    snprintf(path, pathsize, QUICKSAVEFILEFORMAT, FrensSettings::getEmulatorTypeString(), Frens::getCrcOfLoadedRom());
+}
+
+void getAutoSaveIsConfiguredPath(char *path, size_t pathsize)
+{
+    snprintf(path, pathsize, AUTOSAVEFILEISCONFIGUREDFORMAT, FrensSettings::getEmulatorTypeString(), Frens::getCrcOfLoadedRom());
+}
+
+void getAutoSaveStatePath(char *path, size_t pathsize)
+{
+    snprintf(path, pathsize, AUTOSAVEFILEFORMAT, FrensSettings::getEmulatorTypeString(), Frens::getCrcOfLoadedRom());
+}
+
+void getSaveStatePath(char *path, size_t pathsize, int slot)
+{
+    snprintf(path, pathsize, SLOTFORMAT, FrensSettings::getEmulatorTypeString(), Frens::getCrcOfLoadedRom(), slot);
+}
+
+bool isAutoSaveStateConfgured()
+{
+    char path[FF_MAX_LFN];
+    getAutoSaveIsConfiguredPath(path, sizeof(path));
+    return Frens::fileExists(path);
+}
+
 // Helper: ensure the directory structure for save states exists.
 // Returns true on success, false on failure (and shows a message box).
 static bool ensureSaveStateDirectories(uint32_t crc)
@@ -1479,16 +1506,12 @@ static bool ensureSaveStateDirectories(uint32_t crc)
 /// @param loadstatefunc The function to call to load a state
 /// @param extraMessage Extra message to display at the bottom of the menu
 /// @return -1: Back, 0: No action, 1: State loaded
-void showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefunc)(const char *path), const char *extraMessage, PerformQuickSave quickSave)
+void showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefunc)(const char *path), const char *extraMessage, SaveStateTypes quickSave)
 {
-    const char *slotFormat = SLOTFORMAT;
-    const char *quickSaveFormat = QUICKSAVEFILEFORMAT;
-    const char *autoSavePathFormat = AUTOSAVEFILEFORMAT;
     uint8_t saveslots[MAXSAVESTATESLOTS]{};
     char tmppath[40]; // /SAVESTATES/NES/XXXXXXXX/slot1.sta
     int margintop = 0;
     int marginbottom = 0;
-    FILINFO *fno;
 #if ENABLE_VU_METER
     turnOffAllLeds();
 #endif
@@ -1505,18 +1528,14 @@ void showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
     hstx_setScanLines(false);
 #endif
     // Handle quicksave and quick load
-    if (quickSave == PerformQuickSave::LOAD || quickSave == PerformQuickSave::SAVE)
+    if (quickSave == SaveStateTypes::LOAD || quickSave == SaveStateTypes::SAVE || quickSave == SaveStateTypes::LOAD_AND_START || quickSave == SaveStateTypes::SAVE_AND_EXIT)
     {
-        fno = (FILINFO *)Frens::f_malloc(sizeof(FILINFO));
-        // construct the quicksave path
-        snprintf(tmppath, sizeof(tmppath), quickSaveFormat, FrensSettings::getEmulatorTypeString(), crc);
-        printf("Performing quick save/load operation...\n");
-        printf("Path: %s\n", tmppath);
-        if (quickSave == PerformQuickSave::LOAD)
+        
+        if (quickSave == SaveStateTypes::LOAD)
         {
-
+            getQuickSavePath(tmppath, sizeof(tmppath));
             // do nothing if file does not exist
-            if (f_stat(tmppath, fno) == FR_OK)
+            if (Frens::fileExists(tmppath) )
             {
                 bool ok = true;
                 ok = showDialogYesNo("Load quick save state?");
@@ -1541,12 +1560,13 @@ void showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
                 printf("Quick save file does not exist\n");
             }
         }
-        else if (quickSave == PerformQuickSave::SAVE)
+        else if (quickSave == SaveStateTypes::SAVE)
         {
+            getQuickSavePath(tmppath, sizeof(tmppath));
             if (ensureSaveStateDirectories(crc))
             {
                 bool ok = true;
-                if (f_stat(tmppath, fno) == FR_OK)
+                if (Frens::fileExists(tmppath))
                 {
                     ok = showDialogYesNo("Overwrite existing quick save?");
                 }
@@ -1565,27 +1585,69 @@ void showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
                     }
                 }
             }
+        } else if ( quickSave == SaveStateTypes::LOAD_AND_START) {
+            getAutoSaveStatePath(tmppath, sizeof(tmppath));
+            // do nothing if file does not exist
+            if (Frens::fileExists(tmppath) )
+            {
+                bool ok = true;
+                ok = showDialogYesNo("Load auto save state?");
+                if (ok)
+                {
+                    printf("Loading auto save from %s\n", tmppath);
+                    if (loadstatefunc(tmppath) == 0)
+                    {
+                        printf("Auto load successful\n");
+                        showMessageBox("State loaded successfully.", settings.fgcolor);
+                    }
+                    else
+                    {
+                        printf("Auto load failed\n");
+                        showMessageBox("Failed to load state.", CRED);
+                    }
+                }
+            }
+        } else if ( quickSave == SaveStateTypes::SAVE_AND_EXIT) {
+            getAutoSaveStatePath(tmppath, sizeof(tmppath));
+            if (ensureSaveStateDirectories(crc))
+            {
+                bool ok = true;
+                if (Frens::fileExists(tmppath))
+                {
+                    ok = showDialogYesNo("Overwrite existing auto save?");
+                }
+                if (ok)
+                {
+                    printf("Saving auto save to %s\n", tmppath);
+                    if (savestatefunc(tmppath) == 0)
+                    {
+                        printf("Auto save successful\n");
+                        showMessageBox("State saved successfully.", settings.fgcolor);
+                    }
+                    else
+                    {
+                        printf("Auto save failed\n");
+                        showMessageBox("Failed to save state.", CRED);
+                    }
+                }
+            }
         }
-        Frens::f_free(fno);
+
     }
     else
     {
-       
-        fno = (FILINFO *)Frens::f_malloc(sizeof(FILINFO));
+        
         for (int i = 0; i < MAXSAVESTATESLOTS; i++)
         {
-            snprintf(tmppath, sizeof(tmppath), slotFormat, FrensSettings::getEmulatorTypeString(), crc, i);
-            FRESULT fr = f_stat(tmppath, fno);
-            saveslots[i] = (fr == FR_OK) ? 1 : 0;
+            getSaveStatePath(tmppath, sizeof(tmppath), i);
+            saveslots[i] = (Frens::fileExists(tmppath)) ? 1 : 0;
         }
         // check if auto save is enabled
-        printf("Checking if auto save is enabled...\n");
-        snprintf(tmppath, sizeof(tmppath), autoSavePathFormat, FrensSettings::getEmulatorTypeString(), crc);
+        printf("Checking if auto save is configured...\n");
+        getAutoSaveIsConfiguredPath(tmppath, sizeof(tmppath));
         printf("Auto save path: %s\n", tmppath);
-        FRESULT fr = f_stat(tmppath, fno);
-        bool autosaveEnabled = (fr == FR_OK);
-        Frens::f_free(fno);
-
+        bool autosaveEnabled = (Frens::fileExists(tmppath));
+        printf("Auto save configured: %s\n", autosaveEnabled ? "Yes" : "No");
         int selected = 0;
         bool exitMenu = false;
         bool saved = false;
@@ -1717,8 +1779,7 @@ void showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
                     // No save state in this slot
                     continue;
                 }
-
-                snprintf(tmppath, sizeof(tmppath), slotFormat, FrensSettings::getEmulatorTypeString(), crc, selected);
+                getSaveStatePath(tmppath, sizeof(tmppath), selected);
                 printf("Loading state  %s from slot %d\n", tmppath, selected);
                 if (loadstatefunc(tmppath) == 0)
                 {
@@ -1746,7 +1807,7 @@ void showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
                         Menu_LoadFrame();
                         if (pad & A) // Confirm delete
                         {
-                            snprintf(tmppath, sizeof(tmppath), slotFormat, FrensSettings::getEmulatorTypeString(), crc, selected);
+                            getSaveStatePath(tmppath, sizeof(tmppath), selected);
                             printf("Deleting save state file: %s\n", tmppath);
                             f_unlink(tmppath); // ignore result
                             saveslots[selected] = 0;
@@ -1767,7 +1828,7 @@ void showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
                 }
                 // Toggle auto save by creating/deleting AUTO file
                 printf("Toggling auto save...\n");
-                snprintf(tmppath, sizeof(tmppath), autoSavePathFormat, FrensSettings::getEmulatorTypeString(), crc);
+                getAutoSaveIsConfiguredPath(tmppath, sizeof(tmppath));
                 printf("Auto save file path: %s\n", tmppath);
                 FIL fil;
                 FRESULT fr;
@@ -1841,8 +1902,8 @@ void showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
                 {
 
                     // Save file
-                    snprintf(tmppath, sizeof(tmppath), slotFormat, FrensSettings::getEmulatorTypeString(), crc, selected);
-
+                    getSaveStatePath(tmppath, sizeof(tmppath), selected);
+                    printf("Saving state to slot %d: %s\n", selected, tmppath);
                     if (savestatefunc(tmppath) == 0)
                     {
                         printf("Save state saved to slot %d: %s\n", selected + 1, tmppath);

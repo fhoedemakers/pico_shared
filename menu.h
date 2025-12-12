@@ -31,8 +31,9 @@ struct charCell
 #define SAVESTATEDIR "/SAVESTATES"
 #define SLOTFORMAT SAVESTATEDIR "/%s/%08X/slot%d.sta"
 #define QUICKSAVEFILEFORMAT SAVESTATEDIR "/%s/%08X/quick.sta"
-#define AUTOSAVEFILEFORMAT SAVESTATEDIR "/%s/%08X/AUTO"
-enum PerformQuickSave { NONE, SAVE, LOAD};
+#define AUTOSAVEFILEISCONFIGUREDFORMAT SAVESTATEDIR "/%s/%08X/AUTO.cfg"
+#define AUTOSAVEFILEFORMAT SAVESTATEDIR "/%s/%08X/auto.sta"
+enum SaveStateTypes { NONE, SAVE, LOAD, SAVE_AND_EXIT, LOAD_AND_START };
 extern charCell *screenBuffer;
 #define screenbufferSize  (sizeof(charCell) * SCREEN_COLS * SCREEN_ROWS)
 void menu(const char *title, char *errorMessage, bool isFatalError, bool showSplash, const char *allowedExtensions, char *rompath);
@@ -40,6 +41,9 @@ void ClearScreen(int color);
 void putText(int x, int y, const char *text, int fgcolor, int bgcolor, bool wraplines = false, int offset = 0);
 void splash();  // is emulator specific
 int showSettingsMenu(bool calledFromGame = false);
-void showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefunc)(const char *path), const char *extraMessage, PerformQuickSave quickSave);
-
+void showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefunc)(const char *path), const char *extraMessage, SaveStateTypes quickSave);
+void getQuickSavePath(char *path, size_t pathsize);
+void getSaveStatePath(char *path, size_t pathsize, int slot);
+void getAutoSaveStatePath(char *path, size_t pathsize);
+bool isAutoSaveStateConfgured();
 #endif

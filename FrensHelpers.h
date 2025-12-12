@@ -140,6 +140,7 @@ namespace Frens
     void loadOverLay(const char *filename, const char *overlay);
     FRESULT pick_random_file_fullpath(const char *path, char *chosen, size_t bufsize);
     uint32_t getCrcOfLoadedRom();
+    bool fileExists(const char *filename);
 } // namespace Frens
 
 
