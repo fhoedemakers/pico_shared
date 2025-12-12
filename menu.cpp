@@ -1428,7 +1428,7 @@ void DisplayDacError()
 
 void getQuickSavePath(char *path, size_t pathsize)
 {
-    snprintf(path, pathsize, QUICKSAVEFILEFORMAT, FrensSettings::getEmulatorTypeString(), Frens::getCrcOfLoadedRom());
+    snprintf(path, pathsize, QUICKSAVEFILEFORMAT, FrensSettings::getEmulatorTypeString(), Frens::getCrcOfLoadedRom(), MAXSAVESTATESLOTS -1);
 }
 
 void getAutoSaveIsConfiguredPath(char *path, size_t pathsize)
@@ -1527,6 +1527,8 @@ void showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
 #else
     hstx_setScanLines(false);
 #endif
+    getAutoSaveStatePath(tmppath, sizeof(tmppath));
+    bool autosaveFileExists = Frens::fileExists(tmppath);
     // Handle quicksave and quick load
     if (quickSave == SaveStateTypes::LOAD || quickSave == SaveStateTypes::SAVE || quickSave == SaveStateTypes::LOAD_AND_START || quickSave == SaveStateTypes::SAVE_AND_EXIT)
     {
@@ -1586,9 +1588,8 @@ void showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
                 }
             }
         } else if ( quickSave == SaveStateTypes::LOAD_AND_START) {
-            getAutoSaveStatePath(tmppath, sizeof(tmppath));
             // do nothing if file does not exist
-            if (Frens::fileExists(tmppath) )
+            if (autosaveFileExists)
             {
                 bool ok = true;
                 ok = showDialogYesNo("Load auto save state?");
@@ -1612,7 +1613,7 @@ void showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
             if (ensureSaveStateDirectories(crc))
             {
                 bool ok = true;
-                if (Frens::fileExists(tmppath))
+                if (autosaveFileExists)
                 {
                     ok = showDialogYesNo("Overwrite existing auto save?");
                 }
@@ -1621,6 +1622,7 @@ void showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
                     printf("Saving auto save to %s\n", tmppath);
                     if (savestatefunc(tmppath) == 0)
                     {
+                        autosaveFileExists = true;
                         printf("Auto save successful\n");
                         showMessageBox("State saved successfully.", settings.fgcolor);
                     }
@@ -1666,7 +1668,12 @@ void showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
             for (int i = 0; i < MAXSAVESTATESLOTS && (4 + i) < ENDROW - 2; i++)
             {
                 const char *status = saveslots[i] ? "Used" : "Empty";
-                snprintf(linebuf, sizeof(linebuf), "Slot %d: %s%s", i + 1, status, (i == selected && saved) ? " Saved" : "");
+                // Last soft used for quick save
+                if ( i == (MAXSAVESTATESLOTS -1) ){
+                    snprintf(linebuf, sizeof(linebuf), "Quick Save: %s%s", status, (i == selected && saved) ? " Saved" : "");
+                } else {
+                    snprintf(linebuf, sizeof(linebuf), "Slot %d____: %s%s", i, status, (i == selected && saved) ? " Saved" : "");
+                }
                 int fg = settings.fgcolor;
                 int bg = settings.bgcolor;
                 if (confirmSlot == i)
@@ -1687,17 +1694,21 @@ void showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
             {
                 int toggleRow = 4 + MAXSAVESTATESLOTS;
                 const char *toggleStatus = autosaveEnabled ? "Enabled" : "Disabled";
-                snprintf(linebuf, sizeof(linebuf), "Auto Save: %s", toggleStatus);
+                snprintf(linebuf, sizeof(linebuf), "Auto Save : %s", toggleStatus);
                 int fg = settings.fgcolor;
                 int bg = settings.bgcolor;
                 if (confirmSlot < 0 && selected == MAXSAVESTATESLOTS)
                 {
                     fg = settings.bgcolor;
                     bg = settings.fgcolor;
+                } else if (confirmSlot == MAXSAVESTATESLOTS) {
+                    // Highlight slot being confirmed (overwrite/delete)
+                    fg = CWHITE;
+                    bg = CRED;
                 }
                 putText(2, toggleRow, linebuf, fg, bg);
             }
-            putText(0, ENDROW - 8, extraMessage ? extraMessage : " ", settings.fgcolor, settings.bgcolor);
+            putText(0, ENDROW - 9, extraMessage ? extraMessage : " ", settings.fgcolor, settings.bgcolor);
             if (confirmSlot >= 0)
             {
                 if (confirmType == 1)
@@ -1714,11 +1725,23 @@ void showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
             }
             else
             {
-                // General instructions (each action on its own line)
-                snprintf(linebuf, sizeof(linebuf), "%s_____:Save state", buttonLabel1);
-                putText(0, ENDROW - 6, linebuf, settings.fgcolor, settings.bgcolor);
-                if (saveslots[selected])
+                bool saveSlotHasData = false;
+                if ( selected < MAXSAVESTATESLOTS )
                 {
+                    saveSlotHasData = saveslots[selected];
+                }  else {
+                    saveSlotHasData = autosaveFileExists; 
+                }
+                // General instructions (each action on its own line)
+                if ( selected == MAXSAVESTATESLOTS ) {
+                    putText(0, ENDROW - 6, "LEFT/RIGHT: Toggle autosave", settings.fgcolor, settings.bgcolor);
+                } 
+                if ( selected < MAXSAVESTATESLOTS) {
+                    snprintf(linebuf, sizeof(linebuf), "%s_____:Save state", buttonLabel1);
+                    putText(0, ENDROW - 6, linebuf, settings.fgcolor, settings.bgcolor);
+                }
+                if (saveSlotHasData)
+                {                 
                     snprintf(linebuf, sizeof(linebuf), "SELECT:Delete state");
                     putText(0, ENDROW - 5, linebuf, settings.fgcolor, settings.bgcolor);
                     putText(0, ENDROW - 4, "START :Load state.", settings.fgcolor, settings.bgcolor);
@@ -1774,12 +1797,21 @@ void showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
             }
             else if (!(pad & SELECT) && (pad & START))
             {
-                if (!saveslots[selected])
+                bool saveSlotHasData = false;
+                if ( selected < MAXSAVESTATESLOTS )
+                {
+                    saveSlotHasData = saveslots[selected];
+                    getSaveStatePath(tmppath, sizeof(tmppath), selected);
+                } else {
+                    saveSlotHasData = autosaveFileExists;
+                    getAutoSaveStatePath(tmppath, sizeof(tmppath));
+                }
+                if (!saveSlotHasData)
                 {
                     // No save state in this slot
                     continue;
                 }
-                getSaveStatePath(tmppath, sizeof(tmppath), selected);
+               
                 printf("Loading state  %s from slot %d\n", tmppath, selected);
                 if (loadstatefunc(tmppath) == 0)
                 {
@@ -1796,8 +1828,18 @@ void showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
             }
             else if ((pad & SELECT) && !(pad & START))
             {
+                bool saveSlotHasData = false;
+                if ( selected < MAXSAVESTATESLOTS )
+                {
+                    saveSlotHasData = saveslots[selected];
+                    getSaveStatePath(tmppath, sizeof(tmppath), selected);
+                } else {
+                    // Auto save slot
+                    getAutoSaveStatePath(tmppath, sizeof(tmppath));
+                    saveSlotHasData = autosaveFileExists;
+                }
                 // Delete confirmation only when slot used
-                if (saveslots[selected])
+                if (saveSlotHasData)
                 {
 
                     while (true)
@@ -1807,11 +1849,14 @@ void showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
                         Menu_LoadFrame();
                         if (pad & A) // Confirm delete
                         {
-                            getSaveStatePath(tmppath, sizeof(tmppath), selected);
                             printf("Deleting save state file: %s\n", tmppath);
                             f_unlink(tmppath); // ignore result
                             saveslots[selected] = 0;
                             showMessageBox("Save state deleted.", CBLUE);
+                            if (selected == MAXSAVESTATESLOTS)
+                            {
+                                autosaveFileExists = false;
+                            }
                             break;
                         }
                         if (pad & B) // Cancel
@@ -1844,7 +1889,7 @@ void showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
                     else
                     {
                         autosaveEnabled = false;
-                        showMessageBox("Auto save disabled.", CBLUE);
+                        //showMessageBox("Auto save disabled.", CBLUE);
                     }
                 }
                 else
@@ -1854,7 +1899,7 @@ void showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
                     {
                         f_close(&fil);
                         autosaveEnabled = true;
-                        showMessageBox("Auto save enabled.", CBLUE);
+                       // showMessageBox("Auto save enabled.", CBLUE);
                     }
                     else
                     {
@@ -1868,7 +1913,7 @@ void showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
                 exitMenu = true;
                 saved = false;
             }
-            else if (pad & A)
+            else if (pad & A && selected < MAXSAVESTATESLOTS)
             {
                 bool proceed = true;
                 if (saveslots[selected])
