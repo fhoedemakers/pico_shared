@@ -43,7 +43,7 @@ void ClearScreen(int color);
 void putText(int x, int y, const char *text, int fgcolor, int bgcolor, bool wraplines = false, int offset = 0);
 void splash();  // is emulator specific
 int showSettingsMenu(bool calledFromGame = false);
-void showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefunc)(const char *path), const char *extraMessage, SaveStateTypes quickSave);
+bool showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefunc)(const char *path), const char *extraMessage, SaveStateTypes quickSave);
 void getQuickSavePath(char *path, size_t pathsize);
 void getSaveStatePath(char *path, size_t pathsize, int slot);
 void getAutoSaveStatePath(char *path, size_t pathsize);

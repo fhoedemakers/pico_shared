@@ -1504,9 +1504,10 @@ static bool ensureSaveStateDirectories(uint32_t crc)
 /// @param savestatefunc The function to call to save a state
 /// @param loadstatefunc The function to call to load a state
 /// @param extraMessage Extra message to display at the bottom of the menu
-/// @return -1: Back, 0: No action, 1: State loaded
-void showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefunc)(const char *path), const char *extraMessage, SaveStateTypes quickSave)
+/// @return false when a save state failed to load. True otherwise.
+bool showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefunc)(const char *path), const char *extraMessage, SaveStateTypes quickSave)
 {
+    bool saveStateLoadedOK = true;
     uint8_t saveslots[MAXSAVESTATESLOTS]{};
     char tmppath[40]; // /SAVESTATES/NES/XXXXXXXX/slot1.sta
     int margintop = 0;
@@ -1551,7 +1552,8 @@ void showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
                     else
                     {
                         printf("Quick load failed\n");
-                        showMessageBox("Failed to load state.", CRED);
+                        showMessageBox("State load failed. Returning to menu.", CRED);
+                        saveStateLoadedOK = false;
                     }
                 }
             }
@@ -1603,7 +1605,8 @@ void showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
                     else
                     {
                         printf("Auto load failed\n");
-                        showMessageBox("Failed to load state.", CRED);
+                        showMessageBox("State load failed. Returning to menu.", CRED);
+                        saveStateLoadedOK = false;
                     }
                 }
             }
@@ -1756,7 +1759,7 @@ void showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
                     snprintf(linebuf, sizeof(linebuf), "%s_____:Back", buttonLabel2);
                     putText(0, ENDROW - 5, linebuf, settings.fgcolor, settings.bgcolor);
                 }
-                putText(0, SCREEN_ROWS - 4, "In-Game Quick Save/Restore: ", settings.fgcolor, settings.bgcolor);
+                putText(0, SCREEN_ROWS - 4, "In-Game Quick Save/Load state: ", settings.fgcolor, settings.bgcolor);
                 snprintf(linebuf, sizeof(linebuf), "SELECT + %s : Quick Save", buttonLabel1);
                 putText(1, SCREEN_ROWS - 3, linebuf, settings.fgcolor, settings.bgcolor);
                 snprintf(linebuf, sizeof(linebuf), "SELECT + %s : Quick Load", buttonLabel2);
@@ -1822,8 +1825,10 @@ void showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
                 }
                 else
                 {
-                    showMessageBox("Load failed.", CRED);
-                    continue;
+                    showMessageBox("State load failed. Returning to menu.", CRED);
+                    saveStateLoadedOK = false;
+                    exitMenu = true;
+                    break;
                 }
             }
             else if ((pad & SELECT) && !(pad & START))
@@ -1993,7 +1998,7 @@ void showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
     Frens::PaceFrames60fps(true);
     printf("Exiting save state menu.\n");
     Frens::f_free(screenBuffer);
-    return;
+    return saveStateLoadedOK;
 }
 // --- Settings Menu Implementation ---
 // returns 0 if no changes, 1 if settings applied
@@ -2160,7 +2165,7 @@ int showSettingsMenu(bool calledFromGame)
             }
             case MenuSettingsIndex::MOPT_SAVE_RESTORE_STATE:
             {
-                label = "Save/Restore State";
+                label = "Save/Load State";
                 value = "";
                 break;
             }
