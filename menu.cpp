@@ -2255,6 +2255,13 @@ int showSettingsMenu(bool calledFromGame)
                 value = working.flags.fruitJamEnableInternalSpeaker ? "ON" : "OFF";
                 break;
             }
+            case MenuSettingsIndex::MOPT_FRUITJAM_VOLUME_CONTROL:
+            {
+                label = "Fruit Jam Volume Control";
+                sprintf(valueBuf, "%d", working.fruitjamVolumeLevel)    ;
+                value = valueBuf;
+                break;
+            }
             case MenuSettingsIndex::MOPT_DMG_PALETTE:
             {
                 label = "DMG Palette";
@@ -2662,6 +2669,24 @@ int showSettingsMenu(bool calledFromGame)
                         working.flags.fruitJamEnableInternalSpeaker = !working.flags.fruitJamEnableInternalSpeaker;
                         break;
                     }
+                    case MOPT_FRUITJAM_VOLUME_CONTROL:
+                    {
+                        if (right)
+                        {
+                            if (working.fruitjamVolumeLevel < 24)
+                            {
+                                working.fruitjamVolumeLevel++;
+                            }
+                        }
+                        else
+                        {
+                            if (working.fruitjamVolumeLevel > -63)
+                            {
+                                working.fruitjamVolumeLevel--;
+                            }
+                        }
+                        break;
+                    }
                     case MOPT_RAPID_FIRE_ON_A:
                     {
 
@@ -2773,6 +2798,7 @@ int showSettingsMenu(bool calledFromGame)
 #endif
         // Speaker can be muted/unmuted from settings menu
         EXT_AUDIO_MUTE_INTERNAL_SPEAKER(settings.flags.fruitJamEnableInternalSpeaker == 0);
+        EXT_AUDIO_SETVOLUME(settings.fruitjamVolumeLevel);
         Frens::PaceFrames60fps(true);
     }
     return rval;

@@ -260,6 +260,17 @@ void setupHeadphoneDetectionInterrupt(int gpio, bool gpioisbutton)
 		printf("TODO: Implement headphone via INT1/GPIO1 on DAC\n");
 	}
 }
+void audio_i2s_setVolume(int8_t level) {
+	if ( level < -63 || level > 23) {
+		printf("Volume level %d out of range (-63 to 23)\n", level);
+		return;
+	}
+	printf("Setting TLV320 volume to level %d\n", level);
+	setPage(0);
+	modifyRegister(0x40, 0x0C, 0x00);
+	writeRegister(0x41, level << 1); // Left DAC Vol  
+	writeRegister(0x42, level << 1); // Right DAC Vol 
+}
 /// @brief Initialize the TLV320AIC3204 codec
 /// This function sets up the codec with default settings for audio playback.
 /// From tlv320dac3100 datasheet, section 6.3.10.15

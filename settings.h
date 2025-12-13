@@ -6,7 +6,7 @@
 
 
 extern struct settings settings;
-#define SETTINGS_VERSION 102
+#define SETTINGS_VERSION 104
 
 struct settings
 {
@@ -20,6 +20,7 @@ struct settings
     unsigned short bgcolor;
     // int reserved[3];
     char currentDir[FF_MAX_LFN];
+    int8_t fruitjamVolumeLevel; // Volume level for Fruit Jam internal speaker in db
     struct
     {
         unsigned short useExtAudio : 1;      // 0 = use DVIAudio, 1 = use external Audio
@@ -35,6 +36,7 @@ struct settings
         unsigned short rapidFireOnB : 1;      // 1 = rapid fire on B button, 0 = off
         unsigned short reserved : 3;         // keep struct size the same
     } flags; // Total 16 bits
+   
 };
 namespace FrensSettings
 {

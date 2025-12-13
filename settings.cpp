@@ -68,6 +68,7 @@ namespace FrensSettings
         settings.version = SETTINGS_VERSION;
         // clear all the reserved settings
         settings.flags.reserved = 0;
+        settings.fruitjamVolumeLevel = 16; // default volume level in db to mid (0-24)
         strcpy(settings.currentDir, "/");
     }
 
