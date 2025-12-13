@@ -1760,9 +1760,11 @@ bool showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
                     putText(0, ENDROW - 5, linebuf, settings.fgcolor, settings.bgcolor);
                 }
                 putText(0, SCREEN_ROWS - 4, "In-Game Quick Save/Load state: ", settings.fgcolor, settings.bgcolor);
-                snprintf(linebuf, sizeof(linebuf), "SELECT + %s : Quick Save", buttonLabel1);
+                //snprintf(linebuf, sizeof(linebuf), "SELECT + %s : Quick Save", buttonLabel1);
+                snprintf(linebuf, sizeof(linebuf), "START + DOWN : Quick Save");
                 putText(1, SCREEN_ROWS - 3, linebuf, settings.fgcolor, settings.bgcolor);
-                snprintf(linebuf, sizeof(linebuf), "SELECT + %s : Quick Load", buttonLabel2);
+                //snprintf(linebuf, sizeof(linebuf), "SELECT + %s : Quick Load", buttonLabel2);
+                snprintf(linebuf, sizeof(linebuf), "START + UP___: Quick Load");
                 putText(1, SCREEN_ROWS - 2, linebuf, settings.fgcolor, settings.bgcolor);
             }
 
