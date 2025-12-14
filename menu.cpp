@@ -1547,7 +1547,7 @@ bool showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
                     if (loadstatefunc(tmppath) == 0)
                     {
                         printf("Quick load successful\n");
-                        showMessageBox("State loaded successfully.", settings.fgcolor);
+                        //showMessageBox("State loaded successfully.", settings.fgcolor);
                     }
                     else
                     {
@@ -1579,7 +1579,7 @@ bool showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
                     if (savestatefunc(tmppath) == 0)
                     {
                         printf("Quick save successful\n");
-                        showMessageBox("State saved successfully.", settings.fgcolor);
+                        //showMessageBox("State saved successfully.", settings.fgcolor);
                     }
                     else
                     {
@@ -1600,7 +1600,7 @@ bool showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
                     if (loadstatefunc(tmppath) == 0)
                     {
                         printf("Auto load successful\n");
-                        showMessageBox("State loaded successfully.", settings.fgcolor);
+                        //showMessageBox("State loaded successfully.", settings.fgcolor);
                     }
                     else
                     {
@@ -1626,7 +1626,7 @@ bool showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
                     {
                         autosaveFileExists = true;
                         printf("Auto save successful\n");
-                        showMessageBox("State saved successfully.", settings.fgcolor);
+                        //showMessageBox("State saved successfully.", settings.fgcolor);
                     }
                     else
                     {
@@ -1821,7 +1821,7 @@ bool showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
                 if (loadstatefunc(tmppath) == 0)
                 {
                     printf("Save state loaded from slot %d: %s\n", selected, tmppath);
-                    showMessageBox("Loaded state from", CBLUE, tmppath, "Press any button to resume game.");
+                    //showMessageBox("Loaded state from", CBLUE, tmppath, "Press any button to resume game.");
                     exitMenu = true;
                     break;
                 }
@@ -1859,7 +1859,7 @@ bool showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
                             printf("Deleting save state file: %s\n", tmppath);
                             f_unlink(tmppath); // ignore result
                             saveslots[selected] = 0;
-                            showMessageBox("Save state deleted.", CBLUE);
+                            // showMessageBox("Save state deleted.", CBLUE);
                             if (selected == MAXSAVESTATESLOTS)
                             {
                                 autosaveFileExists = false;
