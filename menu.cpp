@@ -575,7 +575,7 @@ void DrawScreen(int selectedRow, int w = 0, int h = 0, uint16_t *imagebuffer = n
     {
         if (EXT_AUDIO_DACERROR())
         {
-            putText(1, ENDROW + 3, "Dac Initialisation Failed", CRED, CWHITE);
+            putText(1, ENDROW + 3, "Dac Initialization Failed", CRED, CWHITE);
         }
         putText(SCREEN_COLS / 2 - strlen(spaces) / 2, SCREEN_ROWS - 1, spaces, settings.bgcolor, settings.bgcolor);
         snprintf(tmpstr, sizeof(tmpstr), "- %s -", connectedGamePadName[0] != 0 ? connectedGamePadName : "No USB GamePad");
