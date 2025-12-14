@@ -2002,6 +2002,7 @@ bool showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
     Frens::f_free(screenBuffer);
     return saveStateLoadedOK;
 }
+extern unsigned char samplesound_wav[]; // in sounds.cpp
 // --- Settings Menu Implementation ---
 // returns 0 if no changes, 1 if settings applied
 //         2 start screensaver
@@ -2012,6 +2013,12 @@ int showSettingsMenu(bool calledFromGame)
     int rval = 0;
     int margintop = 0;
     int marginbottom = 0;
+#if HW_CONFIG == 8
+    for ( int i = 0; i < 4 ; i++ ) {
+      printf("%c", samplesound_wav[i+8]);
+    }
+    printf("\n");
+#endif
     // Allocate screen buffer if called from game
     if (calledFromGame)
     {
