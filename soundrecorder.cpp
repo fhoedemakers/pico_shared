@@ -161,17 +161,6 @@ namespace SoundRecorder
 
         if (available == 0)
         {
-            // Buffer already full: flush to file
-            printf("Sound recorder buffer full, stopping recording.\n");
-            printf("Recorded %zu bytes of audio data.\n", recordedBytes);
-            printf("Writing sound recorder file %s\n", SOUNDRECORDERFILE);
-            recording = false;
-
-            flush_to_file();
-
-            Frens::f_free(pcmBuffer);
-            pcmBuffer = nullptr;
-            recordedBytes = 0;
             return;
         }
 
