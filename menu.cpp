@@ -2037,6 +2037,7 @@ struct MenuWavState {
 
     // File source
     FIL fil;
+    bool fileIsOpen;
     uint32_t data_start;      // byte offset of 'data' payload start
     uint32_t data_bytes;      // size of 'data' payload in bytes
     uint32_t bytes_per_frame; // 4 for stereo 16-bit
@@ -2109,6 +2110,7 @@ static void menu_wav_init_memory()
     g_menu_wav.frame_pos = 0;
     g_menu_wav.start_frame = 0;
     g_menu_wav.ready = (g_menu_wav.frames_total > 0);
+    g_menu_wav.fileIsOpen = false;
     menu_wav_apply_offset();
 }
 
@@ -2117,13 +2119,17 @@ static bool menu_wav_use_file(const char* path)
 {
     
     if (!path || !*path) return false;
-
+    if (g_menu_wav.fileIsOpen) {
+        printf("Menu WAV: Closing previously open file.\n");
+        f_close(&g_menu_wav.fil);
+        g_menu_wav.fileIsOpen = false;
+    }   
     FRESULT fr = f_open(&g_menu_wav.fil, path, FA_READ);
     if (fr != FR_OK) {
         printf("Menu WAV: f_open failed %d\n", fr);
         return false;
     }
-
+    g_menu_wav.fileIsOpen = true;
     // Read header into small buffer
     unsigned char hdr[256];
     UINT rd = 0;
