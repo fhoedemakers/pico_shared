@@ -33,7 +33,7 @@
 #include "FrensHelpers.h"
 #include <cstring>
 
-#define MAXBYTESTORECORD 1024 * 1024 * 2 // 2 MB max recording size
+#define MAXBYTESTORECORD 1024 * 1024 * 5 // 5 MB max recording size or available memory.
 #define SAMPLE_RATE 44100
 
 namespace SoundRecorder
@@ -135,7 +135,16 @@ namespace SoundRecorder
         printf("Starting sound recording, max size %d bytes\n", MAXBYTESTORECORD);
         recording = true;
         recordedBytes = 0;
-        pcmBuffer = (int16_t *)Frens::f_malloc(MAXBYTESTORECORD);
+        auto memsize = MAXBYTESTORECORD;
+        auto available_mem = Frens::GetAvailableMemory();
+        printf("Available memory before allocation: %zu bytes\n", available_mem);
+        if ( available_mem < MAXBYTESTORECORD ) {
+            
+            memsize = available_mem - 10240; // leave some headroom
+            printf("Warning: Not enough memory to allocate full recording buffer!\n");
+            printf("Adjusting recording buffer size to %zu bytes\n", memsize);
+        }
+        pcmBuffer = (int16_t *)Frens::f_malloc(memsize);
     };
 
     /**
