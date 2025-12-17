@@ -2478,7 +2478,13 @@ int showSettingsMenu(bool calledFromGame)
     // Optional: set offset and/or switch to file
     // wavplayer::set_offset_seconds(0.8f); // skip initial silence
     // Uncomment to stream from a file on SD (must be a valid PCM 16-bit stereo WAV)
-    if (wavplayer::use_file("/soundrecorder.wav")) {
+    char wavPath[40];
+    strcpy(wavPath, RECORDEDSAMPLEFILE);
+    if ( !Frens::fileExists(wavPath) ) {
+        snprintf(wavPath, sizeof(wavPath), DEFAULTSAMPLEFILEFORMAT, FrensSettings::getEmulatorTypeString());
+        printf("Menu music file not found at /soundrecorder.wav, trying %s\n", wavPath);
+    }
+    if (wavplayer::use_file(wavPath)) {
         printf("Streaming menu music from file.\n");
     }
 #endif

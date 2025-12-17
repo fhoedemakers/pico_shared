@@ -35,6 +35,8 @@ struct charCell
 #define QUICKSAVEFILEFORMAT SAVESTATEDIR "/%s/%08X/slot%d.sta"
 #define AUTOSAVEFILEISCONFIGUREDFORMAT SAVESTATEDIR "/%s/%08X/AUTO.cfg"
 #define AUTOSAVEFILEFORMAT SAVESTATEDIR "/%s/%08X/auto.sta"
+#define RECORDEDSAMPLEFILE "/soundrecorder.wav"
+#define DEFAULTSAMPLEFILEFORMAT "/Metadata/%s/sample.wav"
 enum SaveStateTypes { NONE, SAVE, LOAD, SAVE_AND_EXIT, LOAD_AND_START };
 extern charCell *screenBuffer;
 #define screenbufferSize  (sizeof(charCell) * SCREEN_COLS * SCREEN_ROWS)
