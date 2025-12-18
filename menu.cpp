@@ -129,10 +129,6 @@ static void getButtonLabels(char *buttonLabel1, char *buttonLabel2)
     if (strcmp(connectedGamePadName, "Dual Shock 4") == 0 || strcmp(connectedGamePadName, "Dual Sense") == 0 || strcmp(connectedGamePadName, "PSClassic") == 0)
     {
         strcpy(buttonLabel1, "O");
-
-    #if HW_CONFIG == 8
-    // Simple WAV streamer for menu background audio using EXT_AUDIO_ENQUEUE_SAMPLE
-    // Expects 16-bit stereo PCM @ 44100 Hz as produced by soundrecorder.cpp
         strcpy(buttonLabel2, "X");
 
     }
@@ -213,7 +209,6 @@ int Menu_LoadFrame()
     }
 #endif
     // https://github.com/fhoedemakers/pico-genesisPlus/issues/10
-    #endif // HW_CONFIG == 8
     // Initialize the Wii Pad here if delayed start is enabled, after the DAC has been initialized.
 #if WIIPAD_DELAYED_START and WII_PIN_SDA >= 0 and WII_PIN_SCL >= 0
     // check only every 60 frames.
@@ -2841,7 +2836,9 @@ int showSettingsMenu(bool calledFromGame)
         EXT_AUDIO_SETVOLUME(settings.fruitjamVolumeLevel);
         Frens::PaceFrames60fps(true);
     }
+#if HW_CONFIG == 8
     wavplayer::reset(); // stop menu music
+#endif
     return rval;
 }
 
