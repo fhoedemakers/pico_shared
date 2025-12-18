@@ -261,6 +261,9 @@ void setupHeadphoneDetectionInterrupt(int gpio, bool gpioisbutton)
 	}
 }
 void audio_i2s_setVolume(int8_t level) {
+	if (_driver != PICO_AUDIO_I2S_DRIVER_TLV320) {
+		return;
+	}
 	if ( level < -63 || level > 23) {
 		printf("Volume level %d out of range (-63 to 23)\n", level);
 		return;
