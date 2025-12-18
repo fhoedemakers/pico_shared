@@ -1,6 +1,32 @@
+/**
+ * @file wavplayer.cpp
+ * @brief Simple WAV player. RP2350 only.
+ *
+ * This module provides a minimal stereo 16‑bit WAV player that can stream
+ * audio either from an embedded memory buffer (generated in soundrecorder.cpp)
+ * or from a file on the FAT filesystem. The player supports continuous
+ * looping with a configurable start offset in seconds.
+ *
+ * Key characteristics:
+ * - Expects PCM format: RIFF/WAVE, `fmt` = PCM (1), 2 channels, 16‑bit.
+ * - Streams frames into the external audio queue via `EXT_AUDIO_ENQUEUE_SAMPLE`.
+ * - For memory source: loops over the embedded buffer.
+ * - For file source: reads chunked frames and loops by seeking to an offset.
+ * - Offset is applied in frames based on detected sample rate.
+ *
+ * Dependencies:
+ * - `external_audio.h` for audio enqueue.
+ * - `ff.h` (FatFs) for file IO.
+ * - `settings.h` to check `audioEnabled`.
+ *
+ * Threading/real‑time notes:
+ * - `pump()` should be called regularly from the audio update loop to keep
+ *   the queue filled. It is not re‑entrant.
+ * - Functions in this module are not thread‑safe.
+ */
 #include "wavplayer.h"
 
-#if HW_CONFIG == 8
+#if PICO_RP2350
 
 #include "external_audio.h"
 #include "ff.h"
@@ -15,35 +41,59 @@ extern const unsigned char samplesound_wav[];
 
 namespace wavplayer {
 
+/**
+ * @brief Source kind for WAV playback.
+ * - `Memory`: Embedded buffer `samplesound_wav`.
+ * - `File`: Streamed from a file via FatFs.
+ */
 enum class WavSrcKind : uint8_t { Memory, File };
 
+/**
+ * @brief Internal playback state (not exposed in the header).
+ *
+ * Fields cover both memory and file streaming modes. When `kind` is
+ * `Memory`, file‑related fields are ignored; when `kind` is `File`, memory
+ * pointer is ignored.
+ */
 struct WavState {
     // Common
-    uint32_t sample_rate;     // Hz
-    uint32_t frames_total;    // total frames (informational for memory)
-    uint32_t frame_pos;       // current frame index
-    uint32_t start_frame;     // loop start frame computed from offset
-    bool ready;
-    float offset_sec;
-    WavSrcKind kind;
+    uint32_t sample_rate;     //!< Sample rate in Hz.
+    uint32_t frames_total;    //!< Total frames (informational for memory).
+    uint32_t frame_pos;       //!< Current frame index.
+    uint32_t start_frame;     //!< Loop start frame computed from `offset_sec`.
+    bool ready;               //!< True when the player is configured.
+    float offset_sec;         //!< Loop start offset in seconds (>= 0).
+    WavSrcKind kind;          //!< Active source kind.
 
     // Memory source
-    const int16_t *pcm_mem;
+    const int16_t *pcm_mem;   //!< Pointer to interleaved stereo 16‑bit samples.
 
     // File source
-    FIL fil;
-    bool fileIsOpen;
-    uint32_t data_start;      // byte offset of 'data' payload start
-    uint32_t data_bytes;      // size of 'data' payload in bytes
-    uint32_t bytes_per_frame; // 4 for stereo 16-bit
-    uint32_t stream_pos_bytes;// current byte offset within data chunk
+    FIL fil;                  //!< FatFs file handle.
+    bool fileIsOpen;          //!< Whether a file is currently open.
+    uint32_t data_start;      //!< Byte offset of `data` payload start.
+    uint32_t data_bytes;      //!< Size of `data` payload in bytes.
+    uint32_t bytes_per_frame; //!< Bytes per frame (4 for stereo 16‑bit).
+    uint32_t stream_pos_bytes;//!< Current byte offset within data chunk.
 };
 
 static WavState g_wav{};
 
+/** @brief Load little‑endian 16‑bit from byte pointer. */
 static inline uint16_t mw_le16(const unsigned char *p) { return (uint16_t)p[0] | ((uint16_t)p[1] << 8); }
+/** @brief Load little‑endian 32‑bit from byte pointer. */
 static inline uint32_t mw_le32(const unsigned char *p) { return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24); }
 
+/**
+ * @brief Apply `offset_sec` converting to frames and seek/reset positions.
+ *
+ * For memory source:
+ * - Computes `start_frame` modulo total frames and sets `frame_pos`.
+ *
+ * For file source:
+ * - Computes `stream_pos_bytes` within the `data` chunk, seeks file to
+ *   `data_start + stream_pos_bytes`, and sets `frame_pos` accordingly.
+ */
 static void apply_offset()
 {
     if (!g_wav.ready) return;
@@ -65,12 +115,23 @@ static void apply_offset()
     }
 }
 
+/**
+ * @brief Set the loop start offset in seconds and apply immediately.
+ * @param seconds Offset in seconds; values < 0 are clamped to 0.
+ */
 void set_offset_seconds(float seconds)
 {
     g_wav.offset_sec = seconds < 0.0f ? 0.0f : seconds;
     apply_offset();
 }
 
+/**
+ * @brief Initialize playback from embedded `samplesound_wav` buffer.
+ *
+ * Parses the RIFF/WAVE header from the in‑memory buffer, validates that the
+ * stream is PCM, stereo, 16‑bit, and sets up internal state to loop the
+ * audio. On validation failure, leaves the player not ready.
+ */
 void init_memory()
 {
     const unsigned char *wav = samplesound_wav;
@@ -109,6 +170,16 @@ void init_memory()
     apply_offset();
 }
 
+/**
+ * @brief Prepare playback from a WAV file on the FatFs filesystem.
+ * @param path Path to a WAV file (PCM/stereo/16‑bit).
+ * @return true on success; false if the file cannot be opened or validated.
+ *
+ * If another file is already open, it is closed first. The function reads a
+ * small header buffer, scans for `fmt` and `data` chunks, validates format,
+ * and initializes streaming state. On success, playback starts from the
+ * configured `offset_sec`.
+ */
 bool use_file(const char* path)
 {
     if (!path || !*path) return false;
@@ -169,6 +240,17 @@ bool use_file(const char* path)
     return true;
 }
 
+/**
+ * @brief Push up to `frames_to_push` frames into the audio queue.
+ * @param frames_to_push Number of frames to attempt to enqueue.
+ *
+ * Behavior:
+ * - Memory: Reads frames from the embedded buffer and loops at `start_frame`.
+ * - File: Reads chunked frames (up to 256 at a time). On reaching EOF or an
+ *   error, seeks to `start_frame` and continues looping.
+ *
+ * Requires `settings.flags.audioEnabled` to be true; otherwise returns.
+ */
 void pump(uint32_t frames_to_push)
 {
     if (!g_wav.ready) return;
@@ -227,9 +309,17 @@ void pump(uint32_t frames_to_push)
     }
 }
 
+/** @brief Current sample rate in Hz (0 if not initialized). */
 uint32_t sample_rate() { return g_wav.sample_rate; }
+/** @brief Whether the player is configured and able to pump audio. */
 bool ready() { return g_wav.ready; }
 
+/**
+ * @brief Close any open file and reset state to defaults.
+ *
+ * Closes the file if open, clears the internal `WavState`, and logs a
+ * message. After reset, the player is not ready until reinitialized.
+ */
 void reset()
 {
     if (g_wav.fileIsOpen) {
