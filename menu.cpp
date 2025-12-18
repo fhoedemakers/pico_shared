@@ -23,6 +23,7 @@
 #include "vumeter.h"
 #include "DefaultSS.h"
 #include <stdint.h>
+#include "wavplayer.h"
 #if !HSTX
 #define CC(x) (((x >> 1) & 15) | (((x >> 6) & 15) << 4) | (((x >> 11) & 15) << 8))
 const __UINT16_TYPE__ NesMenuPalette[64] = {
@@ -2005,9 +2006,7 @@ bool showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
     return saveStateLoadedOK;
 }
 
-#if HW_CONFIG == 8
-#include "wavplayer.h"
-#endif // HW_CONFIG == 8
+
 // --- Settings Menu Implementation ---
 // returns 0 if no changes, 1 if settings applied
 //         2 start screensaver
