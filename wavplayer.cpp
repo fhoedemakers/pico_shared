@@ -23,6 +23,8 @@
  * - `pump()` should be called regularly from the audio update loop to keep
  *   the queue filled. It is not re‑entrant.
  * - Functions in this module are not thread‑safe.
+ * 
+ * Royalty free music pack: https://lonepeakmusic.itch.io/retro-midi-music-pack-1
  */
 #include "wavplayer.h"
 
