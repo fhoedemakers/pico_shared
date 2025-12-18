@@ -4,7 +4,7 @@
 
 namespace wavplayer {
 
-#if HW_CONFIG == 8
+#if PICO_RP2350
 // Initialize playback from embedded WAV in memory (optional).
 void init_memory();
 
@@ -24,7 +24,7 @@ bool ready();
 // Close any open file and reset internal state to defaults.
 void reset();
 #else
-// Stubs for non-HW_CONFIG 8 builds.
+// Stubs for non-PICO_RP2350 builds.
 inline void init_memory() {}
 inline bool use_file(const char*) { return false; }
 inline void set_offset_seconds(float) {}
