@@ -396,7 +396,27 @@ namespace wavplayer
         apply_offset();
         printf("WAV format %u, %u ch, %u bps, %u Hz, %u bytes, duration %f sec\n", audio_format, channels, bits_per, sample_rate, data_size, g_wav.duration_sec);
         printf("WAV player, playing from file: %s\n", path);
-        set_volume_linear(1.0f); // (0.1f); // default to low volume
+#if !HSTX
+#if EXT_AUDIO_IS_ENABLED
+        if (settings.flags.useExtAudio)
+        {
+            printf("WAV player using EXT_AUDIO\n");
+            set_volume_linear(0.1f);
+        }
+        else
+        {
+            printf("WAV player using DVI audio\n");
+            set_volume_linear(0.3f); 
+        }
+#else
+        printf("WAV player using DVI audio\n");
+         set_volume_linear(0.3f); 
+#endif // EXT_AUDIO_IS_ENABLED
+#else
+        printf("WAV player using EXT_AUDIO (HSTX build)\n");
+        set_volume_linear(0.1f); // default to low volume
+#endif // !HSTX
+        
         // allocate buffer
         if ( !buf ) {
             buf = (uint8_t *)Frens::f_malloc(WAVPLAYER_MAX_READ_BYTES);
