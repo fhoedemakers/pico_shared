@@ -2,13 +2,16 @@
  * @file wavplayer.cpp
  * @brief Simple WAV player. RP2350 only.
  *
- * This module provides a minimal stereo 16‑bit WAV player that can stream
+ * This module provides a minimal stereo WAV player that can stream
  * audio either from an embedded memory buffer (generated in soundrecorder.cpp)
  * or from a file on the FAT filesystem. The player supports continuous
  * looping with a configurable start offset in seconds.
  *
  * Key characteristics:
- * - Expects PCM format: RIFF/WAVE, `fmt` = PCM (1), 2 channels, 16‑bit.
+ * - Expects PCM format: RIFF/WAVE, `fmt` = PCM (1), 2 channels.
+ * - Supported bit depths:
+ *   - Memory source: 16‑bit PCM.
+ *   - File source: 16‑bit PCM or 24‑bit PCM (down‑converted to 16‑bit).
  * - Streams frames into the external audio queue via `EXT_AUDIO_ENQUEUE_SAMPLE`.
  * - For memory source: loops over the embedded buffer.
  * - For file source: reads chunked frames and loops by seeking to an offset.
@@ -67,6 +70,7 @@ namespace wavplayer
     {
         // Common
         uint32_t sample_rate;  //!< Sample rate in Hz.
+        uint16_t bits_per;     //!< Bits per sample in source (16 or 24 for file; 16 for memory).
         uint32_t frames_total; //!< Total frames (informational for memory).
         uint32_t frame_pos;    //!< Current frame index.
         uint32_t start_frame;  //!< Loop start frame computed from `offset_sec`.
@@ -85,6 +89,8 @@ namespace wavplayer
         uint32_t bytes_per_frame;  //!< Bytes per frame (4 for stereo 16‑bit).
         uint32_t stream_pos_bytes; //!< Current byte offset within data chunk.
 
+        int16_t gain_q15; //!< Master gain in Q15 (0..32767). Default -6 dB (16384).
+
         bool isplaying; //!< Whether playback is paused.
     };
 
@@ -94,6 +100,44 @@ namespace wavplayer
     static inline uint16_t mw_le16(const unsigned char *p) { return (uint16_t)p[0] | ((uint16_t)p[1] << 8); }
     /** @brief Load little‑endian 32‑bit from byte pointer. */
     static inline uint32_t mw_le32(const unsigned char *p) { return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24); }
+
+    // Add: detect WAVE_FORMAT_EXTENSIBLE with PCM SubFormat
+    static inline bool is_wave_extensible_pcm(const unsigned char *fmt_base, uint32_t fmt_size)
+    {
+        // Need: fmt chunk size >= 40, cbSize >= 22, and SubFormat == KSDATAFORMAT_SUBTYPE_PCM
+        if (fmt_size < 40) return false;
+        uint16_t cbSize = mw_le16(&fmt_base[16]);
+        if (cbSize < 22) return false;
+        static const uint8_t pcm_guid[16] = {
+            0x01,0x00,0x00,0x00, 0x00,0x00,0x10,0x00,
+            0x80,0x00,0x00,0xAA, 0x00,0x38,0x9B,0x71
+        };
+        for (int i = 0; i < 16; ++i)
+            if (fmt_base[24 + i] != pcm_guid[i]) return false;
+        return true;
+    }
+
+    /**
+     * @brief Convert little-endian signed 24-bit PCM to signed 16-bit.
+     * Input points to 3 bytes (LSB..MSB). Performs sign extension then >> 8.
+     */
+    static inline int16_t pcm24_to_s16(const uint8_t *p)
+    {
+        int32_t v = (int32_t)(p[0] | (p[1] << 8) | (p[2] << 16));
+        if (v & 0x00800000)
+            v |= 0xFF000000; // sign-extend from 24-bit
+        return (int16_t)(v >> 8);
+    }
+
+    // Apply master gain with saturation.
+    static inline int16_t apply_gain(int16_t s)
+    {
+        int32_t v = (int32_t)s * (int32_t)g_wav.gain_q15; // Q15 multiply
+        v >>= 15;
+        if (v > 32767) v = 32767;
+        else if (v < -32768) v = -32768;
+        return (int16_t)v;
+    }
 
     /**
      * @brief Apply `offset_sec` converting to frames and seek/reset positions.
@@ -141,6 +185,14 @@ namespace wavplayer
     {
         g_wav.offset_sec = seconds < 0.0f ? 0.0f : seconds;
         apply_offset();
+    }
+
+    // Optional: runtime volume control (0.0 .. 1.0). Defaults to 0.5 in inits.
+    void set_volume_linear(float vol)
+    {
+        if (vol < 0.0f) vol = 0.0f;
+        if (vol > 1.0f) vol = 1.0f;
+        g_wav.gain_q15 = (int16_t)(vol * 32767.0f + 0.5f);
     }
 
     /**
@@ -196,7 +248,11 @@ namespace wavplayer
         uint32_t sample_rate = mw_le32(&wav[fmt_off + 4]);
         uint16_t bits_per = mw_le16(&wav[fmt_off + 14]);
 
-        if (audio_format != 1 || channels != 2 || bits_per != 16 || sample_rate == 0 || data_size < 4)
+        // Memory source currently supports only 16-bit PCM (allow WAVE_FORMAT_EXTENSIBLE PCM)
+        bool pcm_ok = (audio_format == 1) ||
+                      (audio_format == 65534 && is_wave_extensible_pcm(&wav[fmt_off], fmt_size));
+
+        if (!pcm_ok || channels != 2 || bits_per != 16 || sample_rate == 0 || data_size < 4)
         {
             g_wav.ready = false;
             return;
@@ -204,6 +260,7 @@ namespace wavplayer
 
         g_wav.kind = WavSrcKind::Memory;
         g_wav.sample_rate = sample_rate;
+        g_wav.bits_per = 16;
         g_wav.bytes_per_frame = 4;
         g_wav.pcm_mem = (const int16_t *)(&wav[data_off]);
         g_wav.frames_total = data_size / 4;
@@ -212,6 +269,7 @@ namespace wavplayer
         g_wav.ready = (g_wav.frames_total > 0);
         g_wav.fileIsOpen = false;
         g_wav.isplaying = false;
+        g_wav.gain_q15 = 16384; // -6 dB default
         apply_offset();
     }
 
@@ -300,34 +358,40 @@ namespace wavplayer
         uint32_t sample_rate = mw_le32(&hdr[fmt_off + 4]);
         uint16_t bits_per = mw_le16(&hdr[fmt_off + 14]);
 
-        if (audio_format != 1 || channels != 2 || bits_per != 16 || sample_rate == 0 || data_size < 4)
+        bool pcm_ok = (audio_format == 1) ||
+                      (audio_format == 65534 && is_wave_extensible_pcm(&hdr[fmt_off], fmt_size));
+
+        if (!pcm_ok || channels != 2 || (bits_per != 16 && bits_per != 24) || sample_rate == 0 || data_size < 4)
         {
-            printf("WAV: Unsupported format %u ch %u bps %u Hz\n", channels, bits_per, sample_rate);
+            printf("WAV: Unsupported format %u %u ch %u bps %u Hz %u data_size\n", audio_format, channels, bits_per, sample_rate, data_size);
             f_close(&g_wav.fil);
             g_wav.fileIsOpen = false;
             return false;
         }
+        printf("WAV: format %u %u ch %u bps %u Hz %u data_size\n", audio_format, channels, bits_per, sample_rate, data_size);
 
         g_wav.kind = WavSrcKind::File;
         g_wav.sample_rate = sample_rate;
-        g_wav.bytes_per_frame = 4;
+        g_wav.bits_per = bits_per;
+        g_wav.bytes_per_frame = (bits_per == 24) ? 6u : 4u;
         g_wav.data_start = data_off;
         g_wav.data_bytes = data_size;
-        g_wav.frames_total = data_size / 4; // informational
+        g_wav.frames_total = data_size / g_wav.bytes_per_frame; // informational
         g_wav.stream_pos_bytes = 0;
         g_wav.frame_pos = 0;
         g_wav.start_frame = 0;
         g_wav.ready = true;
         g_wav.isplaying = false;
+        g_wav.gain_q15 = 16384; // -6 dB default
         // Seek to beginning to allow lseek to data later
         f_lseek(&g_wav.fil, 0);
         apply_offset();
         printf("WAV player, playing from file: %s, %u Hz, %u bytes\n", path, sample_rate, data_size);
-
+        set_volume_linear(0.1f); // default to low volume
         return true;
     }
-     // Read chunked frames from file
-    static int16_t buf[256 * 2]; // 256 frames stereo
+    // Read chunked frames from file (max 256 frames, up to 6 bytes/frame)
+    static uint8_t buf[256 * 6];
     /**
      * @brief Push up to `frames_to_push` frames into the audio queue.
      * @param frames_to_push Number of frames to attempt to enqueue.
@@ -355,6 +419,7 @@ namespace wavplayer
                 {
                     const int16_t *p = g_wav.pcm_mem + (g_wav.frame_pos * 2);
                     int16_t l = p[0], r = p[1];
+                    l = apply_gain(l); r = apply_gain(r);
                     EXT_AUDIO_ENQUEUE_SAMPLE(l, r);
                     g_wav.frame_pos++;
                     if (g_wav.frame_pos >= g_wav.frames_total)
@@ -375,7 +440,9 @@ namespace wavplayer
                     for (uint32_t i = 0; i < n; ++i)
                     {
                         const int16_t *p = g_wav.pcm_mem + (g_wav.frame_pos * 2);
-                        dst[i] = {p[0], p[1]};
+                        int16_t l = p[0], r = p[1];
+                        l = apply_gain(l); r = apply_gain(r);
+                        dst[i] = {l, r};
                         g_wav.frame_pos++;
                         if (g_wav.frame_pos >= g_wav.frames_total)
                         {
@@ -398,7 +465,9 @@ namespace wavplayer
                 for (uint32_t i = 0; i < n; ++i)
                 {
                     const int16_t *p = g_wav.pcm_mem + (g_wav.frame_pos * 2);
-                    dst[i] = {p[0], p[1]};
+                    int16_t l = p[0], r = p[1];
+                    l = apply_gain(l); r = apply_gain(r);
+                    dst[i] = {l, r};
                     g_wav.frame_pos++;
                     if (g_wav.frame_pos >= g_wav.frames_total)
                     {
@@ -415,6 +484,7 @@ namespace wavplayer
             {
                 const int16_t *p = g_wav.pcm_mem + (g_wav.frame_pos * 2);
                 int16_t l = p[0], r = p[1];
+                l = apply_gain(l); r = apply_gain(r);
                 EXT_AUDIO_ENQUEUE_SAMPLE(l, r);
                 g_wav.frame_pos++;
                 if (g_wav.frame_pos >= g_wav.frames_total)
@@ -450,23 +520,39 @@ namespace wavplayer
                 g_wav.stream_pos_bytes += rd;
 
                 uint32_t got_frames = rd / g_wav.bytes_per_frame;
-                const int16_t *src = buf;
 
 #if !HSTX
 #if EXT_AUDIO_IS_ENABLED
                 if (settings.flags.useExtAudio)
                 {
-                    for (uint32_t i = 0; i < got_frames; ++i)
+                    if (g_wav.bits_per == 16)
                     {
-                        int16_t l = *src++;
-                        int16_t r = *src++;
-                        EXT_AUDIO_ENQUEUE_SAMPLE(l, r);
+                        const int16_t *src16 = (const int16_t *)buf;
+                        for (uint32_t i = 0; i < got_frames; ++i)
+                        {
+                            int16_t l = *src16++;
+                            int16_t r = *src16++;
+                            l = apply_gain(l); r = apply_gain(r);
+                            EXT_AUDIO_ENQUEUE_SAMPLE(l, r);
+                        }
+                    }
+                    else
+                    {
+                        const uint8_t *p = (const uint8_t *)buf;
+                        for (uint32_t i = 0; i < got_frames; ++i)
+                        {
+                            int16_t l = pcm24_to_s16(p); p += 3;
+                            int16_t r = pcm24_to_s16(p); p += 3;
+                            l = apply_gain(l); r = apply_gain(r);
+                            EXT_AUDIO_ENQUEUE_SAMPLE(l, r);
+                        }
                     }
                     g_wav.frame_pos += got_frames;
                     frames_to_push -= got_frames;
                 }
                 else
                 {
+                    uint32_t consumed_frames = 0;
                     while (got_frames)
                     {
                         auto &ring = dvi_->getAudioRingBuffer();
@@ -474,46 +560,99 @@ namespace wavplayer
                         if (!n)
                             return; // ring full, try again later
                         auto dst = ring.getWritePointer();
-                        for (uint32_t i = 0; i < n; ++i)
+                        if (g_wav.bits_per == 16)
                         {
-                            int16_t l = *src++;
-                            int16_t r = *src++;
-                            dst[i] = {l, r};
+                            const int16_t *src16 = (const int16_t *)buf + consumed_frames * 2;
+                            for (uint32_t i = 0; i < n; ++i)
+                            {
+                                int16_t l = *src16++;
+                                int16_t r = *src16++;
+                                l = apply_gain(l); r = apply_gain(r);
+                                dst[i] = {l, r};
+                            }
+                        }
+                        else
+                        {
+                            const uint8_t *p = (const uint8_t *)buf + consumed_frames * 6;
+                            for (uint32_t i = 0; i < n; ++i)
+                            {
+                                int16_t l = pcm24_to_s16(p); p += 3;
+                                int16_t r = pcm24_to_s16(p); p += 3;
+                                l = apply_gain(l); r = apply_gain(r);
+                                dst[i] = {l, r};
+                            }
                         }
                         ring.advanceWritePointer(n);
                         g_wav.frame_pos += n;
                         frames_to_push -= n;
                         got_frames -= n;
+                        consumed_frames += n;
                     }
                 }
 #else
                 // No external audio compiled in: always use DVI ring
-                while (got_frames)
                 {
-                    auto &ring = dvi_->getAudioRingBuffer();
-                    uint32_t n = std::min<uint32_t>(got_frames, ring.getWritableSize());
-                    if (!n)
-                        return; // ring full, try again later
-                    auto dst = ring.getWritePointer();
-                    for (uint32_t i = 0; i < n; ++i)
+                    uint32_t consumed_frames = 0;
+                    while (got_frames)
                     {
-                        int16_t l = *src++;
-                        int16_t r = *src++;
-                        dst[i] = {l, r};
+                        auto &ring = dvi_->getAudioRingBuffer();
+                        uint32_t n = std::min<uint32_t>(got_frames, ring.getWritableSize());
+                        if (!n)
+                            return; // ring full, try again later
+                        auto dst = ring.getWritePointer();
+                        if (g_wav.bits_per == 16)
+                        {
+                            const int16_t *src16 = (const int16_t *)buf + consumed_frames * 2;
+                            for (uint32_t i = 0; i < n; ++i)
+                            {
+                                int16_t l = *src16++;
+                                int16_t r = *src16++;
+                                l = apply_gain(l); r = apply_gain(r);
+                                dst[i] = {l, r};
+                            }
+                        }
+                        else
+                        {
+                            const uint8_t *p = (const uint8_t *)buf + consumed_frames * 6;
+                            for (uint32_t i = 0; i < n; ++i)
+                            {
+                                int16_t l = pcm24_to_s16(p); p += 3;
+                                int16_t r = pcm24_to_s16(p); p += 3;
+                                l = apply_gain(l); r = apply_gain(r);
+                                dst[i] = {l, r};
+                            }
+                        }
+                        ring.advanceWritePointer(n);
+                        g_wav.frame_pos += n;
+                        frames_to_push -= n;
+                        got_frames -= n;
+                        consumed_frames += n;
                     }
-                    ring.advanceWritePointer(n);
-                    g_wav.frame_pos += n;
-                    frames_to_push -= n;
-                    got_frames -= n;
                 }
 #endif // EXT_AUDIO_IS_ENABLED
 #else
                 // HSTX build: must use external audio
-                for (uint32_t i = 0; i < got_frames; ++i)
+                if (g_wav.bits_per == 16)
                 {
-                    int16_t l = *src++;
-                    int16_t r = *src++;
-                    EXT_AUDIO_ENQUEUE_SAMPLE(l, r);
+                    const int16_t *src16 = (const int16_t *)buf;
+                    for (uint32_t i = 0; i < got_frames; ++i)
+                    {
+                        int16_t l = *src16++;
+                        int16_t r = *src16++;
+                        l = apply_gain(l); r = apply_gain(r);
+                        EXT_AUDIO_ENQUEUE_SAMPLE(l, r);
+                    }
+                }
+                else
+                {
+                    const uint8_t *p = (const uint8_t *)buf;
+                    for (uint32_t i = 0; i < got_frames; ++i)
+                    {
+                        int16_t l = pcm24_to_s16(p); p += 3;
+                        int16_t r = pcm24_to_s16(p); p += 3;
+                        l = apply_gain(l); r = apply_gain(r);
+                        EXT_AUDIO_ENQUEUE_SAMPLE(l, r);
+                    }
                 }
                 g_wav.frame_pos += got_frames;
                 frames_to_push -= got_frames;
