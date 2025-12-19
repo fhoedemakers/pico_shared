@@ -20,7 +20,8 @@ void pump(uint32_t frames_to_push);
 // Query state for driving logic.
 uint32_t sample_rate();
 bool ready();
-
+void pause();  
+void resume();
 // Close any open file and reset internal state to defaults.
 void reset();
 #else
@@ -32,6 +33,8 @@ inline void pump(uint32_t) {}
 inline uint32_t sample_rate() { return 0; }
 inline bool ready() { return false; }
 inline void reset() {}
+inline void pause() {}  
+inline void resume() {}
 #endif
 
 } // namespace wavplayer
