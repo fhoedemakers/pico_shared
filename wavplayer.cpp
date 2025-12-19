@@ -30,6 +30,7 @@
 
 #if PICO_RP2350
 
+#include "FrensHelpers.h"
 #include "external_audio.h"
 #include "ff.h"
 #include "settings.h"
@@ -322,7 +323,8 @@ namespace wavplayer
 
         return true;
     }
-
+     // Read chunked frames from file
+    static int16_t buf[256 * 2]; // 256 frames stereo
     /**
      * @brief Push up to `frames_to_push` frames into the audio queue.
      * @param frames_to_push Number of frames to attempt to enqueue.
@@ -342,6 +344,70 @@ namespace wavplayer
             return;
         if (g_wav.kind == WavSrcKind::Memory)
         {
+#if !HSTX
+#if EXT_AUDIO_IS_ENABLED
+            if (settings.flags.useExtAudio)
+            {
+                while (frames_to_push--)
+                {
+                    const int16_t *p = g_wav.pcm_mem + (g_wav.frame_pos * 2);
+                    int16_t l = p[0], r = p[1];
+                    EXT_AUDIO_ENQUEUE_SAMPLE(l, r);
+                    g_wav.frame_pos++;
+                    if (g_wav.frame_pos >= g_wav.frames_total)
+                    {
+                        g_wav.frame_pos = g_wav.start_frame;
+                    }
+                }
+            }
+            else
+            {
+                while (frames_to_push)
+                {
+                    auto &ring = dvi_->getAudioRingBuffer();
+                    auto n = std::min<uint32_t>(frames_to_push, ring.getWritableSize());
+                    if (!n)
+                        return;
+                    auto dst = ring.getWritePointer();
+                    for (uint32_t i = 0; i < n; ++i)
+                    {
+                        const int16_t *p = g_wav.pcm_mem + (g_wav.frame_pos * 2);
+                        dst[i] = {p[0], p[1]};
+                        g_wav.frame_pos++;
+                        if (g_wav.frame_pos >= g_wav.frames_total)
+                        {
+                            g_wav.frame_pos = g_wav.start_frame;
+                        }
+                    }
+                    ring.advanceWritePointer(n);
+                    frames_to_push -= n;
+                }
+            }
+#else
+            // No external audio compiled in: always use DVI ring
+            while (frames_to_push)
+            {
+                auto &ring = dvi_->getAudioRingBuffer();
+                auto n = std::min<uint32_t>(frames_to_push, ring.getWritableSize());
+                if (!n)
+                    return;
+                auto dst = ring.getWritePointer();
+                for (uint32_t i = 0; i < n; ++i)
+                {
+                    const int16_t *p = g_wav.pcm_mem + (g_wav.frame_pos * 2);
+                    dst[i] = {p[0], p[1]};
+                    g_wav.frame_pos++;
+                    if (g_wav.frame_pos >= g_wav.frames_total)
+                    {
+                        g_wav.frame_pos = g_wav.start_frame;
+                    }
+                }
+                ring.advanceWritePointer(n);
+                frames_to_push -= n;
+            }
+#endif // EXT_AUDIO_IS_ENABLED
+#else
+            // HSTX build: must use external audio
             while (frames_to_push--)
             {
                 const int16_t *p = g_wav.pcm_mem + (g_wav.frame_pos * 2);
@@ -353,11 +419,10 @@ namespace wavplayer
                     g_wav.frame_pos = g_wav.start_frame; // loop back to offset
                 }
             }
+#endif // !HSTX
         }
         else
         {
-            // Read chunked frames from file
-            int16_t buf[256 * 2]; // 256 frames stereo
             while (frames_to_push)
             {
                 uint32_t want_frames = std::min<uint32_t>(frames_to_push, 256);
@@ -382,15 +447,74 @@ namespace wavplayer
                 g_wav.stream_pos_bytes += rd;
 
                 uint32_t got_frames = rd / g_wav.bytes_per_frame;
-                const int16_t *p = buf;
+                const int16_t *src = buf;
+
+#if !HSTX
+#if EXT_AUDIO_IS_ENABLED
+                if (settings.flags.useExtAudio)
+                {
+                    for (uint32_t i = 0; i < got_frames; ++i)
+                    {
+                        int16_t l = *src++;
+                        int16_t r = *src++;
+                        EXT_AUDIO_ENQUEUE_SAMPLE(l, r);
+                    }
+                    g_wav.frame_pos += got_frames;
+                    frames_to_push -= got_frames;
+                }
+                else
+                {
+                    while (got_frames)
+                    {
+                        auto &ring = dvi_->getAudioRingBuffer();
+                        uint32_t n = std::min<uint32_t>(got_frames, ring.getWritableSize());
+                        if (!n)
+                            return; // ring full, try again later
+                        auto dst = ring.getWritePointer();
+                        for (uint32_t i = 0; i < n; ++i)
+                        {
+                            int16_t l = *src++;
+                            int16_t r = *src++;
+                            dst[i] = {l, r};
+                        }
+                        ring.advanceWritePointer(n);
+                        g_wav.frame_pos += n;
+                        frames_to_push -= n;
+                        got_frames -= n;
+                    }
+                }
+#else
+                // No external audio compiled in: always use DVI ring
+                while (got_frames)
+                {
+                    auto &ring = dvi_->getAudioRingBuffer();
+                    uint32_t n = std::min<uint32_t>(got_frames, ring.getWritableSize());
+                    if (!n)
+                        return; // ring full, try again later
+                    auto dst = ring.getWritePointer();
+                    for (uint32_t i = 0; i < n; ++i)
+                    {
+                        int16_t l = *src++;
+                        int16_t r = *src++;
+                        dst[i] = {l, r};
+                    }
+                    ring.advanceWritePointer(n);
+                    g_wav.frame_pos += n;
+                    frames_to_push -= n;
+                    got_frames -= n;
+                }
+#endif // EXT_AUDIO_IS_ENABLED
+#else
+                // HSTX build: must use external audio
                 for (uint32_t i = 0; i < got_frames; ++i)
                 {
-                    int16_t l = *p++;
-                    int16_t r = *p++;
+                    int16_t l = *src++;
+                    int16_t r = *src++;
                     EXT_AUDIO_ENQUEUE_SAMPLE(l, r);
                 }
                 g_wav.frame_pos += got_frames;
                 frames_to_push -= got_frames;
+#endif // !HSTX
 
                 // If we ended exactly at EOF, next loop will reset to offset
                 if (g_wav.stream_pos_bytes >= g_wav.data_bytes)
