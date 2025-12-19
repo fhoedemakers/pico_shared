@@ -255,12 +255,14 @@ namespace wavplayer
 
         if (!(hdr[0] == 'R' && hdr[1] == 'I' && hdr[2] == 'F' && hdr[3] == 'F'))
         {
+            printf("WAV: Invalid RIFF header\n");
             f_close(&g_wav.fil);
             g_wav.fileIsOpen = false;
             return false;
         }
         if (!(hdr[8] == 'W' && hdr[9] == 'A' && hdr[10] == 'V' && hdr[11] == 'E'))
         {
+            printf("WAV: Invalid WAVE header\n");
             f_close(&g_wav.fil);
             g_wav.fileIsOpen = false;
             return false;
@@ -300,6 +302,7 @@ namespace wavplayer
 
         if (audio_format != 1 || channels != 2 || bits_per != 16 || sample_rate == 0 || data_size < 4)
         {
+            printf("WAV: Unsupported format %u ch %u bps %u Hz\n", channels, bits_per, sample_rate);
             f_close(&g_wav.fil);
             g_wav.fileIsOpen = false;
             return false;
