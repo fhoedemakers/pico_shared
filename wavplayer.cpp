@@ -78,6 +78,8 @@ namespace wavplayer
         float offset_sec;      //!< Loop start offset in seconds (>= 0).
         WavSrcKind kind;       //!< Active source kind.
 
+        float duration_sec;    //!< Total duration of the track in seconds.
+
         // Memory source
         const int16_t *pcm_mem; //!< Pointer to interleaved stereo 16‑bit samples.
 
@@ -95,6 +97,9 @@ namespace wavplayer
     };
 
     static WavState g_wav{};
+      // Read chunked frames from file (max 256 frames, up to 6 bytes/frame)
+    #define WAVPLAYER_MAX_READ_BYTES (256 * 6 *sizeof(uint8_t))
+    static uint8_t *buf = nullptr; //[256 * 6];
 
     /** @brief Load little‑endian 16‑bit from byte pointer. */
     static inline uint16_t mw_le16(const unsigned char *p) { return (uint16_t)p[0] | ((uint16_t)p[1] << 8); }
@@ -193,6 +198,7 @@ namespace wavplayer
         if (vol < 0.0f) vol = 0.0f;
         if (vol > 1.0f) vol = 1.0f;
         g_wav.gain_q15 = (int16_t)(vol * 32767.0f + 0.5f);
+        printf("WAV player volume set to %.3f (Q15=%d)\n", vol, g_wav.gain_q15);
     }
 
     /**
@@ -270,6 +276,7 @@ namespace wavplayer
         g_wav.fileIsOpen = false;
         g_wav.isplaying = false;
         g_wav.gain_q15 = 16384; // -6 dB default
+        g_wav.duration_sec = (g_wav.sample_rate ? (float)g_wav.frames_total / (float)g_wav.sample_rate : 0.0f);
         apply_offset();
     }
 
@@ -368,7 +375,7 @@ namespace wavplayer
             g_wav.fileIsOpen = false;
             return false;
         }
-        printf("WAV: format %u %u ch %u bps %u Hz %u data_size\n", audio_format, channels, bits_per, sample_rate, data_size);
+       
 
         g_wav.kind = WavSrcKind::File;
         g_wav.sample_rate = sample_rate;
@@ -383,15 +390,20 @@ namespace wavplayer
         g_wav.ready = true;
         g_wav.isplaying = false;
         g_wav.gain_q15 = 16384; // -6 dB default
+        g_wav.duration_sec = (g_wav.sample_rate ? (float)g_wav.frames_total / (float)g_wav.sample_rate : 0.0f);
         // Seek to beginning to allow lseek to data later
         f_lseek(&g_wav.fil, 0);
         apply_offset();
-        printf("WAV player, playing from file: %s, %u Hz, %u bytes\n", path, sample_rate, data_size);
-        set_volume_linear(0.1f); // default to low volume
+        printf("WAV format %u, %u ch, %u bps, %u Hz, %u bytes, duration %f sec\n", audio_format, channels, bits_per, sample_rate, data_size, g_wav.duration_sec);
+        printf("WAV player, playing from file: %s\n", path);
+        set_volume_linear(1.0f); // (0.1f); // default to low volume
+        // allocate buffer
+        if ( !buf ) {
+            buf = (uint8_t *)Frens::f_malloc(WAVPLAYER_MAX_READ_BYTES);
+        }
         return true;
     }
-    // Read chunked frames from file (max 256 frames, up to 6 bytes/frame)
-    static uint8_t buf[256 * 6];
+  
     /**
      * @brief Push up to `frames_to_push` frames into the audio queue.
      * @param frames_to_push Number of frames to attempt to enqueue.
@@ -409,6 +421,7 @@ namespace wavplayer
             return;
         if (!settings.flags.audioEnabled)
             return;
+
         if (g_wav.kind == WavSrcKind::Memory)
         {
 #if !HSTX
@@ -434,8 +447,9 @@ namespace wavplayer
                 {
                     auto &ring = dvi_->getAudioRingBuffer();
                     auto n = std::min<uint32_t>(frames_to_push, ring.getWritableSize());
-                    if (!n)
-                        return;
+                    if (!n) {
+                        return; // no accumulation; compute at end
+                    }
                     auto dst = ring.getWritePointer();
                     for (uint32_t i = 0; i < n; ++i)
                     {
@@ -459,8 +473,9 @@ namespace wavplayer
             {
                 auto &ring = dvi_->getAudioRingBuffer();
                 auto n = std::min<uint32_t>(frames_to_push, ring.getWritableSize());
-                if (!n)
-                    return;
+                if (!n) {
+                    return; // no accumulation; compute at end
+                }
                 auto dst = ring.getWritePointer();
                 for (uint32_t i = 0; i < n; ++i)
                 {
@@ -489,7 +504,7 @@ namespace wavplayer
                 g_wav.frame_pos++;
                 if (g_wav.frame_pos >= g_wav.frames_total)
                 {
-                    g_wav.frame_pos = g_wav.start_frame; // loop back to offset
+                    g_wav.frame_pos = g_wav.start_frame;
                 }
             }
 #endif // !HSTX
@@ -506,6 +521,7 @@ namespace wavplayer
                     g_wav.stream_pos_bytes = g_wav.start_frame * g_wav.bytes_per_frame;
                     f_lseek(&g_wav.fil, g_wav.data_start + g_wav.stream_pos_bytes);
                     bytes_avail = g_wav.data_bytes - g_wav.stream_pos_bytes;
+                    g_wav.frame_pos = g_wav.start_frame; // keep position consistent
                 }
                 uint32_t bytes_to_read = std::min<uint32_t>(want_frames * g_wav.bytes_per_frame, bytes_avail);
                 UINT rd = 0;
@@ -547,7 +563,6 @@ namespace wavplayer
                             EXT_AUDIO_ENQUEUE_SAMPLE(l, r);
                         }
                     }
-                    g_wav.frame_pos += got_frames;
                     frames_to_push -= got_frames;
                 }
                 else
@@ -557,8 +572,9 @@ namespace wavplayer
                     {
                         auto &ring = dvi_->getAudioRingBuffer();
                         uint32_t n = std::min<uint32_t>(got_frames, ring.getWritableSize());
-                        if (!n)
-                            return; // ring full, try again later
+                        if (!n) {
+                            return; // no accumulation; compute at end
+                        }
                         auto dst = ring.getWritePointer();
                         if (g_wav.bits_per == 16)
                         {
@@ -583,7 +599,6 @@ namespace wavplayer
                             }
                         }
                         ring.advanceWritePointer(n);
-                        g_wav.frame_pos += n;
                         frames_to_push -= n;
                         got_frames -= n;
                         consumed_frames += n;
@@ -597,8 +612,9 @@ namespace wavplayer
                     {
                         auto &ring = dvi_->getAudioRingBuffer();
                         uint32_t n = std::min<uint32_t>(got_frames, ring.getWritableSize());
-                        if (!n)
-                            return; // ring full, try again later
+                        if (!n) {
+                            return; // no accumulation; compute at end
+                        }
                         auto dst = ring.getWritePointer();
                         if (g_wav.bits_per == 16)
                         {
@@ -623,7 +639,6 @@ namespace wavplayer
                             }
                         }
                         ring.advanceWritePointer(n);
-                        g_wav.frame_pos += n;
                         frames_to_push -= n;
                         got_frames -= n;
                         consumed_frames += n;
@@ -654,7 +669,6 @@ namespace wavplayer
                         EXT_AUDIO_ENQUEUE_SAMPLE(l, r);
                     }
                 }
-                g_wav.frame_pos += got_frames;
                 frames_to_push -= got_frames;
 #endif // !HSTX
 
@@ -667,12 +681,42 @@ namespace wavplayer
                 }
             }
         }
+
+        // Compute seconds since loop start (no accumulation across loops)
+        if (g_wav.sample_rate)
+        {
+            uint32_t frames_since_start = (g_wav.frame_pos >= g_wav.start_frame)
+                                            ? (g_wav.frame_pos - g_wav.start_frame)
+                                            : 0u;
+        }
     }
 
     /** @brief Current sample rate in Hz (0 if not initialized). */
     uint32_t sample_rate() { return g_wav.sample_rate; }
     /** @brief Whether the player is configured and able to pump audio. */
     bool ready() { return g_wav.ready; }
+    float total_seconds() { return g_wav.duration_sec; }
+
+    // Report current position within the track (0..duration), independent of loop offset.
+    float current_position_seconds()
+    {
+        if (!g_wav.ready || g_wav.sample_rate == 0)
+            return 0.0f;
+
+        uint32_t pos_frames = 0;
+        if (g_wav.kind == WavSrcKind::Memory)
+        {
+            if (g_wav.frames_total)
+                pos_frames = g_wav.frame_pos % g_wav.frames_total;
+        }
+        else
+        {
+            pos_frames = g_wav.stream_pos_bytes / g_wav.bytes_per_frame;
+            if (g_wav.frames_total)
+                pos_frames %= g_wav.frames_total;
+        }
+        return (float)pos_frames / (float)g_wav.sample_rate;
+    }
 
     /**
      * @brief Close any open file and reset state to defaults.
@@ -685,6 +729,11 @@ namespace wavplayer
         if (g_wav.fileIsOpen)
         {
             f_close(&g_wav.fil);
+        }
+        if (buf)
+        {
+            Frens::f_free(buf);
+            buf = nullptr;
         }
         g_wav = WavState{}; // zero/false all fields
         printf("Wav player reset.\n");
