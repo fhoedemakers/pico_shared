@@ -2482,7 +2482,9 @@ int showSettingsMenu(bool calledFromGame)
         printf("Menu music file not found at /soundrecorder.wav, trying %s\n", wavPath);
     }
     if (wavplayer::use_file(wavPath)) {
+        
         printf("Streaming menu music from file.\n");
+        //wavplayer::resume();
     }
 #endif
 
@@ -2506,6 +2508,7 @@ int showSettingsMenu(bool calledFromGame)
         {
             optIndex = visibleIndices[selectedRowLocal - rowStartOptions]; // map screen row to option index
         }
+#if 1
         if ( optIndex == MOPT_FRUITJAM_VOLUME_CONTROL) {
             // resume audio stream for volume adjustment feedback
             wavplayer::resume();
@@ -2514,6 +2517,7 @@ int showSettingsMenu(bool calledFromGame)
             // pause audio stream
             wavplayer::pause();
         }
+#endif
         if (pushed)
         {
             startFrames = frameCount; // reset idle counter
@@ -2933,6 +2937,14 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
         auto index = settings.selectedRow - STARTROW + settings.firstVisibleRowINDEX;
         auto entries = romlister.GetEntries();
         selectedRomOrFolder = (romlister.Count() > 0) ? entries[index].Path : nullptr;
+        bool isWav = false;
+#if PICO_RP2350
+        if (selectedRomOrFolder) {
+            if ( Frens::cstr_endswith(selectedRomOrFolder, ".wav") || Frens::cstr_endswith(selectedRomOrFolder, ".WAV") ) {
+                isWav = true;
+            }
+        }
+#endif
         errorInSavingRom = false;
         DrawScreen(settings.selectedRow);
         RomSelect_PadState(&PAD1_Latch);
@@ -3103,7 +3115,7 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
                 displayRoms(romlister, settings.firstVisibleRowINDEX);
                 continue; // skip other processing this frame
             }
-            else if ((PAD1_Latch & START) == START && ((PAD1_Latch & SELECT) != SELECT))
+            else if ((PAD1_Latch & START) == START && ((PAD1_Latch & SELECT) != SELECT) && !isWav)
             {
 #if 0
                 showLoadingScreen();
@@ -3189,7 +3201,7 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
 
 #endif
             }
-            else if (startGame || ((PAD1_Latch & A) == A && selectedRomOrFolder))
+            else if (startGame || ((PAD1_Latch & A) == A && selectedRomOrFolder && !isWav))
             {
                 if (entries[index].IsDirectory && !startGame)
                 {
@@ -3266,6 +3278,19 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
                         break; // from while(1) loop, so we can reboot or return to main.cpp
                     }
                 }
+            } else if ((PAD1_Latch & A) == A && selectedRomOrFolder && isWav)
+            {
+#if PICO_RP2350
+                wavplayer::reset();
+                // create path with current dir + selectedWavFile
+                fr = f_getcwd(curdir, sizeof(curdir)); // f_getcwd(curdir, sizeof(curdir));
+                char fullWavPath[FF_MAX_LFN];
+                snprintf(fullWavPath, sizeof(fullWavPath), "%s/%s", curdir, selectedRomOrFolder);
+                printf("Playing WAV file: %s\n", fullWavPath);
+                wavplayer::use_file(fullWavPath);
+                EXT_AUDIO_SETVOLUME(settings.fruitjamVolumeLevel);
+                wavplayer::resume();
+#endif
             }
         }
         // scroll selected row horizontally if textsize exceeds rowlength
