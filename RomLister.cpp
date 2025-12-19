@@ -137,7 +137,7 @@ namespace Frens
 								printf("Skipping %s, %d KBytes too large.\n", pFile->fname, (pFile->fsize - maxRomSize) / 1024);
 							}
 						} else {
-							// always allow .wav files for wavplayer on RP2-350
+							// always allow .wav files for wavplayer on RP2350
 #if PICO_RP2350
 							if ( Frens::cstr_endswith(romInfo.Path, ".wav") || Frens::cstr_endswith(romInfo.Path, ".WAV") ) {
 								entries[numberOfEntries++] = romInfo;
