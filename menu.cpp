@@ -218,6 +218,8 @@ int Menu_LoadFrame()
         wiipad_begin();
     }
 #endif
+    // play audio stream if active and not paused
+    wavplayer::pump(wavplayer::sample_rate() / 60);
     return count;
 }
 
@@ -2466,6 +2468,7 @@ int showSettingsMenu(bool calledFromGame)
 #endif
         drawAllLines(selectedRowLocal);
     }; // redraw lambda
+    // for volume control option: initialize audio stream
 #if HW_CONFIG == 8
     // Initialize menu music
     ///wavplayer::init_memory();
@@ -2504,13 +2507,12 @@ int showSettingsMenu(bool calledFromGame)
             optIndex = visibleIndices[selectedRowLocal - rowStartOptions]; // map screen row to option index
         }
         if ( optIndex == MOPT_FRUITJAM_VOLUME_CONTROL) {
-            // start audio stream for volume adjustment feedback
-#if HW_CONFIG == 8
-        if (wavplayer::ready()) {
-            wavplayer::pump(wavplayer::sample_rate() / 60);
-        }
-#endif
+            // resume audio stream for volume adjustment feedback
+            wavplayer::resume();
 
+        } else {
+            // pause audio stream
+            wavplayer::pause();
         }
         if (pushed)
         {
