@@ -24,6 +24,7 @@ void pause();
 void resume();
 // Close any open file and reset internal state to defaults.
 void reset();
+bool isPlaying();
 #else
 // Stubs for non-PICO_RP2350 builds.
 inline void init_memory() {}
@@ -35,6 +36,7 @@ inline bool ready() { return false; }
 inline void reset() {}
 inline void pause() {}  
 inline void resume() {}
+inline bool isPlaying() { return false; }
 #endif
 
 } // namespace wavplayer

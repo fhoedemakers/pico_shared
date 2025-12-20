@@ -766,6 +766,11 @@ namespace wavplayer
     {
         g_wav.isplaying = true;
     }
+  
+    bool isPlaying()
+    {
+        return g_wav.isplaying;
+    }
 } // namespace wavplayer
 
 #endif // HW_CONFIG == 8
