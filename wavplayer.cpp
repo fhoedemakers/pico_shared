@@ -310,13 +310,7 @@ namespace wavplayer
         // Read header into larger buffer
         const uint32_t HDR_READ_BYTES = 2048;
         uint8_t *hdr = (uint8_t *)Frens::f_malloc(HDR_READ_BYTES);
-        if (!hdr)
-        {
-            printf("WAV: header allocation failed\n");
-            f_close(&g_wav.fil);
-            g_wav.fileIsOpen = false;
-            return false;
-        }
+        // Note Pico panics if allocation fails
         UINT rd = 0;
         fr = f_read(&g_wav.fil, hdr, HDR_READ_BYTES, &rd);
         if (fr != FR_OK || rd < 44)
@@ -387,7 +381,7 @@ namespace wavplayer
 
         if (!pcm_ok || channels != 2 || (bits_per != 16 && bits_per != 24) || sample_rate == 0 || data_size < 4)
         {
-            printf("WAV: Unsupported format %u %u ch %u bps %u Hz %u data_size\n", audio_format, channels, bits_per, sample_rate, data_size);
+            printf("WAV: Unsupported format %u %u ch %u bits %u Hz %u data_size\n", audio_format, channels, bits_per, sample_rate, data_size);
             Frens::f_free(hdr);
             f_close(&g_wav.fil);
             g_wav.fileIsOpen = false;
@@ -411,7 +405,7 @@ namespace wavplayer
         // Seek to beginning to allow lseek to data later
         f_lseek(&g_wav.fil, 0);
         apply_offset();
-        printf("WAV format %u, %u ch, %u bps, %u Hz, %u bytes, duration %f sec\n", audio_format, channels, bits_per, sample_rate, data_size, g_wav.duration_sec);
+        printf("WAV format %u, %u ch, %u bits, %u Hz, %u bytes, duration %f sec\n", audio_format, channels, bits_per, sample_rate, data_size, g_wav.duration_sec);
         printf("WAV player, playing from file: %s\n", path);
 #if !HSTX
 #if EXT_AUDIO_IS_ENABLED
