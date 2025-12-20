@@ -2922,6 +2922,12 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
     displayRoms(romlister, settings.firstVisibleRowINDEX);
     bool startGame = false;
 
+#if PICO_RP2350
+    // Track current WAV playback path and state while in the menu
+    static char lastWavPath[FF_MAX_LFN] = {0};
+    static bool wavIsPlaying = false;
+#endif
+
 
     waitForNoButtonPress();
     while (1)
@@ -3281,15 +3287,30 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
             } else if ((PAD1_Latch & A) == A && selectedRomOrFolder && isWav)
             {
 #if PICO_RP2350
-                wavplayer::reset();
-                // create path with current dir + selectedWavFile
-                fr = f_getcwd(curdir, sizeof(curdir)); // f_getcwd(curdir, sizeof(curdir));
+                // Build full path of highlighted WAV
+                fr = f_getcwd(curdir, sizeof(curdir));
                 char fullWavPath[FF_MAX_LFN];
                 snprintf(fullWavPath, sizeof(fullWavPath), "%s/%s", curdir, selectedRomOrFolder);
-                printf("Playing WAV file: %s\n", fullWavPath);
-                wavplayer::use_file(fullWavPath);
-                EXT_AUDIO_SETVOLUME(settings.fruitjamVolumeLevel);
-                wavplayer::resume();
+
+                // If same track is already playing, stop it; else start new track
+                if (wavIsPlaying && strcmp(fullWavPath, lastWavPath) == 0)
+                {
+                    printf("Stopping WAV playback: %s\n", fullWavPath);
+                    wavplayer::reset();
+                    wavIsPlaying = false;
+                    lastWavPath[0] = '\0';
+                }
+                else
+                {
+                    printf("Playing WAV file: %s\n", fullWavPath);
+                    wavplayer::reset();
+                    wavplayer::use_file(fullWavPath);
+                    EXT_AUDIO_SETVOLUME(settings.fruitjamVolumeLevel);
+                    wavplayer::resume();
+                    wavIsPlaying = true;
+                    strncpy(lastWavPath, fullWavPath, sizeof(lastWavPath) - 1);
+                    lastWavPath[sizeof(lastWavPath) - 1] = '\0';
+                }
 #endif
             }
         }
