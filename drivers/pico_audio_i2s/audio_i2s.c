@@ -414,8 +414,9 @@ static void tlv320_init()
 #else
 	// Set Interface Control 1 (0x1B)
 	// Bits 7-6 = 00 → I²S mode
-	// Bits 5-4 = 00 → 16-bit word length (matches PCM5000A path) (was 11 for 32-bit)
+	// Bits 5-4 = 00 → 16-bit word length (matches PCM5000A path) (was 11 (0x30) for 32-bit)
 	// Bits 3-0 = 0000 → no offset
+	// PIO sends 16 bits samples in I2S format, so set accordingly
 	writeRegister(0x1B, 0x00);
 
 	// Optional: Interface Control 2 (0x1C)

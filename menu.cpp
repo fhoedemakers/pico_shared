@@ -2711,7 +2711,7 @@ int showSettingsMenu(bool calledFromGame)
                     {
                         if (right)
                         {
-                            if (working.fruitjamVolumeLevel < 24)
+                            if (working.fruitjamVolumeLevel < 23)
                             {
                                 working.fruitjamVolumeLevel++;
                                 EXT_AUDIO_SETVOLUME(working.fruitjamVolumeLevel);
