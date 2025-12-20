@@ -88,6 +88,12 @@ static char line[41];
 static char valueBuf[16]; // separate buffer for numeric values
 
 static WORD *WorkLineRom = nullptr;
+
+#if PICO_RP2350
+// Track current WAV playback path and state while in the menu
+static char lastWavPath[FF_MAX_LFN] = {0};
+#endif
+
 #if !HSTX
 // static BYTE *WorkLineRom8 = nullptr;
 
@@ -1025,7 +1031,13 @@ void screenSaver()
         screenSaverWithBlocks();
     }
 #endif
-    screenSaverWithArt(!artworkEnabled);
+#if PICO_RP2350
+    if ( !wavplayer::isPlaying() ) {
+#endif
+       screenSaverWithArt(!artworkEnabled);
+#if PICO_RP2350
+    }
+#endif
 }
 
 // #define ARTFILE "/ART/output_RGB555.raw"
@@ -2508,11 +2520,10 @@ int showSettingsMenu(bool calledFromGame)
         {
             optIndex = visibleIndices[selectedRowLocal - rowStartOptions]; // map screen row to option index
         }
-#if 1
+#if HW_CONFIG == 8 && PICO_RP2350
         if ( optIndex == MOPT_FRUITJAM_VOLUME_CONTROL) {
             // resume audio stream for volume adjustment feedback
             wavplayer::resume();
-
         } else {
             // pause audio stream
             wavplayer::pause();
@@ -2859,6 +2870,7 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
 #if ENABLE_VU_METER
     turnOffAllLeds();
 #endif
+
     artworkEnabled = isArtWorkEnabled();
     crcOffset = FrensSettings::getEmulatorType() == FrensSettings::emulators::NES ? 16 : 0; // crc offset according to  https://github.com/ducalex/retro-go-covers
     printf("Emulator: %s, crcOffset: %d\n", FrensSettings::getEmulatorTypeString(), crcOffset);
@@ -2921,14 +2933,6 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
     romlister.list(settings.currentDir);
     displayRoms(romlister, settings.firstVisibleRowINDEX);
     bool startGame = false;
-
-#if PICO_RP2350
-    // Track current WAV playback path and state while in the menu
-    static char lastWavPath[FF_MAX_LFN] = {0};
-    static bool wavIsPlaying = false;
-#endif
-
-
     waitForNoButtonPress();
     while (1)
     {
@@ -3207,7 +3211,7 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
 
 #endif
             }
-            else if (startGame || ((PAD1_Latch & A) == A && selectedRomOrFolder && !isWav))
+            else if ((startGame || (PAD1_Latch & A) == A) && selectedRomOrFolder && !isWav)
             {
                 if (entries[index].IsDirectory && !startGame)
                 {
@@ -3225,6 +3229,11 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
                 }
                 else
                 {
+#if PICO_RP2350
+                    // Stop any playing WAV file
+                    wavplayer::reset();
+                    lastWavPath[0] = '\0';
+#endif
                     showLoadingScreen();
                     fr = f_getcwd(curdir, sizeof(curdir)); // f_getcwd(curdir, sizeof(curdir));
                     printf("Current dir: %s\n", curdir);
@@ -3284,7 +3293,7 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
                         break; // from while(1) loop, so we can reboot or return to main.cpp
                     }
                 }
-            } else if ((PAD1_Latch & A) == A && selectedRomOrFolder && isWav)
+            } else if ( ( (PAD1_Latch & A) == A || (PAD1_Latch & START) == START) && selectedRomOrFolder && isWav)
             {
 #if PICO_RP2350
                 // Build full path of highlighted WAV
@@ -3293,23 +3302,25 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
                 snprintf(fullWavPath, sizeof(fullWavPath), "%s/%s", curdir, selectedRomOrFolder);
 
                 // If same track is already playing, stop it; else start new track
-                if (wavIsPlaying && strcmp(fullWavPath, lastWavPath) == 0)
+                if (wavplayer::isPlaying() && strcmp(fullWavPath, lastWavPath) == 0)
                 {
                     printf("Stopping WAV playback: %s\n", fullWavPath);
                     wavplayer::reset();
-                    wavIsPlaying = false;
                     lastWavPath[0] = '\0';
                 }
                 else
                 {
                     printf("Playing WAV file: %s\n", fullWavPath);
                     wavplayer::reset();
-                    wavplayer::use_file(fullWavPath);
-                    EXT_AUDIO_SETVOLUME(settings.fruitjamVolumeLevel);
-                    wavplayer::resume();
-                    wavIsPlaying = true;
-                    strncpy(lastWavPath, fullWavPath, sizeof(lastWavPath) - 1);
-                    lastWavPath[sizeof(lastWavPath) - 1] = '\0';
+                    if ( wavplayer::use_file(fullWavPath) ) {
+                        EXT_AUDIO_SETVOLUME(settings.fruitjamVolumeLevel);
+                        wavplayer::resume();
+                        strncpy(lastWavPath, fullWavPath, sizeof(lastWavPath) - 1);
+                        lastWavPath[sizeof(lastWavPath) - 1] = '\0';
+                    } else {
+                        printf("Error opening WAV file: %s\n", fullWavPath);
+                    }
+
                 }
 #endif
             }
@@ -3340,9 +3351,12 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
             // printf("Starting screensaver\n");
             totalFrames = -1;
             // romlister.ClearMemory();
-            screenSaver();
-            romlister.list(".");
-            displayRoms(romlister, settings.firstVisibleRowINDEX);
+           
+            if (! wavplayer::isPlaying() ) {
+                screenSaver();
+                romlister.list(".");
+                displayRoms(romlister, settings.firstVisibleRowINDEX);
+            }
         }
     } // while 1
 
