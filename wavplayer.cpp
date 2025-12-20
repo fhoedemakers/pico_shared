@@ -313,7 +313,7 @@ namespace wavplayer
         // Note Pico panics if allocation fails
         UINT rd = 0;
         fr = f_read(&g_wav.fil, hdr, HDR_READ_BYTES, &rd);
-        if (fr != FR_OK || rd < 44)
+        if (fr != FR_OK || rd < HDR_READ_BYTES  )
         {
             printf("WAV: f_read failed with error %d or too small (%u bytes read)\n", fr, rd);
             Frens::f_free(hdr);
