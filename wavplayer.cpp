@@ -307,12 +307,22 @@ namespace wavplayer
             return false;
         }
         g_wav.fileIsOpen = true;
-        // Read header into small buffer
-        unsigned char hdr[256];
+        // Read header into larger buffer
+        const uint32_t HDR_READ_BYTES = 2048;
+        uint8_t *hdr = (uint8_t *)Frens::f_malloc(HDR_READ_BYTES);
+        if (!hdr)
+        {
+            printf("WAV: header allocation failed\n");
+            f_close(&g_wav.fil);
+            g_wav.fileIsOpen = false;
+            return false;
+        }
         UINT rd = 0;
-        fr = f_read(&g_wav.fil, hdr, sizeof(hdr), &rd);
+        fr = f_read(&g_wav.fil, hdr, HDR_READ_BYTES, &rd);
         if (fr != FR_OK || rd < 44)
         {
+            printf("WAV: f_read failed with error %d or too small (%u bytes read)\n", fr, rd);
+            Frens::f_free(hdr);
             f_close(&g_wav.fil);
             g_wav.fileIsOpen = false;
             return false;
@@ -321,6 +331,7 @@ namespace wavplayer
         if (!(hdr[0] == 'R' && hdr[1] == 'I' && hdr[2] == 'F' && hdr[3] == 'F'))
         {
             printf("WAV: Invalid RIFF header\n");
+            Frens::f_free(hdr);
             f_close(&g_wav.fil);
             g_wav.fileIsOpen = false;
             return false;
@@ -328,12 +339,13 @@ namespace wavplayer
         if (!(hdr[8] == 'W' && hdr[9] == 'A' && hdr[10] == 'V' && hdr[11] == 'E'))
         {
             printf("WAV: Invalid WAVE header\n");
+            Frens::f_free(hdr);
             f_close(&g_wav.fil);
             g_wav.fileIsOpen = false;
             return false;
         }
 
-        // Chunk scan
+        // Chunk scan with padding handling
         uint32_t p = 12;
         uint32_t fmt_off = 0, fmt_size = 0;
         uint32_t data_off = 0, data_size = 0;
@@ -351,10 +363,15 @@ namespace wavplayer
                 data_size = sz;
                 break;
             }
-            p += 8 + sz;
+            // advance with even-byte padding
+            uint32_t next = p + 8 + sz + (sz & 1);
+            if (next <= p) break; // overflow guard
+            p = next;
         }
         if (!fmt_off || !data_off)
         {
+            printf("WAV: Missing fmt or data chunk (fmt_off=%u, data_off=%u)\n", fmt_off, data_off);
+            Frens::f_free(hdr);
             f_close(&g_wav.fil);
             g_wav.fileIsOpen = false;
             return false;
@@ -371,12 +388,12 @@ namespace wavplayer
         if (!pcm_ok || channels != 2 || (bits_per != 16 && bits_per != 24) || sample_rate == 0 || data_size < 4)
         {
             printf("WAV: Unsupported format %u %u ch %u bps %u Hz %u data_size\n", audio_format, channels, bits_per, sample_rate, data_size);
+            Frens::f_free(hdr);
             f_close(&g_wav.fil);
             g_wav.fileIsOpen = false;
             return false;
         }
        
-
         g_wav.kind = WavSrcKind::File;
         g_wav.sample_rate = sample_rate;
         g_wav.bits_per = bits_per;
@@ -416,11 +433,14 @@ namespace wavplayer
         printf("WAV player using EXT_AUDIO (HSTX build)\n");
         set_volume_linear(0.1f); // default to low volume
 #endif // !HSTX
-        
+
+        // free header buffer now that parsing is done
+        Frens::f_free(hdr);
         // allocate buffer
         if ( !buf ) {
             buf = (uint8_t *)Frens::f_malloc(WAVPLAYER_MAX_READ_BYTES);
         }
+       
         return true;
     }
   
