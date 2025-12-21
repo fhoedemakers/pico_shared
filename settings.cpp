@@ -40,6 +40,7 @@ namespace FrensSettings
         printf("frameSkip: %d\n", settings.flags.frameSkip);
         printf("scanlineOn: %d\n", settings.flags.scanlineOn);
         printf("fruitJamEnableInternalSpeaker: %d\n", settings.flags.fruitJamEnableInternalSpeaker);
+        printf("fruitjamVolumeLevel: %d\n", settings.fruitjamVolumeLevel);
         printf("rapidFireOnA: %d\n", settings.flags.rapidFireOnA);
         printf("rapidFireOnB: %d\n", settings.flags.rapidFireOnB);
         printf("\n");
