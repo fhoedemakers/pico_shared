@@ -98,7 +98,7 @@ namespace wavplayer
 
     static WavState g_wav{};
       // Read chunked frames from file (max 256 frames, up to 6 bytes/frame)
-    #define WAVPLAYER_MAX_READ_BYTES (256 * 6 *sizeof(uint8_t))
+    #define WAVPLAYER_MAX_READ_BYTES (256 * 6)
     static uint8_t *buf = nullptr; //[256 * 6];
 
     /** @brief Load little‑endian 16‑bit from byte pointer. */
