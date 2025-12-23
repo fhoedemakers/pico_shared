@@ -166,7 +166,7 @@ namespace SoundRecorder
         }
 
         size_t bytesToCopy = numSamples * sizeof(int16_t);
-        size_t available = (size_t)(MAXBYTESTORECORD)-recordedBytes;
+        size_t available = (size_t)(MAXBYTESTORECORD) - recordedBytes;
 
         if (available == 0)
         {
