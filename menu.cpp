@@ -1469,10 +1469,6 @@ bool isAutoSaveStateConfigured()
     return Frens::fileExists(path);
 }
 
-bool isAutoSaveStateConfgured()
-{
-    return isAutoSaveStateConfigured();
-}
 // Helper: ensure the directory structure for save states exists.
 // Returns true on success, false on failure (and shows a message box).
 static bool ensureSaveStateDirectories(uint32_t crc)

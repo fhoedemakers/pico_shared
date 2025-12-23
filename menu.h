@@ -49,5 +49,5 @@ bool showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
 void getQuickSavePath(char *path, size_t pathsize);
 void getSaveStatePath(char *path, size_t pathsize, int slot);
 void getAutoSaveStatePath(char *path, size_t pathsize);
-bool isAutoSaveStateConfgured();
+bool isAutoSaveStateConfigured();
 #endif
