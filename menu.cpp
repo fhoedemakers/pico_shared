@@ -2282,7 +2282,7 @@ int showSettingsMenu(bool calledFromGame)
             case MenuSettingsIndex::MOPT_FRUITJAM_VOLUME_CONTROL:
             {
                 label = "Fruit Jam Volume Control";
-                sprintf(valueBuf, "%d", working.fruitjamVolumeLevel)    ;
+                sprintf(valueBuf, "%d", working.fruitjamVolumeLevel);
                 value = valueBuf;
                 break;
             }
