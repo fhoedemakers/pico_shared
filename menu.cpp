@@ -1692,7 +1692,7 @@ bool showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
             {
                 const char *status = saveslots[i] ? "Used" : "Empty";
                 // Last soft used for quick save
-                if ( i == (MAXSAVESTATESLOTS -1) ){
+                if (i == (MAXSAVESTATESLOTS - 1)) {
                     snprintf(linebuf, sizeof(linebuf), "Quick Save: %s%s", status, (i == selected && saved) ? " Saved" : "");
                 } else {
                     snprintf(linebuf, sizeof(linebuf), "Slot %d____: %s%s", i, status, (i == selected && saved) ? " Saved" : "");
