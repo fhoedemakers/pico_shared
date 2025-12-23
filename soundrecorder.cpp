@@ -135,16 +135,16 @@ namespace SoundRecorder
         printf("Starting sound recording, max size %d bytes\n", MAXBYTESTORECORD);
         recording = true;
         recordedBytes = 0;
-        auto memsize = MAXBYTESTORECORD;
+        auto bufferSize = MAXBYTESTORECORD;
         auto available_mem = Frens::GetAvailableMemory();
         printf("Available memory before allocation: %zu bytes\n", available_mem);
         if ( available_mem < MAXBYTESTORECORD ) {
             
-            memsize = available_mem - 10240; // leave some headroom
+            bufferSize = available_mem - 10240; // leave some headroom
             printf("Warning: Not enough memory to allocate full recording buffer!\n");
-            printf("Adjusting recording buffer size to %zu bytes\n", memsize);
+            printf("Adjusting recording buffer size to %zu bytes\n", bufferSize);
         }
-        pcmBuffer = (int16_t *)Frens::f_malloc(memsize);
+        pcmBuffer = (int16_t *)Frens::f_malloc(bufferSize);
     };
 
     /**
