@@ -2917,7 +2917,7 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
         }
         else
         {
-            showMessageBox("An error has occured", CRED, errorMessage);
+            showMessageBox("An error has occurred", CRED, errorMessage);
         }
         showSplash = false;
     }
