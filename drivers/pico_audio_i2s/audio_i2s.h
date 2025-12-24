@@ -85,6 +85,7 @@ int audio_i2s_get_freebuffer_size();
 void audio_i2s_disable() ;
 bool audio_i2s_dacError();
 void audio_i2s_muteInternalSpeaker(bool mute);
+void audio_i2s_setVolume(int8_t level);
 #ifdef __cplusplus
 }
 #endif

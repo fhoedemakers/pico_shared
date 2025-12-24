@@ -260,6 +260,20 @@ void setupHeadphoneDetectionInterrupt(int gpio, bool gpioisbutton)
 		printf("TODO: Implement headphone via INT1/GPIO1 on DAC\n");
 	}
 }
+void audio_i2s_setVolume(int8_t level) {
+	if (_driver != PICO_AUDIO_I2S_DRIVER_TLV320) {
+		return;
+	}
+	if ( level < -63 || level > 23) {
+		printf("Volume level %d out of range (-63 to 23)\n", level);
+		return;
+	}
+	printf("Setting TLV320 volume to level %d\n", level);
+	setPage(0);
+	modifyRegister(0x40, 0x0C, 0x00);
+	writeRegister(0x41, level << 1); // Left DAC Vol  
+	writeRegister(0x42, level << 1); // Right DAC Vol 
+}
 /// @brief Initialize the TLV320AIC3204 codec
 /// This function sets up the codec with default settings for audio playback.
 /// From tlv320dac3100 datasheet, section 6.3.10.15
@@ -310,6 +324,8 @@ static void tlv320_init()
 	//     		and master mode (BCLK and WCLK are outputs)
 	//      	mode is i2s, wordlength is 16, slave mode
 	write_tlv320((uint8_t[]){0x1B, 0x00}, 2);
+	// Ensure Interface Control 2 defaults: normal polarity, no offset
+	write_tlv320((uint8_t[]){0x1C, 0x00}, 2);
 	// 		(g) Program the processing block to be used
 	//     		Select Processing Block PRB_P11
 	write_tlv320((uint8_t[]){0x3C, 0x0B}, 2);
@@ -321,6 +337,9 @@ static void tlv320_init()
 	// 		(h) Miscellaneous page 0 controls
 	// 			DAC => volume control thru pin disable
 	write_tlv320((uint8_t[]){0x74, 0x00}, 2);
+	// 			Set DAC digital volume to 0 dB (unity)
+	write_tlv320((uint8_t[]){0x41, 0x00}, 2);
+	write_tlv320((uint8_t[]){0x42, 0x00}, 2);
 	// 3. Program analog blocks
 	// ### SET REGISTER PAGE 1 ###
 	//  	(a) Set register to Page 1
@@ -342,17 +361,14 @@ static void tlv320_init()
 	write_tlv320((uint8_t[]){0x2A, 0x1C}, 2);
 	// 		(f) Power up output drivers
 	//			HPL and HPR powered up
-	// NOTE write_tlv320((uint8_t[]){0x1F, 0xF2}, 2); below causes a pop sound on startup. How to solve?
-	printf("POP!\n");
-	write_tlv320((uint8_t[]){0x1F, 0xF2}, 2); // Changed from 0xC2 to 0xF2
+	// Power up HPL/HPR drivers with standard I2S polarity
+	write_tlv320((uint8_t[]){0x1F, 0xC2}, 2);
 	//  		Power-up Class-D driver
 	write_tlv320((uint8_t[]){0x20, 0x86}, 2);
-	// 			Enable HPL output analog volume, set = -9dB
-	write_tlv320((uint8_t[]){0x24, 0x92}, 2);
-	// 			Enable HPR output analog volume, set = -9dB
-	write_tlv320((uint8_t[]){0x25, 0x92}, 2);
-	// 			Enable Class-D output analog volume, set = -9dB
-	write_tlv320((uint8_t[]){0x26, 0x92}, 2);
+	// 			Enable output analog volumes, set to 0 dB
+	write_tlv320((uint8_t[]){0x24, 0x80}, 2);
+	write_tlv320((uint8_t[]){0x25, 0x80}, 2);
+	write_tlv320((uint8_t[]){0x26, 0x80}, 2);
 	// 4. Apply waiting time determined by the de-pop settings and the soft-stepping settings
 	//    of the driver gain or poll page 1 / register 63
 	sleep_ms(800); // Wait for 800 ms as per the de-pop settings
@@ -398,9 +414,10 @@ static void tlv320_init()
 #else
 	// Set Interface Control 1 (0x1B)
 	// Bits 7-6 = 00 → I²S mode
-	// Bits 5-4 = 11 → 32-bit word length
+	// Bits 5-4 = 00 → 16-bit word length (matches PCM5000A path) (was 11 (0x30) for 32-bit)
 	// Bits 3-0 = 0000 → no offset
-	writeRegister(0x1B, 0x30);
+	// PIO sends 16 bits samples in I2S format, so set accordingly
+	writeRegister(0x1B, 0x00);
 
 	// Optional: Interface Control 2 (0x1C)
 	// Make sure data is left-aligned with I²S expectations
@@ -454,8 +471,8 @@ static void tlv320_init()
 	// DAC Volume Control
 	setPage(0);
 	modifyRegister(0x40, 0x0C, 0x00);
-	writeRegister(0x41, 0x28); // Left DAC Vol
-	writeRegister(0x42, 0x28); // Right DAC Vol
+	writeRegister(0x41, 0x20); // Left DAC Vol  , was 0x28
+	writeRegister(0x42, 0x20); // Right DAC Vol , was 0x28
 
 	// ADC Setup
 	modifyRegister(0x51, 0x80, 0x80);

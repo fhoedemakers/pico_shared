@@ -27,6 +27,7 @@
 #define EXT_AUDIO_DACERROR() audio_i2s_dacError()
 #define EXT_AUDIO_DISABLE() audio_i2s_disable()
 #define EXT_AUDIO_MUTE_INTERNAL_SPEAKER(mute) audio_i2s_muteInternalSpeaker(mute)
+#define EXT_AUDIO_SETVOLUME(level) audio_i2s_setVolume(level) 
 #endif
 
 // SPI audio is not supported in the current version of the code, but we keep the definition for future use.
@@ -38,6 +39,7 @@ extern audio_spi_hw_t *spi_audio_hw;
 #define EXT_AUDIO_DACERROR() (false)
 #define EXT_AUDIO_DISABLE() (0)
 #define EXT_AUDIO_MUTE_INTERNAL_SPEAKER(mute) (0)
+#define EXT_AUDIO_SETVOLUME(level) (0)
 #endif
 // If neither I2S nor SPI audio is enabled, define the functions as no-ops
 #if !EXT_AUDIO_IS_ENABLED
@@ -50,5 +52,6 @@ extern audio_spi_hw_t *spi_audio_hw;
 #define EXT_AUDIO_DACERROR() (false)
 #define EXT_AUDIO_DISABLE() (0)
 #define EXT_AUDIO_MUTE_INTERNAL_SPEAKER(mute) (0)
+#define EXT_AUDIO_SETVOLUME(level) (0)
 #endif
 #endif // __EXTERNAL_AUDIO_H__

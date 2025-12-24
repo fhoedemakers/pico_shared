@@ -113,7 +113,8 @@ namespace Frens
 					strcasecmp(pFile->fname, "System Volume Information") == 0 ||
 					strcasecmp(pFile->fname, "SAVES") == 0 ||
 					strcasecmp(pFile->fname, "EDFC") == 0 ||
-					strcasecmp(pFile->fname, "Metadata") == 0)
+					strcasecmp(pFile->fname, "Metadata") == 0 ||
+					strcasecmp(pFile->fname, "SAVESTATES") == 0)
 				{
 					continue;
 				}
@@ -135,6 +136,13 @@ namespace Frens
 							{
 								printf("Skipping %s, %d KBytes too large.\n", pFile->fname, (pFile->fsize - maxRomSize) / 1024);
 							}
+						} else {
+							// always allow .wav files for wavplayer on RP2350
+#if PICO_RP2350
+							if ( Frens::cstr_endswith(romInfo.Path, ".wav") || Frens::cstr_endswith(romInfo.Path, ".WAV") ) {
+								entries[numberOfEntries++] = romInfo;
+							} 
+#endif
 						}
 					}
 					else

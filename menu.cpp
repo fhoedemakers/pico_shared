@@ -22,7 +22,8 @@
 #include "ffwrappers.h"
 #include "vumeter.h"
 #include "DefaultSS.h"
-
+#include <stdint.h>
+#include "wavplayer.h"
 #if !HSTX
 #define CC(x) (((x >> 1) & 15) | (((x >> 6) & 15) << 4) | (((x >> 11) & 15) << 8))
 const __UINT16_TYPE__ NesMenuPalette[64] = {
@@ -81,7 +82,18 @@ static uint8_t crcOffset = 0; // Default offset for CRC calculation
 #define LONG_PRESS_TRESHOLD (500)
 #define REPEAT_DELAY (40)
 
+static char buttonLabel1[2]; // e.g., "A", "B", "X", "O"
+static char buttonLabel2[2]; // e.g., "A", "B", "
+static char line[41];
+static char valueBuf[16]; // separate buffer for numeric values
+
 static WORD *WorkLineRom = nullptr;
+
+#if PICO_RP2350
+// Track current WAV playback path and state while in the menu
+static char lastWavPath[FF_MAX_LFN] = {0};
+#endif
+
 #if !HSTX
 // static BYTE *WorkLineRom8 = nullptr;
 
@@ -119,10 +131,13 @@ void resetColors(int prevfgColor, int prevbgColor)
 
 static void getButtonLabels(char *buttonLabel1, char *buttonLabel2)
 {
+    auto &gp = io::getCurrentGamePadState(0);
+    strcpy(connectedGamePadName, gp.GamePadName);
     if (strcmp(connectedGamePadName, "Dual Shock 4") == 0 || strcmp(connectedGamePadName, "Dual Sense") == 0 || strcmp(connectedGamePadName, "PSClassic") == 0)
     {
         strcpy(buttonLabel1, "O");
         strcpy(buttonLabel2, "X");
+
     }
     else if (strcmp(connectedGamePadName, "XInput") == 0 || strncmp(connectedGamePadName, "Genesis", 7) == 0 || strcmp(connectedGamePadName, "MDArcade") == 0)
     {
@@ -209,6 +224,8 @@ int Menu_LoadFrame()
         wiipad_begin();
     }
 #endif
+    // play audio stream if active and not paused
+    wavplayer::pump(wavplayer::sample_rate() / 60);
     return count;
 }
 
@@ -353,6 +370,38 @@ void RomSelect_DrawLine(int line, int selectedRow, int pixelsToSkip = 0)
     return;
 }
 
+/// @brief Renders a single 320-pixel scanline into the active video line buffer.
+///        Optionally blends (actually overwrites) an image row before drawing text.
+///        Text glyphs are only drawn when not in screensaver (image moving) mode.
+/// @param scanline Absolute scanline index (0..SCREENHEIGHT-1).
+/// @param selectedRow Menu row index that is currently selected (for inverted colors); pass -1 for no selection.
+/// @param w Image width in pixels (0 disables image drawing). Must be 1..SCREENWIDTH if imagebuffer != nullptr.
+/// @param h Image height in pixels. Must be 1..SCREENHEIGHT if imagebuffer != nullptr.
+/// @param imagebuffer Pointer to packed 16-bit pixel data (layout: row-major, RGB444/555 depending on build).
+/// @param imagex Horizontal start position (column) where the image is placed (0-based).
+/// @param imagey Vertical start position (scanline) where the top of the image is placed.
+///               When imagex or imagey are non‑zero the function treats this as screensaver mode and
+///               suppresses menu text drawing for lines overlapped or reserved by the image.
+/// Algorithm:
+///   1 Acquire destination line buffer (framebuffer or DVI line buffer).
+///   2 If an image is active:
+///        - Clear the line (only when image is moving: imagex || imagey) to prevent artifacts.
+///        - If current scanline is within image vertical bounds, memcpy the corresponding image row.
+///        - Reserve horizontal offset (offset = w) so text starts after image when image at top area (<120px).
+///   3 If not in screensaver mode (imagex==0 && imagey==0) draw text glyphs via RomSelect_DrawLine(),
+///        passing offset so text can start after embedded image when used for metadata screens.
+///   4 Submit the populated line buffer back to the video subsystem when not using full framebuffer.
+/// Notes:
+///   - Safety checks ensure w/h are within screen bounds before treating imagebuffer as valid.
+///   - Color mapping differs when useFrameBuffer is true (raw palette indices) versus false (lookup table).
+///   - Clearing only moving-image lines reduces flicker on first static metadata image display.
+///   - offset logic prevents garbled text when small images (<120px high) occupy left side.
+/// Performance:
+///   - memcpy used for image row copy (w * sizeof(uint16_t) bytes).
+///   - Glyph rendering loops over SCREEN_COLS (character cells) * 8 pixels horizontally.
+/// Edge cases:
+///   - Invalid image dimensions: image ignored; only text drawn.
+///   - scanline outside imagey..imagey+h: only text (unless reserved offset for early lines).
 void drawline(int scanline, int selectedRow, int w = 0, int h = 0, uint16_t *imagebuffer = nullptr, int imagex = 0, int imagey = 0)
 {
 #if !HSTX
@@ -455,7 +504,7 @@ void putText(int x, int y, const char *text, int fgcolor, int bgcolor, bool wrap
                     char ch = *text++;
                     if ((unsigned char)ch < 32 || (unsigned char)ch > 126)
                         ch = ' ';
-                    screenBuffer[index].charvalue = ch;
+                    screenBuffer[index].charvalue = (ch == '_' ? ' ' : ch);
                     screenBuffer[index].fgcolor = fgcolor;
                     screenBuffer[index].bgcolor = bgcolor;
                     cur_x++;
@@ -471,7 +520,7 @@ void putText(int x, int y, const char *text, int fgcolor, int bgcolor, bool wrap
                         char ch = *text;
                         if ((unsigned char)ch < 32 || (unsigned char)ch > 126)
                             ch = ' ';
-                        screenBuffer[index].charvalue = ch;
+                        screenBuffer[index].charvalue = (ch == '_' ? ' ' : ch);
                         screenBuffer[index].fgcolor = fgcolor;
                         screenBuffer[index].bgcolor = bgcolor;
                         cur_x++;
@@ -502,7 +551,7 @@ void putText(int x, int y, const char *text, int fgcolor, int bgcolor, bool wrap
                 {
                     lastWasSpace = false;
                 }
-                screenBuffer[index].charvalue = ch;
+                screenBuffer[index].charvalue = (ch == '_' ? ' ' : ch);
                 screenBuffer[index].fgcolor = fgcolor;
                 screenBuffer[index].bgcolor = bgcolor;
                 cur_x++;
@@ -537,7 +586,7 @@ void DrawScreen(int selectedRow, int w = 0, int h = 0, uint16_t *imagebuffer = n
     {
         if (EXT_AUDIO_DACERROR())
         {
-            putText(1, ENDROW + 3, "Dac Initialisation Failed", CRED, CWHITE);
+            putText(1, ENDROW + 3, "Dac Initialization Failed", CRED, CWHITE);
         }
         putText(SCREEN_COLS / 2 - strlen(spaces) / 2, SCREEN_ROWS - 1, spaces, settings.bgcolor, settings.bgcolor);
         snprintf(tmpstr, sizeof(tmpstr), "- %s -", connectedGamePadName[0] != 0 ? connectedGamePadName : "No USB GamePad");
@@ -563,23 +612,22 @@ void DrawScreen(int selectedRow, int w = 0, int h = 0, uint16_t *imagebuffer = n
         }
 #endif
 #endif
-            if (strcmp(connectedGamePadName, "Genesis Mini 2") == 0 || strcmp(connectedGamePadName, "MDArcade") == 0)
+        if (strcmp(connectedGamePadName, "Genesis Mini 2") == 0 || strcmp(connectedGamePadName, "MDArcade") == 0)
+        {
+            strcpy(s, showSettingsbutton ? "Mode:Settings" : "Press MODE+START in-game for settings");
+        }
+        else
+        {
+            if (strncmp(connectedGamePadName, "Genesis", 7) == 0)
             {
-                strcpy(s, showSettingsbutton ?  "Mode:Settings" : "Press MODE+START in-game for settings");
+                strcpy(s, showSettingsbutton ? "C:Settings" : "Press C+START in-game for settings");
             }
             else
             {
-                if (strncmp(connectedGamePadName, "Genesis", 7) == 0)
-                {
-                    strcpy(s, showSettingsbutton ? "C:Settings" :"Press C+START in-game for settings");
-                }
-                else
-                {
-                    strcpy(s,  showSettingsbutton ? "SELECT:Settings" : "Press SELECT+START in-game for settings");
-                }
+                strcpy(s, showSettingsbutton ? "SELECT:Settings" : "Press SELECT+START in-game for settings");
             }
-            putText(showSettingsbutton ? 17 : 1, optionsRow, s, settings.fgcolor, settings.bgcolor);
-    
+        }
+        putText(showSettingsbutton ? 17 : 1, optionsRow, s, settings.fgcolor, settings.bgcolor);
     }
 
     for (auto line = 0; line < 240; line++)
@@ -653,34 +701,107 @@ void displayRoms(Frens::RomLister &romlister, int startIndex)
     }
 }
 
-void DisplayFatalError(char *error)
+static inline void drawAllLines(int selected)
 {
-    ClearScreen(settings.bgcolor);
-    putText(0, 0, "Fatal error:", settings.fgcolor, settings.bgcolor);
-    putText(1, 3, error, settings.fgcolor, settings.bgcolor);
-    while (true)
+    for (int lineNr = 0; lineNr < 240; ++lineNr)
     {
-        auto frameCount = Menu_LoadFrame();
-        DrawScreen(-1);
+        drawline(lineNr, selected);
     }
 }
-
-void DisplayEmulatorErrorMessage(char *error)
+void waitForNoButtonPress()
 {
     DWORD PAD1_Latch;
-    ClearScreen(settings.bgcolor);
-    putText(0, 0, "Error occured:", settings.fgcolor, settings.bgcolor);
-    putText(0, 3, error, settings.fgcolor, settings.bgcolor);
-    putText(0, ENDROW, "Press a button to continue.", settings.fgcolor, settings.bgcolor);
     while (true)
     {
-        auto frameCount = Menu_LoadFrame();
         DrawScreen(-1);
+        Menu_LoadFrame();
         RomSelect_PadState(&PAD1_Latch);
-        if (PAD1_Latch > 0)
+        if (PAD1_Latch == 0)
         {
             return;
         }
+    }
+}
+static inline int centerColClamped(int textLen)
+{
+    int col = (SCREEN_COLS - textLen) / 2;
+    return col < 0 ? 0 : col;
+}
+static void showMessageBox(const char *message1, unsigned short fgcolor, const char *message2, const char *message3)
+{
+
+    ClearScreen(settings.bgcolor);
+    waitForNoButtonPress();
+    int row = SCREEN_ROWS / 2 - 1;
+    putText(centerColClamped(strlen(message1)), row, message1, fgcolor, settings.bgcolor);
+    if (message2)
+    {
+        row += 2;
+        putText(centerColClamped(strlen(message2)), row, message2, settings.fgcolor, settings.bgcolor);
+    }
+    if (message3)
+    {
+        row += 2;
+        putText(centerColClamped(strlen(message3)), row, message3, settings.fgcolor, settings.bgcolor);
+    }
+    DWORD waitPad;
+    do
+    {
+        drawAllLines(-1);
+        RomSelect_PadState(&waitPad);
+        Menu_LoadFrame();
+    } while (!waitPad);
+}
+
+static void showMessageBox(const char *message1, unsigned short fgcolor)
+{
+    const char *defaultMessage = "Press any button to continue.";
+    showMessageBox(message1, fgcolor, defaultMessage, nullptr);
+}
+
+static void showMessageBox(const char *message1, int fgcolor, const char *message2)
+{
+    const char *defaultMessage = "Press any button to continue.";
+    showMessageBox(message1, fgcolor, message2, defaultMessage);
+}
+
+static bool showDialogYesNo(const char *message)
+{
+    char tmpMsg[10];
+    ClearScreen(settings.bgcolor);
+    int row = SCREEN_ROWS / 2 - 1;
+    putText(centerColClamped(strlen(message)), row, message, settings.fgcolor, settings.bgcolor);
+
+    getButtonLabels(buttonLabel1, buttonLabel2);
+    snprintf(tmpMsg, sizeof(tmpMsg), "%s:Yes", buttonLabel1);
+    const char *optionNo = buttonLabel2;
+    row += 2;
+    putText(centerColClamped(strlen(tmpMsg)), row, tmpMsg, settings.fgcolor, settings.bgcolor);
+    row += 1;
+    snprintf(tmpMsg, sizeof(tmpMsg), "%s:No_", buttonLabel2);
+    putText(centerColClamped(strlen(tmpMsg)), row, tmpMsg, settings.fgcolor, settings.bgcolor);
+    waitForNoButtonPress();
+    DWORD waitPad;
+    while (true)
+    {
+        drawAllLines(-1);
+        RomSelect_PadState(&waitPad);
+        Menu_LoadFrame();
+        if (waitPad & A)
+        {
+            return true;
+        }
+        else if (waitPad & B)
+        {
+            return false;
+        }
+    }
+}
+void DisplayFatalError(char *error)
+{
+    while (true)
+    {
+        showMessageBox("Fatal error:", CRED, error, "Please correct and restart.");
     }
 }
 
@@ -910,7 +1031,13 @@ void screenSaver()
         screenSaverWithBlocks();
     }
 #endif
-    screenSaverWithArt(!artworkEnabled);
+#if PICO_RP2350
+    if ( !wavplayer::isPlaying() ) {
+#endif
+       screenSaverWithArt(!artworkEnabled);
+#if PICO_RP2350
+    }
+#endif
 }
 
 // #define ARTFILE "/ART/output_RGB555.raw"
@@ -1314,20 +1441,586 @@ void DisplayDacError()
         DrawScreen(-1);
     }
 }
-void waitForNoButtonPress()
+
+void getQuickSavePath(char *path, size_t pathsize)
 {
-    DWORD PAD1_Latch;
-    while (true)
+    snprintf(path, pathsize, QUICKSAVEFILEFORMAT, FrensSettings::getEmulatorTypeString(), Frens::getCrcOfLoadedRom(), MAXSAVESTATESLOTS -1);
+}
+
+void getAutoSaveIsConfiguredPath(char *path, size_t pathsize)
+{
+    snprintf(path, pathsize, AUTOSAVEFILEISCONFIGUREDFORMAT, FrensSettings::getEmulatorTypeString(), Frens::getCrcOfLoadedRom());
+}
+
+void getAutoSaveStatePath(char *path, size_t pathsize)
+{
+    snprintf(path, pathsize, AUTOSAVEFILEFORMAT, FrensSettings::getEmulatorTypeString(), Frens::getCrcOfLoadedRom());
+}
+
+void getSaveStatePath(char *path, size_t pathsize, int slot)
+{
+    snprintf(path, pathsize, SLOTFORMAT, FrensSettings::getEmulatorTypeString(), Frens::getCrcOfLoadedRom(), slot);
+}
+
+bool isAutoSaveStateConfigured()
+{
+    char path[FF_MAX_LFN];
+    getAutoSaveIsConfiguredPath(path, sizeof(path));
+    return Frens::fileExists(path);
+}
+
+// Helper: ensure the directory structure for save states exists.
+// Returns true on success, false on failure (and shows a message box).
+static bool ensureSaveStateDirectories(uint32_t crc)
+{
+    FRESULT fr;
+    char tmppath[40];
+
+    // /SAVESTATES
+    snprintf(tmppath, sizeof(tmppath), "%s", SAVESTATEDIR);
+    fr = f_mkdir(tmppath);
+    if (fr != FR_OK && fr != FR_EXIST)
     {
-        DrawScreen(-1);
-        Menu_LoadFrame();
-        RomSelect_PadState(&PAD1_Latch);
-        if (PAD1_Latch == 0)
+        printf("Error creating save state directory: %s (fr=%d)\n", tmppath, fr);
+        showMessageBox("Save failed, cannot create folder.", CRED, tmppath);
+        return false;
+    }
+    if ( fr == FR_OK ) {
+        printf("Save state base directory created: %s\n", tmppath);
+    }
+    // /SAVESTATES/<emulator>
+    snprintf(tmppath, sizeof(tmppath), "%s/%s", SAVESTATEDIR, FrensSettings::getEmulatorTypeString());
+    
+    fr = f_mkdir(tmppath);
+    if (fr != FR_OK && fr != FR_EXIST)
+    {
+        printf("Error creating save state directory: %s (fr=%d)\n", tmppath, fr);
+        showMessageBox("Save failed, cannot create folder.", CRED, tmppath);
+        return false;
+    }
+    if ( fr == FR_OK ) {
+        printf("Save state emulator directory created: %s\n", tmppath);
+    }   
+    // /SAVESTATES/<emulator>/<CRC>
+    snprintf(tmppath, sizeof(tmppath), "%s/%s/%08X", SAVESTATEDIR, FrensSettings::getEmulatorTypeString(), crc);
+    fr = f_mkdir(tmppath);
+    if (fr != FR_OK && fr != FR_EXIST)
+    {
+        printf("Error creating save state directory: %s (fr=%d)\n", tmppath, fr);
+        showMessageBox("Save failed, cannot create folder.", CRED, tmppath);
+        return false;
+    }
+    if ( fr == FR_OK ) {
+        printf("Save state CRC directory created: %s\n", tmppath);
+    }   
+
+    return true;
+}
+
+/// @brief Shows the save state menu
+/// @param savestatefunc The function to call to save a state
+/// @param loadstatefunc The function to call to load a state
+/// @param extraMessage Extra message to display at the bottom of the menu
+/// @return false when a save state failed to load. True otherwise.
+bool showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefunc)(const char *path), const char *extraMessage, SaveStateTypes quickSave)
+{
+    bool saveStateLoadedOK = true;
+    uint8_t saveslots[MAXSAVESTATESLOTS]{};
+    char tmppath[40]; // /SAVESTATES/NES/XXXXXXXX/slot1.sta
+    int margintop = 0;
+    int marginbottom = 0;
+#if ENABLE_VU_METER
+    turnOffAllLeds();
+#endif
+
+    screenBuffer = (charCell *)Frens::f_malloc(screenbufferSize);
+    auto crc = Frens::getCrcOfLoadedRom();
+#if !HSTX
+    margintop = dvi_->getBlankSettings().top;
+    marginbottom = dvi_->getBlankSettings().bottom;
+    scaleMode8_7_ = Frens::applyScreenMode(ScreenMode::NOSCANLINE_1_1);
+    dvi_->getBlankSettings().top = 0;
+    dvi_->getBlankSettings().bottom = 0;
+#else
+    hstx_setScanLines(false);
+#endif
+    getAutoSaveStatePath(tmppath, sizeof(tmppath));
+    bool autosaveFileExists = Frens::fileExists(tmppath);
+    // Handle quicksave and quick load
+    if (quickSave == SaveStateTypes::LOAD || quickSave == SaveStateTypes::SAVE || quickSave == SaveStateTypes::LOAD_AND_START || quickSave == SaveStateTypes::SAVE_AND_EXIT)
+    {
+        
+        if (quickSave == SaveStateTypes::LOAD)
         {
-            return;
+            getQuickSavePath(tmppath, sizeof(tmppath));
+            // do nothing if file does not exist
+            if (Frens::fileExists(tmppath) )
+            {
+                bool ok = true;
+                ok = showDialogYesNo("Load quick save state?");
+                if (ok)
+                {
+                    printf("Loading quick save from %s\n", tmppath);
+                    if (loadstatefunc(tmppath) == 0)
+                    {
+                        printf("Quick load successful\n");
+                        //showMessageBox("State loaded successfully.", settings.fgcolor);
+                    }
+                    else
+                    {
+                        printf("Quick load failed\n");
+                        showMessageBox("State load failed. Returning to menu.", CRED);
+                        saveStateLoadedOK = false;
+                    }
+                }
+            }
+            else
+            {
+                showMessageBox("Quick save file does not exist.", CRED);
+                printf("Quick save file does not exist\n");
+            }
+        }
+        else if (quickSave == SaveStateTypes::SAVE)
+        {
+            getQuickSavePath(tmppath, sizeof(tmppath));
+            if (ensureSaveStateDirectories(crc))
+            {
+                bool ok = true;
+                if (Frens::fileExists(tmppath))
+                {
+                    ok = showDialogYesNo("Overwrite existing quick save?");
+                }
+                if (ok)
+                {
+                    printf("Saving quick save to %s\n", tmppath);
+                    if (savestatefunc(tmppath) == 0)
+                    {
+                        printf("Quick save successful\n");
+                        //showMessageBox("State saved successfully.", settings.fgcolor);
+                    }
+                    else
+                    {
+                        printf("Quick save failed\n");
+                        showMessageBox("Failed to save state.", CRED);
+                    }
+                }
+            }
+        } else if ( quickSave == SaveStateTypes::LOAD_AND_START) {
+            // do nothing if file does not exist
+            if (autosaveFileExists)
+            {
+                bool ok = true;
+                ok = showDialogYesNo("Load auto save state?");
+                if (ok)
+                {
+                    printf("Loading auto save from %s\n", tmppath);
+                    if (loadstatefunc(tmppath) == 0)
+                    {
+                        printf("Auto load successful\n");
+                        //showMessageBox("State loaded successfully.", settings.fgcolor);
+                    }
+                    else
+                    {
+                        printf("Auto load failed\n");
+                        showMessageBox("State load failed. Returning to menu.", CRED);
+                        saveStateLoadedOK = false;
+                    }
+                }
+            }
+        } else if ( quickSave == SaveStateTypes::SAVE_AND_EXIT) {
+            getAutoSaveStatePath(tmppath, sizeof(tmppath));
+            if (ensureSaveStateDirectories(crc))
+            {
+                bool ok = true;
+                if (autosaveFileExists)
+                {
+                    ok = showDialogYesNo("Overwrite existing auto save?");
+                }
+                if (ok)
+                {
+                    printf("Saving auto save to %s\n", tmppath);
+                    if (savestatefunc(tmppath) == 0)
+                    {
+                        autosaveFileExists = true;
+                        printf("Auto save successful\n");
+                        //showMessageBox("State saved successfully.", settings.fgcolor);
+                    }
+                    else
+                    {
+                        printf("Auto save failed\n");
+                        showMessageBox("Failed to save state.", CRED);
+                    }
+                }
+            }
+        }
+
+    }
+    else
+    {
+        
+        for (int i = 0; i < MAXSAVESTATESLOTS; i++)
+        {
+            getSaveStatePath(tmppath, sizeof(tmppath), i);
+            saveslots[i] = (Frens::fileExists(tmppath)) ? 1 : 0;
+        }
+        // check if auto save is enabled
+        printf("Checking if auto save is configured...\n");
+        getAutoSaveIsConfiguredPath(tmppath, sizeof(tmppath));
+        printf("Auto save path: %s\n", tmppath);
+        bool autosaveEnabled = (Frens::fileExists(tmppath));
+        printf("Auto save configured: %s\n", autosaveEnabled ? "Yes" : "No");
+        int selected = 0;
+        bool exitMenu = false;
+        bool saved = false;
+        DWORD pad = 0;
+        int idleStart = -1;
+
+        // confirmType: 0 none, 1 overwrite, 2 delete
+        auto redraw = [&](int confirmType = 0, int confirmSlot = -1)
+        {
+            char linebuf[48];
+            ClearScreen(settings.bgcolor);
+            getButtonLabels(buttonLabel1, buttonLabel2);
+            putText(9, 0, "-- Save/Load State --", settings.fgcolor, settings.bgcolor);
+            putText(0, 2, "Choose slot:", settings.fgcolor, settings.bgcolor);
+
+            for (int i = 0; i < MAXSAVESTATESLOTS && (4 + i) < ENDROW - 2; i++)
+            {
+                const char *status = saveslots[i] ? "Used" : "Empty";
+                // Last soft used for quick save
+                if (i == (MAXSAVESTATESLOTS - 1)) {
+                    snprintf(linebuf, sizeof(linebuf), "Quick Save: %s%s", status, (i == selected && saved) ? " Saved" : "");
+                } else {
+                    snprintf(linebuf, sizeof(linebuf), "Slot %d____: %s%s", i, status, (i == selected && saved) ? " Saved" : "");
+                }
+                int fg = settings.fgcolor;
+                int bg = settings.bgcolor;
+                if (confirmSlot == i)
+                {
+                    // Highlight slot being confirmed (overwrite/delete)
+                    fg = CWHITE;
+                    // bg = (confirmType == 2) ? CBLUE : CRED;
+                    bg = CRED;
+                }
+                else if (i == selected && confirmSlot < 0)
+                {
+                    fg = settings.bgcolor;
+                    bg = settings.fgcolor;
+                }
+                putText(2, 4 + i, linebuf, fg, bg);
+            }
+            // Add toggle option after the slots
+            {
+                int toggleRow = 4 + MAXSAVESTATESLOTS;
+                const char *toggleStatus = autosaveEnabled ? "Enabled" : "Disabled";
+                const char *autosaveUsed = autosaveFileExists ? "Used" : "Empty";
+                snprintf(linebuf, sizeof(linebuf), "Auto Save : %s -  %s%s", autosaveUsed, toggleStatus, (selected == MAXSAVESTATESLOTS && saved) ? " Saved" : "");
+                int fg = settings.fgcolor;
+                int bg = settings.bgcolor;
+                if (confirmSlot < 0 && selected == MAXSAVESTATESLOTS)
+                {
+                    fg = settings.bgcolor;
+                    bg = settings.fgcolor;
+                } else if (confirmSlot == MAXSAVESTATESLOTS) {
+                    // Highlight slot being confirmed (overwrite/delete)
+                    fg = CWHITE;
+                    bg = CRED;
+                }
+                putText(2, toggleRow, linebuf, fg, bg);
+            }
+            putText(0, ENDROW - 9, extraMessage ? extraMessage : " ", settings.fgcolor, settings.bgcolor);
+            if (confirmSlot >= 0)
+            {
+                if (confirmType == 1)
+                {
+                    putText(0, ENDROW - 4, "Overwrite existing state?", settings.fgcolor, settings.bgcolor);
+                    snprintf(linebuf, sizeof(linebuf), "%s:Overwrite  %s:Cancel", buttonLabel1, buttonLabel2);
+                }
+                else
+                {
+                    putText(0, ENDROW - 4, "Delete this save state?", settings.fgcolor, settings.bgcolor);
+                    snprintf(linebuf, sizeof(linebuf), "%s:Delete  %s:Cancel", buttonLabel1, buttonLabel2);
+                }
+                putText(0, ENDROW - 3, linebuf, settings.fgcolor, settings.bgcolor);
+            }
+            else
+            {
+                bool saveSlotHasData = false;
+                if ( selected < MAXSAVESTATESLOTS )
+                {
+                    saveSlotHasData = saveslots[selected];
+                }  else {
+                    saveSlotHasData = autosaveFileExists; 
+                }
+                // General instructions (each action on its own line)
+                if ( selected == MAXSAVESTATESLOTS ) {
+                    putText(0, ENDROW - 7, "LEFT/RIGHT: Toggle autosave", settings.fgcolor, settings.bgcolor);
+                } 
+                //if ( selected < MAXSAVESTATESLOTS) {
+                    snprintf(linebuf, sizeof(linebuf), "%s_____:Save state", buttonLabel1);
+                    putText(0, ENDROW - 6, linebuf, settings.fgcolor, settings.bgcolor);
+                //}
+                if (saveSlotHasData)
+                {                 
+                    snprintf(linebuf, sizeof(linebuf), "SELECT:Delete state");
+                    putText(0, ENDROW - 5, linebuf, settings.fgcolor, settings.bgcolor);
+                    putText(0, ENDROW - 4, "START :Load state.", settings.fgcolor, settings.bgcolor);
+                    // Back must be shown last when slot non-empty
+                    snprintf(linebuf, sizeof(linebuf), "%s_____:Back", buttonLabel2);
+                    putText(0, ENDROW - 3, linebuf, settings.fgcolor, settings.bgcolor);
+                    // Toggle auto save now handled via menu line with A
+                }
+                else
+                {
+                    // When slot is empty, show Back immediately below Save
+                    snprintf(linebuf, sizeof(linebuf), "%s_____:Back", buttonLabel2);
+                    putText(0, ENDROW - 5, linebuf, settings.fgcolor, settings.bgcolor);
+                }
+                putText(0, SCREEN_ROWS - 4, "In-Game Quick Save/Load state: ", settings.fgcolor, settings.bgcolor);
+                //snprintf(linebuf, sizeof(linebuf), "SELECT + %s : Quick Save", buttonLabel1);
+                snprintf(linebuf, sizeof(linebuf), "START + DOWN : Quick Save");
+                putText(1, SCREEN_ROWS - 3, linebuf, settings.fgcolor, settings.bgcolor);
+                //snprintf(linebuf, sizeof(linebuf), "SELECT + %s : Quick Load", buttonLabel2);
+                snprintf(linebuf, sizeof(linebuf), "START + UP___: Quick Load");
+                putText(1, SCREEN_ROWS - 2, linebuf, settings.fgcolor, settings.bgcolor);
+            }
+
+            drawAllLines(-1);
+        };
+
+        waitForNoButtonPress();
+
+        while (!exitMenu)
+        {
+            redraw();
+            RomSelect_PadState(&pad);
+            int frame = Menu_LoadFrame();
+            if (idleStart < 0)
+                idleStart = frame;
+            if (pad)
+                idleStart = frame;
+
+            if ((frame - idleStart) > 3600)
+            {
+                exitMenu = true;
+                idleStart = frame;
+                continue;
+            }
+
+            if (pad & UP)
+            {
+                selected = (selected > 0) ? selected - 1 : (MAXSAVESTATESLOTS); // include toggle line
+                saved = false;
+            }
+            else if (pad & DOWN)
+            {
+                selected = (selected < MAXSAVESTATESLOTS) ? selected + 1 : 0; // include toggle line
+                saved = false;
+            }
+            else if (!(pad & SELECT) && (pad & START))
+            {
+                bool saveSlotHasData = false;
+                if ( selected < MAXSAVESTATESLOTS )
+                {
+                    saveSlotHasData = saveslots[selected];
+                    getSaveStatePath(tmppath, sizeof(tmppath), selected);
+                } else {
+                    saveSlotHasData = autosaveFileExists;
+                    getAutoSaveStatePath(tmppath, sizeof(tmppath));
+                }
+                if (!saveSlotHasData)
+                {
+                    // No save state in this slot
+                    continue;
+                }
+               
+                printf("Loading state  %s from slot %d\n", tmppath, selected);
+                if (loadstatefunc(tmppath) == 0)
+                {
+                    printf("Save state loaded from slot %d: %s\n", selected, tmppath);
+                    //showMessageBox("Loaded state from", CBLUE, tmppath, "Press any button to resume game.");
+                    exitMenu = true;
+                    break;
+                }
+                else
+                {
+                    showMessageBox("State load failed. Returning to menu.", CRED);
+                    saveStateLoadedOK = false;
+                    exitMenu = true;
+                    break;
+                }
+            }
+            else if ((pad & SELECT) && !(pad & START))
+            {
+                bool saveSlotHasData = false;
+                if ( selected < MAXSAVESTATESLOTS )
+                {
+                    saveSlotHasData = saveslots[selected];
+                    getSaveStatePath(tmppath, sizeof(tmppath), selected);
+                } else {
+                    // Auto save slot
+                    getAutoSaveStatePath(tmppath, sizeof(tmppath));
+                    saveSlotHasData = autosaveFileExists;
+                }
+                // Delete confirmation only when slot used
+                if (saveSlotHasData)
+                {
+
+                    while (true)
+                    {
+                        redraw(2, selected);
+                        RomSelect_PadState(&pad);
+                        Menu_LoadFrame();
+                        if (pad & A) // Confirm delete
+                        {
+                            printf("Deleting save state file: %s\n", tmppath);
+                            f_unlink(tmppath); // ignore result
+                            saveslots[selected] = 0;
+                            // showMessageBox("Save state deleted.", CBLUE);
+                            if (selected == MAXSAVESTATESLOTS)
+                            {
+                                autosaveFileExists = false;
+                            }
+                            break;
+                        }
+                        if (pad & B) // Cancel
+                            break;
+                    }
+                    continue;
+                }
+            }
+            else if ((pad & LEFT || pad & RIGHT) && selected == MAXSAVESTATESLOTS)
+            {
+                if (ensureSaveStateDirectories(crc) == false)
+                {
+                    continue;
+                }
+                // Toggle auto save by creating/deleting AUTO file
+                printf("Toggling auto save...\n");
+                getAutoSaveIsConfiguredPath(tmppath, sizeof(tmppath));
+                printf("Auto save config file path: %s\n", tmppath);
+                FIL fil;
+                FRESULT fr;
+                fr = f_open(&fil, tmppath, FA_OPEN_EXISTING);
+                if (fr == FR_OK)
+                {
+                    f_close(&fil);
+                    fr = f_unlink(tmppath);
+                    if (fr != FR_OK)
+                    {
+                        showMessageBox("Failed to disable auto save.", CRED);
+                    }
+                    else
+                    {
+                        autosaveEnabled = false;
+                        //showMessageBox("Auto save disabled.", CBLUE);
+                    }
+                }
+                else
+                {
+                    fr = f_open(&fil, tmppath, FA_WRITE | FA_CREATE_ALWAYS);
+                    if (fr == FR_OK)
+                    {
+                        f_close(&fil);
+                        autosaveEnabled = true;
+                       // showMessageBox("Auto save enabled.", CBLUE);
+                    }
+                    else
+                    {
+                        showMessageBox("Failed to enable auto save.", CRED);
+                    }
+                }
+                continue;
+            }
+            else if (pad & B)
+            {
+                exitMenu = true;
+                saved = false;
+            }
+            else if (pad & A)
+            {
+                bool saveSlotHasData = false;
+                if ( selected < MAXSAVESTATESLOTS )
+                {
+                    saveSlotHasData = saveslots[selected];
+                    getSaveStatePath(tmppath, sizeof(tmppath), selected);
+                } else {
+                    // Auto save slot
+                    getAutoSaveStatePath(tmppath, sizeof(tmppath));
+                    saveSlotHasData = autosaveFileExists;
+                }
+                bool proceed = true;
+                if (saveSlotHasData)
+                {
+
+                    while (true)
+                    {
+                        // Overwrite confirmation
+                        redraw(1, selected);
+                        RomSelect_PadState(&pad);
+                        Menu_LoadFrame();
+                        if (pad & A)
+                        {
+                            proceed = true;
+                            break;
+                        }
+                        if (pad & B)
+                        {
+                            proceed = false;
+                            break;
+                        }
+                    }
+                    if (!proceed)
+                    {
+                        continue;
+                    }
+                }
+
+                // Ensure save state directories exist
+                if (ensureSaveStateDirectories(crc))
+                {
+
+                    // Save file
+                    printf("Saving state to slot %d: %s\n", selected, tmppath);
+                    if (savestatefunc(tmppath) == 0)
+                    {
+                        printf("Save state saved to slot %d: %s\n", selected + 1, tmppath);
+                        if ( selected < MAXSAVESTATESLOTS )
+                        {
+                            saveslots[selected] = 1;
+                        } else {
+                            autosaveFileExists = true;
+                        }
+                        saved = true;
+                    }
+                    else
+                    {
+                        showMessageBox("Save failed.", CRED);
+                    }
+                }
+            }
         }
     }
+    ClearScreen(CBLACK);
+    waitForNoButtonPress();
+
+#if !HSTX
+    scaleMode8_7_ = Frens::applyScreenMode(settings.screenMode);
+    if (!Frens::isFrameBufferUsed())
+    {
+        dvi_->getBlankSettings().top = margintop;
+        dvi_->getBlankSettings().bottom = marginbottom;
+    }
+#else
+    hstx_setScanLines(settings.flags.scanlineOn);
+#endif
+    Frens::PaceFrames60fps(true);
+    printf("Exiting save state menu.\n");
+    Frens::f_free(screenBuffer);
+    return saveStateLoadedOK;
 }
+
+
 // --- Settings Menu Implementation ---
 // returns 0 if no changes, 1 if settings applied
 //         2 start screensaver
@@ -1338,6 +2031,7 @@ int showSettingsMenu(bool calledFromGame)
     int rval = 0;
     int margintop = 0;
     int marginbottom = 0;
+
     // Allocate screen buffer if called from game
     if (calledFromGame)
     {
@@ -1384,12 +2078,6 @@ int showSettingsMenu(bool calledFromGame)
 #endif
     }
 
-    // Preserve stack by using static buffers (RP2040 has limited stack)
-    static char buttonLabel1[2]; // e.g., "A", "B", "X", "O"
-    static char buttonLabel2[2]; // e.g., "A", "B", "
-    static char line[41];
-    static char valueBuf[16]; // NEW: separate buffer for numeric values
-
     // Local working copy of settings.
     struct settings *workingDyn = (struct settings *)Frens::f_malloc(sizeof(settings));
     if (!workingDyn)
@@ -1427,9 +2115,13 @@ int showSettingsMenu(bool calledFromGame)
     int visibleCount = 0;
     for (int i = 0; i < MOPT_COUNT; ++i)
     {
-        if (g_settings_visibility[i] || (i == MenuSettingsIndex::MOPT_EXIT_GAME && calledFromGame))
+        // -1 is always hidden
+        if (g_settings_visibility[i] >= 0)
         {
-            visibleIndices[visibleCount++] = i;
+            if (g_settings_visibility[i] || (i == MenuSettingsIndex::MOPT_EXIT_GAME || i == MenuSettingsIndex::MOPT_SAVE_RESTORE_STATE) && calledFromGame)
+            {
+                visibleIndices[visibleCount++] = i;
+            }
         }
     }
     // Layout rows:
@@ -1490,6 +2182,12 @@ int showSettingsMenu(bool calledFromGame)
                 {
                     label = "Back to main menu";
                 }
+                value = "";
+                break;
+            }
+            case MenuSettingsIndex::MOPT_SAVE_RESTORE_STATE:
+            {
+                label = "Save/Load State";
                 value = "";
                 break;
             }
@@ -1577,6 +2275,13 @@ int showSettingsMenu(bool calledFromGame)
                 value = working.flags.fruitJamEnableInternalSpeaker ? "ON" : "OFF";
                 break;
             }
+            case MenuSettingsIndex::MOPT_FRUITJAM_VOLUME_CONTROL:
+            {
+                label = "Fruit Jam Volume Control";
+                sprintf(valueBuf, "%d", working.fruitjamVolumeLevel);
+                value = valueBuf;
+                break;
+            }
             case MenuSettingsIndex::MOPT_DMG_PALETTE:
             {
                 label = "DMG Palette";
@@ -1654,7 +2359,7 @@ int showSettingsMenu(bool calledFromGame)
                 value = "";
                 break;
             }
-            snprintf(line, sizeof(line), "%s%s%s", label, (optIndex == MOPT_EXIT_GAME) ? "" : ": ", value);
+            snprintf(line, sizeof(line), "%s%s%s", label, (optIndex == MOPT_EXIT_GAME || optIndex == MOPT_SAVE_RESTORE_STATE) ? "" : ": ", value);
             putText(0, row++, line, CBLACK, CWHITE);
         }
         // Blank spacer after last option
@@ -1701,21 +2406,24 @@ int showSettingsMenu(bool calledFromGame)
         putText(0, row++, "CANCEL", CBLACK, CWHITE);
         putText(0, row++, "DEFAULT", CBLACK, CWHITE);
         // Help text (dynamic button labels)
-        if (selectedRowLocal == rowStartOptions && calledFromGame)
+
+        if (selectedRowLocal < saveRowScreen)
         {
-            snprintf(line, sizeof(line), "UP/DOWN: Move, %s quit game", buttonLabel1);
-        }
-        else
-        {
-            if (selectedRowLocal < saveRowScreen)
+            if (visibleIndices[selectedRowLocal - rowStartOptions] == MOPT_EXIT_GAME ||
+                visibleIndices[selectedRowLocal - rowStartOptions] == MOPT_SAVE_RESTORE_STATE)
             {
-                strcpy(line, "UP/DOWN: Move, LEFT/RIGHT: Change");
+                snprintf(line, sizeof(line), "UP/DOWN: Move, %s: select", buttonLabel1);
             }
             else
             {
-                strcpy(line, "UP/DOWN: Move");
+                strcpy(line, "UP/DOWN: Move, LEFT/RIGHT: Change");
             }
         }
+        else
+        {
+            strcpy(line, "UP/DOWN: Move");
+        }
+
         int helpCount = 2;
         row = SCREEN_ROWS - helpCount - 1; // leave one blank row at bottom
         int hlen = (int)strlen(line);
@@ -1748,7 +2456,7 @@ int showSettingsMenu(bool calledFromGame)
         {
             putText(0, helpRowScreen, "                                        ", CBLACK, CWHITE);
         }
-       
+
         // snprintf(line, sizeof(line),
         //          "%s: SAVE/CANCEL/DEFAULT,  %s: Cancel",
         //          buttonLabel1, buttonLabel2);
@@ -1764,17 +2472,34 @@ int showSettingsMenu(bool calledFromGame)
         if (col < 0)
             col = 0;
         putText(col, row++, line, CBLACK, CWHITE);
-
-  
+#if 0
         putText(0, helpRowScreen + 3, "System info:", CBLACK, CWHITE);
         Frens::getFsInfo(line, sizeof(line));
-        putText(1, helpRowScreen + 4 , "SD:", CBLACK, CWHITE);
+        putText(1, helpRowScreen + 4, "SD:", CBLACK, CWHITE);
         putText(5, helpRowScreen + 4, line, CBLACK, CWHITE);
-        for (int lineNr = 0; lineNr < 240; ++lineNr)
-        {
-            drawline(lineNr, selectedRowLocal);
-        }
+#endif
+        drawAllLines(selectedRowLocal);
     }; // redraw lambda
+    // for volume control option: initialize audio stream
+#if HW_CONFIG == 8
+    // Initialize menu music
+    ///wavplayer::init_memory();
+    // Optional: set offset and/or switch to file
+    // wavplayer::set_offset_seconds(0.8f); // skip initial silence
+    // Uncomment to stream from a file on SD (must be a valid PCM 16-bit stereo WAV)
+    char wavPath[40];
+    strcpy(wavPath, RECORDEDSAMPLEFILE);
+    if ( !Frens::fileExists(wavPath) ) {
+        snprintf(wavPath, sizeof(wavPath), DEFAULTSAMPLEFILEFORMAT, FrensSettings::getEmulatorTypeString());
+        printf("Menu music file not found at /soundrecorder.wav, trying %s\n", wavPath);
+    }
+    if (wavplayer::use_file(wavPath)) {
+        
+        printf("Streaming menu music from file.\n");
+        //wavplayer::resume();
+    }
+#endif
+
     waitForNoButtonPress();
     int startFrames = -1;
     while (!exitMenu)
@@ -1795,6 +2520,15 @@ int showSettingsMenu(bool calledFromGame)
         {
             optIndex = visibleIndices[selectedRowLocal - rowStartOptions]; // map screen row to option index
         }
+#if HW_CONFIG == 8 && PICO_RP2350
+        if ( optIndex == MOPT_FRUITJAM_VOLUME_CONTROL) {
+            // resume audio stream for volume adjustment feedback
+            wavplayer::resume();
+        } else {
+            // pause audio stream
+            wavplayer::pause();
+        }
+#endif
         if (pushed)
         {
             startFrames = frameCount; // reset idle counter
@@ -1846,7 +2580,7 @@ int showSettingsMenu(bool calledFromGame)
                     selectedRowLocal = rowStartOptions; // wrap
                 }
             }
-            else if (pad & LEFT || pad & RIGHT || ((pad & A) && optIndex == MOPT_EXIT_GAME))
+            else if (pad & LEFT || pad & RIGHT || ((pad & A) && (optIndex == MOPT_EXIT_GAME || optIndex == MOPT_SAVE_RESTORE_STATE)))
             {
                 if (optIndex != -1)
                 {
@@ -1857,6 +2591,12 @@ int showSettingsMenu(bool calledFromGame)
                     case MOPT_EXIT_GAME:
                     {
                         rval = 3; // exit to main menu
+                        exitMenu = true;
+                        break;
+                    }
+                    case MOPT_SAVE_RESTORE_STATE:
+                    {
+                        rval = 4; // save/restore state
                         exitMenu = true;
                         break;
                     }
@@ -1978,6 +2718,26 @@ int showSettingsMenu(bool calledFromGame)
                         working.flags.fruitJamEnableInternalSpeaker = !working.flags.fruitJamEnableInternalSpeaker;
                         break;
                     }
+                    case MOPT_FRUITJAM_VOLUME_CONTROL:
+                    {
+                        if (right)
+                        {
+                            if (working.fruitjamVolumeLevel < 23)
+                            {
+                                working.fruitjamVolumeLevel++;
+                                EXT_AUDIO_SETVOLUME(working.fruitjamVolumeLevel);
+                            }
+                        }
+                        else
+                        {
+                            if (working.fruitjamVolumeLevel > -63)
+                            {
+                                working.fruitjamVolumeLevel--;
+                                EXT_AUDIO_SETVOLUME(working.fruitjamVolumeLevel);
+                            }
+                        }
+                        break;
+                    }
                     case MOPT_RAPID_FIRE_ON_A:
                     {
 
@@ -2083,14 +2843,18 @@ int showSettingsMenu(bool calledFromGame)
             dvi_->getBlankSettings().top = margintop;
             dvi_->getBlankSettings().bottom = marginbottom;
         }
-#else   
+#else
         // Restore scanline setting
         hstx_setScanLines(settings.flags.scanlineOn);
 #endif
-          // Speaker can be muted/unmuted from settings menu
+        // Speaker can be muted/unmuted from settings menu
         EXT_AUDIO_MUTE_INTERNAL_SPEAKER(settings.flags.fruitJamEnableInternalSpeaker == 0);
+        EXT_AUDIO_SETVOLUME(settings.fruitjamVolumeLevel);
         Frens::PaceFrames60fps(true);
     }
+#if HW_CONFIG == 8
+    wavplayer::reset(); // stop menu music
+#endif
     return rval;
 }
 
@@ -2106,6 +2870,7 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
 #if ENABLE_VU_METER
     turnOffAllLeds();
 #endif
+
     artworkEnabled = isArtWorkEnabled();
     crcOffset = FrensSettings::getEmulatorType() == FrensSettings::emulators::NES ? 16 : 0; // crc offset according to  https://github.com/ducalex/retro-go-covers
     printf("Emulator: %s, crcOffset: %d\n", FrensSettings::getEmulatorTypeString(), crcOffset);
@@ -2148,7 +2913,7 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
         }
         else
         {
-            DisplayEmulatorErrorMessage(errorMessage); // Emulator cannot start, show error
+            showMessageBox("An error has occurred", CRED, errorMessage);
         }
         showSplash = false;
     }
@@ -2168,15 +2933,28 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
     romlister.list(settings.currentDir);
     displayRoms(romlister, settings.firstVisibleRowINDEX);
     bool startGame = false;
-
     waitForNoButtonPress();
     while (1)
     {
 
         auto frameCount = Menu_LoadFrame();
+        // Pump background audio each frame (approx 60 FPS -> ~735 frames @ 44.1kHz)
+// #if HW_CONFIG == 8
+//         if (wavplayer::ready()) {
+//             wavplayer::pump(wavplayer::sample_rate() / 60);
+//         }
+// #endif
         auto index = settings.selectedRow - STARTROW + settings.firstVisibleRowINDEX;
         auto entries = romlister.GetEntries();
         selectedRomOrFolder = (romlister.Count() > 0) ? entries[index].Path : nullptr;
+        bool isWav = false;
+#if PICO_RP2350
+        if (selectedRomOrFolder) {
+            if ( Frens::cstr_endswith(selectedRomOrFolder, ".wav") || Frens::cstr_endswith(selectedRomOrFolder, ".WAV") ) {
+                isWav = true;
+            }
+        }
+#endif
         errorInSavingRom = false;
         DrawScreen(settings.selectedRow);
         RomSelect_PadState(&PAD1_Latch);
@@ -2321,13 +3099,13 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
 #if PICO_RP2350
 #else
 #if HW_CONFIG == 1
-                // On RP2040 with Pimoroni Pico DV Demo base, intermittent crashes have been observed in the settings menu 
+                // On RP2040 with Pimoroni Pico DV Demo base, intermittent crashes have been observed in the settings menu
                 // from within the SMS emulator only.
                 // As a workaround, disable the settings menu for SMS emulator on HW_CONFIG 1.
                 // Settings can still be opened in-game.
                 if (FrensSettings::getEmulatorType() == FrensSettings::emulators::SMS)
                 {
-                    //printf("Settings menu not available for SMS emulator\n");
+                    // printf("Settings menu not available for SMS emulator\n");
                     continue; // skip other processing this frame
                 }
 #endif
@@ -2347,7 +3125,7 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
                 displayRoms(romlister, settings.firstVisibleRowINDEX);
                 continue; // skip other processing this frame
             }
-            else if ((PAD1_Latch & START) == START && ((PAD1_Latch & SELECT) != SELECT))
+            else if ((PAD1_Latch & START) == START && ((PAD1_Latch & SELECT) != SELECT) && !isWav)
             {
 #if 0
                 showLoadingScreen();
@@ -2433,7 +3211,7 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
 
 #endif
             }
-            else if (startGame || ((PAD1_Latch & A) == A && selectedRomOrFolder))
+            else if ((startGame || (PAD1_Latch & A) == A) && selectedRomOrFolder && !isWav)
             {
                 if (entries[index].IsDirectory && !startGame)
                 {
@@ -2451,6 +3229,11 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
                 }
                 else
                 {
+#if PICO_RP2350
+                    // Stop any playing WAV file
+                    wavplayer::reset();
+                    lastWavPath[0] = '\0';
+#endif
                     showLoadingScreen();
                     fr = f_getcwd(curdir, sizeof(curdir)); // f_getcwd(curdir, sizeof(curdir));
                     printf("Current dir: %s\n", curdir);
@@ -2510,6 +3293,36 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
                         break; // from while(1) loop, so we can reboot or return to main.cpp
                     }
                 }
+            } else if ( ( (PAD1_Latch & A) == A || (PAD1_Latch & START) == START) && selectedRomOrFolder && isWav)
+            {
+#if PICO_RP2350
+                // Build full path of highlighted WAV
+                fr = f_getcwd(curdir, sizeof(curdir));
+                char fullWavPath[FF_MAX_LFN];
+                snprintf(fullWavPath, sizeof(fullWavPath), "%s/%s", curdir, selectedRomOrFolder);
+
+                // If same track is already playing, stop it; else start new track
+                if (wavplayer::isPlaying() && strcmp(fullWavPath, lastWavPath) == 0)
+                {
+                    printf("Stopping WAV playback: %s\n", fullWavPath);
+                    wavplayer::reset();
+                    lastWavPath[0] = '\0';
+                }
+                else
+                {
+                    printf("Playing WAV file: %s\n", fullWavPath);
+                    wavplayer::reset();
+                    if ( wavplayer::use_file(fullWavPath) ) {
+                        EXT_AUDIO_SETVOLUME(settings.fruitjamVolumeLevel);
+                        wavplayer::resume();
+                        strncpy(lastWavPath, fullWavPath, sizeof(lastWavPath) - 1);
+                        lastWavPath[sizeof(lastWavPath) - 1] = '\0';
+                    } else {
+                        printf("Error opening WAV file: %s\n", fullWavPath);
+                    }
+
+                }
+#endif
             }
         }
         // scroll selected row horizontally if textsize exceeds rowlength
@@ -2538,9 +3351,12 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
             // printf("Starting screensaver\n");
             totalFrames = -1;
             // romlister.ClearMemory();
-            screenSaver();
-            romlister.list(".");
-            displayRoms(romlister, settings.firstVisibleRowINDEX);
+           
+            if (! wavplayer::isPlaying() ) {
+                screenSaver();
+                romlister.list(".");
+                displayRoms(romlister, settings.firstVisibleRowINDEX);
+            }
         }
     } // while 1
 

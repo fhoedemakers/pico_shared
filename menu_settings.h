@@ -6,6 +6,7 @@
 
 enum MenuSettingsIndex {
     MOPT_EXIT_GAME = 0,
+    MOPT_SAVE_RESTORE_STATE,
     MOPT_SCREENMODE,
     MOPT_SCANLINES,
     MOPT_FPS_OVERLAY,
@@ -16,6 +17,7 @@ enum MenuSettingsIndex {
     MOPT_FONT_BACK_COLOR,
     MOPT_FRUITJAM_VUMETER,
     MOPT_FRUITJAM_INTERNAL_SPEAKER,
+    MOPT_FRUITJAM_VOLUME_CONTROL,
     MOPT_DMG_PALETTE,
     MOPT_BORDER_MODE,
     MOPT_RAPID_FIRE_ON_A,
@@ -25,6 +27,7 @@ enum MenuSettingsIndex {
 // Create and initialize an array which explains each option in a short description of max 40 characters
 const char* const g_settings_descriptions[MOPT_COUNT] = {
     "Exit game and return to main menu",
+    "Save or load emulator state",
     "Screen scaling & scanline mode",
     "Toggle scanlines effect",
     "Show FPS (frame rate)",
@@ -34,14 +37,15 @@ const char* const g_settings_descriptions[MOPT_COUNT] = {
     "Menu text color (0-63)",
     "Menu background color (0-63)",
     "RGB LEDs show audio level (VU)",
-    "Enable Fruit Jam speaker",
+    "Enable Fruit Jam internal speaker",
+    "Fruit Jam change volume (-63 to +23 dB)",
     "Color Palette for mono / DMG games",
     "Select border artwork",
     "Enable rapid fire for this button",
     "Enable rapid fire for this button"
 };
 
-extern const uint8_t g_settings_visibility[MOPT_COUNT];
+extern const int8_t g_settings_visibility[MOPT_COUNT];
 
 // Available screen modes for selection in settings menu
 extern const uint8_t g_available_screen_modes[];

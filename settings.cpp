@@ -40,6 +40,7 @@ namespace FrensSettings
         printf("frameSkip: %d\n", settings.flags.frameSkip);
         printf("scanlineOn: %d\n", settings.flags.scanlineOn);
         printf("fruitJamEnableInternalSpeaker: %d\n", settings.flags.fruitJamEnableInternalSpeaker);
+        printf("fruitjamVolumeLevel: %d\n", settings.fruitjamVolumeLevel);
         printf("rapidFireOnA: %d\n", settings.flags.rapidFireOnA);
         printf("rapidFireOnB: %d\n", settings.flags.rapidFireOnB);
         printf("\n");
@@ -68,6 +69,7 @@ namespace FrensSettings
         settings.version = SETTINGS_VERSION;
         // clear all the reserved settings
         settings.flags.reserved = 0;
+        settings.fruitjamVolumeLevel = 16; // default volume level in db to mid (0-24)
         strcpy(settings.currentDir, "/");
     }
 

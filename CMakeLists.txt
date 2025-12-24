@@ -15,6 +15,9 @@ FrensFonts.cpp
 #ffwrappers.cpp
 crc32.cpp
 vumeter.cpp
+soundrecorder.cpp
+samplesound.c
+wavplayer.cpp
 #PicoPlusPsram.cpp
 )
 add_subdirectory(drivers/pico_fatfs)     

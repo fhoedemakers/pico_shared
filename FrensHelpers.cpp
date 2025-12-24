@@ -26,6 +26,7 @@
 
 #include "PicoPlusPsram.h"
 #include "vumeter.h"
+
 // Pico W devices use a GPIO on the WIFI chip for the LED,
 // so when building for Pico W, CYW43_WL_GPIO_LED_PIN will be defined
 // NOTE: Building for Pico2 W makes the emulator not work: ioctl timeouts and red flicker
@@ -846,6 +847,7 @@ namespace Frens
                 fr = f_open(&fil, selectedRom, FA_READ);
                 bool onOff = true;
                 UINT bytesRead;
+                int crcOffset = FrensSettings::getEmulatorType() == FrensSettings::emulators::NES ? 16 : 0;
                 if (fr == FR_OK)
                 {
                     FSIZE_t filesize = f_size(&fil);
@@ -864,8 +866,8 @@ namespace Frens
                                 {
                                     break;
                                 }
-                                // Wat met offset bij NES roms?
-                                crcOfRom = update_crc32(crcOfRom, buffer, bytesRead);
+                                crcOfRom = update_crc32(crcOfRom, buffer + crcOffset, bytesRead - crcOffset);
+                                crcOffset = 0; // only offset for first block
                                 if (swapbytes)
                                 {
                                     for (int i = 0; i < bytesRead; i += 2)
@@ -1640,6 +1642,15 @@ namespace Frens
     {
         return crcOfRom;
     }
+
+    /// @brief Check if a file exists
+    /// @param filepath 
+    /// @return 
+    bool fileExists(const char *filepath)
+    {
+        FILINFO fno;   
+        return (f_stat(filepath, &fno) == FR_OK);
+    }   
 
 }
 // C-compatible wrappers
