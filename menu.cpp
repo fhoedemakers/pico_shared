@@ -2923,7 +2923,7 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
         DisplayDacError();
     }
 #endif
-    if (showSplash)
+    if (showSplash && !watchdog_enable_caused_reboot())
     {
         showSplash = false;
         printf("Showing splash screen\n");
@@ -3390,7 +3390,7 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
         // After reboot the emulator will flash the rom and start the selected game.
         Frens::resetWifi();
         printf("Rebooting...\n");
-        watchdog_enable(100, 1);
+        watchdog_enable(1, 1);
         while (1)
         {
             tight_loop_contents();
