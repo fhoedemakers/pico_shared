@@ -31,12 +31,12 @@ namespace Frens {
 	private:
 		bool IsextensionAllowed(char *filename);
 		char directoryname[FF_MAX_LFN];
+		const char *allowedExtensions;
 		int length;
 		size_t max_entries;
 		RomEntry *entries;
 		size_t numberOfEntries;
-		int numberOfExtensions;
-		char **extensions;
+		//char **extensions;
 		size_t buffersize;
 		FILINFO *pFile = nullptr;
 		DIR *pDir = nullptr;

@@ -10,13 +10,14 @@
 namespace Frens
 {
 	// Buffer must have sufficient bytes to contain directory contents
-	RomLister::RomLister(size_t _buffersize, const char *allowedExtensions)
+	RomLister::RomLister(size_t _buffersize, const char *_allowedExtensions)
 	{
 		buffersize = _buffersize;
+		allowedExtensions = _allowedExtensions;
 		entries = nullptr;
 		max_entries = buffersize / sizeof(RomEntry);
 		const char *delimiters = ", ";
-		extensions = cstr_split(allowedExtensions, delimiters, &numberOfExtensions);
+		// extensions = cstr_split(allowedExtensions, delimiters, &numberOfExtensions);
 		pFile = (FILINFO *)Frens::f_malloc(sizeof(FILINFO));
 		pDir = (DIR *)Frens::f_malloc(sizeof(DIR));
 		pTemp = (RomEntry *)Frens::f_malloc(sizeof(RomEntry));
@@ -29,14 +30,14 @@ namespace Frens
 		{
 			Frens::f_free(entries);
 		}
-		if (extensions)
-		{
-			for (int i = 0; i < numberOfExtensions; i++)
-			{
-				Frens::f_free(extensions[i]);
-			}
-			Frens::f_free(extensions);
-		}
+		// if (extensions)
+		// {
+		// 	for (int i = 0; i < numberOfExtensions; i++)
+		// 	{
+		// 		Frens::f_free(extensions[i]);
+		// 	}
+		// 	Frens::f_free(extensions);
+		// }
 		Frens::f_free(pFile);
 		Frens::f_free(pDir);
 		Frens::f_free(pTemp);
@@ -58,16 +59,35 @@ namespace Frens
 
 	bool RomLister::IsextensionAllowed(char *filename)
 	{
-		if (numberOfExtensions == 0)
+		if (!allowedExtensions || strlen(allowedExtensions) == 0)
 		{
-			return true;
+			return true; // all extensions allowed
 		}
-		for (int i = 0; i < numberOfExtensions; i++)
+		char extension[10];
+		Frens::getextensionfromfilename(filename, extension, sizeof(extension));
+		const char *start = allowedExtensions;
+		const char *end;
+		size_t ext_len = strlen(extension);
+
+		while (1)
 		{
-			if (Frens::cstr_endswith(filename, extensions[i]))
+			end = strchr(start, ' ');
+
+			size_t token_len = end ? (size_t)(end - start)
+								   : strlen(start);
+
+			if (token_len == ext_len &&
+				strncmp(start, extension, ext_len) == 0)
 			{
 				return true;
 			}
+
+			if (!end)
+			{
+				break;
+			}
+
+			start = end + 1;
 		}
 		return false;
 	}

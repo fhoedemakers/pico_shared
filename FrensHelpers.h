@@ -96,6 +96,7 @@ namespace Frens
     bool cstr_endswith(const char *string, const char *width);
     char **cstr_split(const char *str, const char *delimiters, int *count);
     void stripextensionfromfilename(char *filename);
+    void getextensionfromfilename(const char *filename, char *extension, size_t extSize);
     char *GetfileNameFromFullPath(char *fullPath);
     bool initSDCard();
     bool applyScreenMode(ScreenMode screenMode_);
