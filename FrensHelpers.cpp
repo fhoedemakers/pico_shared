@@ -371,6 +371,29 @@ namespace Frens
         *lastdot = 0;
     }
 
+    void getextensionfromfilename(const char *filename, char *extension, size_t extSize)
+    {
+        const char *ptr = filename;
+        const char *lastdot = nullptr;
+        while (*ptr)
+        {
+            if (*ptr == '.')
+            {
+                lastdot = ptr;
+            }
+            ptr++;
+        }
+        if (lastdot)
+        {
+            strncpy(extension, lastdot, extSize);
+            extension[extSize - 1] = 0; // ensure null termination
+        }
+        else
+        {
+            extension[0] = 0; // no extension found
+        }
+    }
+
     // print an int16 as binary
     void printbin16(int16_t v)
     {
@@ -397,7 +420,7 @@ namespace Frens
     {
         FRESULT fr;
         TCHAR str[40];
-        sleep_ms(1000);
+        //sleep_ms(1000);
 
         printf("Mounting SDcard ");
 
@@ -817,13 +840,16 @@ namespace Frens
             {
                 selectedRom[r] = 0;
             }
+            f_close(&fil);
         }
         else
         {
-            snprintf(ErrorMessage, 40, "Cannot open %s:%d\n", ROMINFOFILE, fr);
-            printf(ErrorMessage);
+            if ( fr != FR_NO_FILE ) {
+                snprintf(ErrorMessage, 40, "Cannot open %s:%d\n", ROMINFOFILE, fr);
+                printf(ErrorMessage);
+            }
         }
-        f_close(&fil);
+      
         if (selectedRom[0] != 0)
         {
             printf("Starting (%d) %s\n", strlen(selectedRom), selectedRom);
