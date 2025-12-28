@@ -9,21 +9,25 @@ namespace FrensSettings
     #define SETTINGSFILE "/settings_%s.dat" // File to store settings
     static const char *emulatorstrings[5] = { "NES", "SMS", "GB", "MD", "MUL" };
     static char settingsFileName[21] = {};
-
+    static emulators emulatorTypeForSettings = emulators::MULTI;
     char *getSettingsFileName()
     {
         if (settingsFileName[0] == '\0')
         {
-            snprintf(settingsFileName, sizeof(settingsFileName), SETTINGSFILE, emulatorstrings[static_cast<int>(emulatorType)]);
+            snprintf(settingsFileName, sizeof(settingsFileName), SETTINGSFILE, emulatorstrings[static_cast<int>(emulatorTypeForSettings)]);
         }
         return settingsFileName;
     }
     void initSettings(emulators emu)
     {
-        emulatorType = emu;
+        emulatorType = emulatorTypeForSettings = emu;
+        // pick a random initial emulator type to show artwork in the menu
+        if ( emu == emulators::MULTI ) {
+            emulatorType = emulators::NES;
+        }   
         loadsettings();
     }
-    void initSettingsFromExt(const char * fileextension)
+    void setEmulatorType(const char * fileextension)
     {
         if (strcasecmp(fileextension, ".nes") == 0)
         {
@@ -52,8 +56,8 @@ namespace FrensSettings
             emulatorType = emulators::MULTI;
         }
         printf("Detected ROM extension: %s\n", fileextension);
-        snprintf(settingsFileName, sizeof(settingsFileName), SETTINGSFILE, emulatorstrings[static_cast<int>(emulatorType)]);
-        loadsettings();
+        //snprintf(settingsFileName, sizeof(settingsFileName), SETTINGSFILE, emulatorstrings[static_cast<int>(emulatorType)]);
+        // loadsettings();
     }
     void printsettings()
     {

@@ -57,7 +57,7 @@ namespace FrensSettings
     } emulators;
     static emulators emulatorType = NES;
     void initSettings(emulators emu) ;
-    void initSettingsFromExt(const char * fileextension);
+    void setEmulatorType(const char * fileextension);
     void savesettings();
     void loadsettings();
     void resetsettings(struct settings *settings = nullptr);

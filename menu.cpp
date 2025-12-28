@@ -2963,7 +2963,7 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
         if (selectedRomOrFolder  && entries[index].IsDirectory == false) {
             char fileExt[8];
             Frens::getextensionfromfilename(selectedRomOrFolder, fileExt, sizeof(fileExt));
-            FrensSettings::initSettingsFromExt((const char *)fileExt);
+            FrensSettings::setEmulatorType((const char *)fileExt);
             crcOffset = FrensSettings::getEmulatorType() == FrensSettings::emulators::NES ? 16 : 0; // crc offset according to  https://github.com/ducalex/retro-go-covers
             isWav = (strcasecmp(fileExt, ".wav") == 0);
         }
