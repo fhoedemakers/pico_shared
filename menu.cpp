@@ -77,7 +77,7 @@ static char *selectedRomOrFolder;
 static bool errorInSavingRom = false;
 static char *globalErrorMessage;
 
-static bool artworkEnabled = false;
+//static bool artworkEnabled = false;
 static uint8_t crcOffset = 0; // Default offset for CRC calculation
 #define LONG_PRESS_TRESHOLD (500)
 #define REPEAT_DELAY (40)
@@ -158,14 +158,23 @@ static void getButtonLabels(char *buttonLabel1, char *buttonLabel2)
 
 static bool isArtWorkEnabled()
 {
-    FILINFO fi;
     char PATH[FF_MAX_LFN];
-    bool exists = false;
+    FILINFO fi;
+    static bool artworkEnabled = false;
+    static FrensSettings::emulators lastEmulatorType = FrensSettings::emulators::MULTI;
+    FrensSettings::emulators currentEmulatorType = FrensSettings::getEmulatorType();
+    if (lastEmulatorType == currentEmulatorType)
+    {
+            return artworkEnabled;
+    }
+
     PATH[0] = 0;
     const char *emulator = FrensSettings::getEmulatorTypeString();
-    switch (FrensSettings::getEmulatorType())
+
+    switch (currentEmulatorType)
     {
     case FrensSettings::emulators::NES:
+       
         snprintf(PATH, sizeof(PATH), "/Metadata/%s/Images/320/D/D0E96F6B.444", emulator);
         break;
     case FrensSettings::emulators::SMS:
@@ -180,14 +189,15 @@ static bool isArtWorkEnabled()
     default:
         return false;
     }
+    lastEmulatorType = FrensSettings::getEmulatorType();
     if (PATH[0])
     {
+        printf("Checking for artwork at: %s\n", PATH);
         FRESULT res = f_stat(PATH, &fi);
-        bool exists = (res == FR_OK);
-        printf("Artwork %s for %s\n", exists ? "enabled" : "not found", emulator);
-        return exists;
+        artworkEnabled = (res == FR_OK);
+        //printf("Artwork %s for %s\n", exists ? "enabled" : "not found", emulator);
     }
-    return false;
+    return artworkEnabled;
 }
 
 int Menu_LoadFrame()
@@ -596,6 +606,7 @@ void DrawScreen(int selectedRow, int w = 0, int h = 0, uint16_t *imagebuffer = n
         snprintf(s, sizeof(s), "%s:Open %s:Back", buttonLabel1, buttonLabel2);
 
         putText(1, ENDROW + 2, s, settings.fgcolor, settings.bgcolor);
+        bool artworkEnabled = isArtWorkEnabled();   
         if (artworkEnabled)
         {
             strcpy(s, "START:Info");
@@ -1034,7 +1045,7 @@ void screenSaver()
 #if PICO_RP2350
     if ( !wavplayer::isPlaying() ) {
 #endif
-       screenSaverWithArt(!artworkEnabled);
+       screenSaverWithArt(!isArtWorkEnabled());
 #if PICO_RP2350
     }
 #endif
@@ -2871,7 +2882,7 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
     turnOffAllLeds();
 #endif
 
-    artworkEnabled = isArtWorkEnabled();
+    //artworkEnabled = isArtWorkEnabled();
     crcOffset = FrensSettings::getEmulatorType() == FrensSettings::emulators::NES ? 16 : 0; // crc offset according to  https://github.com/ducalex/retro-go-covers
     printf("Emulator: %s, crcOffset: %d\n", FrensSettings::getEmulatorTypeString(), crcOffset);
 #if !HSTX
@@ -2948,11 +2959,13 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
         auto entries = romlister.GetEntries();
         selectedRomOrFolder = (romlister.Count() > 0) ? entries[index].Path : nullptr;
         bool isWav = false;
-#if PICO_RP2350
-        if (selectedRomOrFolder) {
-            if ( Frens::cstr_endswith(selectedRomOrFolder, ".wav") || Frens::cstr_endswith(selectedRomOrFolder, ".WAV") ) {
-                isWav = true;
-            }
+#if PICO_RP2350  
+        if (selectedRomOrFolder  && entries[index].IsDirectory == false) {
+            char fileExt[8];
+            Frens::getextensionfromfilename(selectedRomOrFolder, fileExt, sizeof(fileExt));
+            FrensSettings::initSettingsFromExt((const char *)fileExt);
+            crcOffset = FrensSettings::getEmulatorType() == FrensSettings::emulators::NES ? 16 : 0; // crc offset according to  https://github.com/ducalex/retro-go-covers
+            isWav = (strcasecmp(fileExt, ".wav") == 0);
         }
 #endif
         errorInSavingRom = false;
@@ -3178,7 +3191,7 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
 
                 // show screen with ArtWork
 
-                if (!entries[index].IsDirectory && selectedRomOrFolder && artworkEnabled)
+                if (!entries[index].IsDirectory && selectedRomOrFolder && isArtWorkEnabled())
                 {
                     // if (strcmp(emulator, "MD") == 0)
                     // {
