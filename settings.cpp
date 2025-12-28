@@ -1,12 +1,13 @@
 #include "settings.h"
 #include <stdio.h>
 #include <string.h>
+#include <strings.h> // for strcasecmp
 #include "vumeter.h"
 struct settings settings;
 namespace FrensSettings
 {
     #define SETTINGSFILE "/settings_%s.dat" // File to store settings
-    static const char *emulatorstrings[4] = { "NES", "SMS", "GB", "MD" };
+    static const char *emulatorstrings[5] = { "NES", "SMS", "GB", "MD", "MUL" };
     static char settingsFileName[21] = {};
 
     char *getSettingsFileName()
@@ -20,6 +21,39 @@ namespace FrensSettings
     void initSettings(emulators emu)
     {
         emulatorType = emu;
+        loadsettings();
+    }
+    void initSettingsFromExt(const char * fileextension)
+    {
+        if (strcasecmp(fileextension, ".nes") == 0)
+        {
+            if ( emulatorType == emulators::NES ) return;
+            emulatorType = emulators::NES;
+        }
+        else if (strcasecmp(fileextension, ".sms") == 0 || strcasecmp(fileextension, ".gg") == 0)
+        {
+            if ( emulatorType == emulators::SMS ) return;
+            emulatorType = emulators::SMS;
+        }
+        else if (strcasecmp(fileextension, ".gb") == 0 || strcasecmp(fileextension, ".gbc") == 0)
+        {
+            if ( emulatorType == emulators::GAMEBOY ) return;
+            emulatorType = emulators::GAMEBOY;
+        }
+        else if (strcasecmp(fileextension, ".gen") == 0 || strcasecmp(fileextension, ".md") == 0|| strcasecmp(fileextension, ".bin") == 0)
+        {
+           
+            if ( emulatorType == emulators::GENESIS ) return;
+            emulatorType = emulators::GENESIS;
+        }
+        else
+        {
+            if ( emulatorType == emulators::MULTI ) return;
+            emulatorType = emulators::MULTI;
+        }
+        printf("Detected ROM extension: %s\n", fileextension);
+        snprintf(settingsFileName, sizeof(settingsFileName), SETTINGSFILE, emulatorstrings[static_cast<int>(emulatorType)]);
+        loadsettings();
     }
     void printsettings()
     {

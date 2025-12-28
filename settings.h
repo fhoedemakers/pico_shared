@@ -52,10 +52,12 @@ namespace FrensSettings
         NES = 0,
         SMS = 1,
         GAMEBOY = 2,
-        GENESIS = 3
+        GENESIS = 3,
+        MULTI = 4
     } emulators;
     static emulators emulatorType = NES;
     void initSettings(emulators emu) ;
+    void initSettingsFromExt(const char * fileextension);
     void savesettings();
     void loadsettings();
     void resetsettings(struct settings *settings = nullptr);
