@@ -2868,6 +2868,14 @@ int showSettingsMenu(bool calledFromGame)
 #endif
     return rval;
 }
+void setclockInFlashAndReboot(uint32_t freq, vreg_voltage voltage) {
+    Frens::FlashParams flashParams;
+    flashParams.cpuFreqKHz = freq;
+    flashParams.voltage = voltage;
+    auto flashparamInFlash = ((uintptr_t)&__flash_binary_end + 0xFFF) & ~0xFFF;
+    flashparamInFlash -= XIP_BASE;
+    printf("Writing clock params to flash at 0x%08X: freq %d kHz, voltage %d\n", (unsigned int)flashparamInFlash, flashParams.cpuFreqKHz, (int)flashParams.voltage);
+}
 
 void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, const char *allowedExtensions, char *rompath)
 {
@@ -2875,13 +2883,14 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
     FIL fil;
     DWORD PAD1_Latch;
     char curdir[FF_MAX_LFN];
+    auto clockFreq = clock_get_hz(clk_sys) / 1000; // in kHz
+    printf("System clock: %ld kHz\n", clockFreq);
 #if !PICO_RP2350
     EXT_AUDIO_DISABLE();
 #endif
 #if ENABLE_VU_METER
     turnOffAllLeds();
 #endif
-
     //artworkEnabled = isArtWorkEnabled();
     crcOffset = FrensSettings::getEmulatorType() == FrensSettings::emulators::NES ? 16 : 0; // crc offset according to  https://github.com/ducalex/retro-go-covers
     printf("Emulator: %s, crcOffset: %d\n", FrensSettings::getEmulatorTypeString(), crcOffset);
@@ -2966,6 +2975,16 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
             FrensSettings::setEmulatorType((const char *)fileExt);
             crcOffset = FrensSettings::getEmulatorType() == FrensSettings::emulators::NES ? 16 : 0; // crc offset according to  https://github.com/ducalex/retro-go-covers
             isWav = (strcasecmp(fileExt, ".wav") == 0);
+            // if ( FrensSettings::getEmulatorType() == FrensSettings::emulators::GENESIS) {
+            //     if (clockFreq == 252000) {
+            //         setclockInFlashAndReboot(324000,VREG_VOLTAGE_1_30) 
+            //     }
+            // } else {
+            //     if (clockFreq != 252000) {
+            //         setclockInFlashAndReboot(252000,VREG_VOLTAGE_1_20) 
+            //     }
+            // }
+            
         }
 #endif
         errorInSavingRom = false;
