@@ -79,10 +79,15 @@ namespace Frens
     bool psRamEnabled = false;
     size_t psramMemorySize = 0;
     static bool byteSwapped = false;
+    
     bool romIsByteSwapped()
     {
-        return byteSwapped;
+    
+        return (FrensSettings::getEmulatorType() == FrensSettings::emulators::GENESIS);
+        return false;
     }
+  
+    
     bool isPsramEnabled()
     {
         return psRamEnabled;
@@ -1298,7 +1303,7 @@ namespace Frens
                 // If the watchdog was triggered, we assume that the menu started the game.
                 // So we flash the rom to flash memory.
                 printf("Rebooted by menu, flashing rom.\n");
-                flashrom(selectedRom, swapbytes);
+                flashrom(selectedRom, byteSwapped);
             }
         }
 #if !HSTX && FRAMEBUFFERISPOSSIBLE
