@@ -33,27 +33,32 @@ namespace FrensSettings
         {
             if ( emulatorType == emulators::NES ) return;
             emulatorType = emulators::NES;
+            g_settings_visibility = g_settings_visibility_nes;
         }
         else if (strcasecmp(fileextension, ".sms") == 0 || strcasecmp(fileextension, ".gg") == 0)
         {
             if ( emulatorType == emulators::SMS ) return;
             emulatorType = emulators::SMS;
+            g_settings_visibility = g_settings_visibility_sms;
         }
         else if (strcasecmp(fileextension, ".gb") == 0 || strcasecmp(fileextension, ".gbc") == 0)
         {
             if ( emulatorType == emulators::GAMEBOY ) return;
             emulatorType = emulators::GAMEBOY;
+            g_settings_visibility = g_settings_visibility_gb;
         }
         else if (strcasecmp(fileextension, ".gen") == 0 || strcasecmp(fileextension, ".md") == 0|| strcasecmp(fileextension, ".bin") == 0)
         {
            
             if ( emulatorType == emulators::GENESIS ) return;
             emulatorType = emulators::GENESIS;
+            g_settings_visibility = g_settings_visibility_md;
         }
         else
         {
             if ( emulatorType == emulators::MULTI ) return;
             emulatorType = emulators::MULTI;
+           // g_settings_visibility = g_settings_visibility_main;
         }
         printf("Detected ROM extension: %s\n", fileextension);
         //snprintf(settingsFileName, sizeof(settingsFileName), SETTINGSFILE, emulatorstrings[static_cast<int>(emulatorType)]);
