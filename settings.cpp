@@ -219,13 +219,24 @@ namespace FrensSettings
         }
         printsettings();
     }
+    // Get the current emulator type, this may be different from emulatorTypeForSettings when in multi-emulator mode
     emulators getEmulatorType()
     {
         return emulatorType;
     }
-
-    const char *getEmulatorTypeString()
+    // Get the current emulator type as a string, this may be different from emulatorTypeForSettings when in multi-emulator mode
+    const char *getEmulatorTypeString(bool forSettings)
     {
+        if (forSettings)
+        {
+            return emulatorstrings[static_cast<int>(emulatorTypeForSettings)];
+        }
         return emulatorstrings[static_cast<int>(emulatorType)];
+    }
+    
+    // Get the current emulator type for settings, used in multi-emulator mode
+    emulators getEmulatorTypeForSettings()
+    {
+        return emulatorTypeForSettings;
     }
 }
