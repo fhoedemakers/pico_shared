@@ -45,7 +45,8 @@ const char* const g_settings_descriptions[MOPT_COUNT] = {
     "Enable rapid fire for this button"
 };
 
-extern const int8_t g_settings_visibility[MOPT_COUNT];
+extern const int8_t *g_settings_visibility; // Visibility configuration for options menu
+
 
 // Available screen modes for selection in settings menu
 extern const uint8_t g_available_screen_modes[];
