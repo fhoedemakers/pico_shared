@@ -24,6 +24,7 @@
 #include "DefaultSS.h"
 #include <stdint.h>
 #include "wavplayer.h"
+const int8_t *g_settings_visibility;
 #if !HSTX
 #define CC(x) (((x >> 1) & 15) | (((x >> 6) & 15) << 4) | (((x >> 11) & 15) << 8))
 const __UINT16_TYPE__ NesMenuPalette[64] = {
@@ -3010,7 +3011,7 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
                 FrensSettings::setEmulatorType((const char *)fileExt);
                 crcOffset = FrensSettings::getEmulatorType() == FrensSettings::emulators::NES ? 16 : 0; // crc offset according to  https://github.com/ducalex/retro-go-covers
             }
-            printf("Emulator: %s, settingstype %s, crcOffset: %d, Current clock freq: %d kHz\n", FrensSettings::getEmulatorTypeString(), FrensSettings::getEmulatorTypeString(true), crcOffset, (unsigned int)clockFreq);
+            // printf("Emulator: %s, settingstype %s, crcOffset: %d, Current clock freq: %d kHz\n", FrensSettings::getEmulatorTypeString(), FrensSettings::getEmulatorTypeString(true), crcOffset, (unsigned int)clockFreq);
             // adjust clock speed if needed, only for MULTI emulator type
             if (FrensSettings::getEmulatorTypeForSettings() == FrensSettings::emulators::MULTI)
             {
