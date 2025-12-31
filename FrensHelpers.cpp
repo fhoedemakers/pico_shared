@@ -1269,19 +1269,19 @@ namespace Frens
         {
             printf("Error initializing LED: %d\n", rc);
         }
-        // Init PSRAM if available, otherwise use flash memory to store roms.
-        auto flashcap = storage_get_flash_capacity();
-        // Calculate the address in flash where roms will be stored
-        printf("Flash binary start    : 0x%08x\n", &__flash_binary_start);
-        printf("Flash binary end      : 0x%08x\n", &__flash_binary_end);
-        // printf("Flash size in bytes   :   %8d (%d)Kbytes\n", PICO_FLASH_SIZE_BYTES, PICO_FLASH_SIZE_BYTES / 1024);
-        printf("Flash size in bytes   :   %8d (%d Kbytes)\n", flashcap, flashcap / 1024);
-        // uint8_t *flash_end = (uint8_t *)&__flash_binary_start + PICO_FLASH_SIZE_BYTES - 1;
-        uint8_t *flash_end = (uint8_t *)&__flash_binary_start + flashcap - 1;
-        printf("Flash end             : 0x%08x\n", flash_end);
-        printf("Size program in flash :   %8d bytes (%d) Kbytes\n", &__flash_binary_end - &__flash_binary_start, (&__flash_binary_end - &__flash_binary_start) / 1024);
+       
         if (initPsram() == false)
         {
+            auto flashcap = storage_get_flash_capacity();
+            // Calculate the address in flash where roms will be stored
+            printf("Flash binary start    : 0x%08x\n", &__flash_binary_start);
+            printf("Flash binary end      : 0x%08x\n", &__flash_binary_end);
+            // printf("Flash size in bytes   :   %8d (%d)Kbytes\n", PICO_FLASH_SIZE_BYTES, PICO_FLASH_SIZE_BYTES / 1024);
+            printf("Flash size in bytes   :   %8d (%d Kbytes)\n", flashcap, flashcap / 1024);
+            // uint8_t *flash_end = (uint8_t *)&__flash_binary_start + PICO_FLASH_SIZE_BYTES - 1;
+            uint8_t *flash_end = (uint8_t *)&__flash_binary_start + flashcap - 1;
+            printf("Flash end             : 0x%08x\n", flash_end);
+            printf("Size program in flash :   %8d bytes (%d) Kbytes\n", &__flash_binary_end - &__flash_binary_start, (&__flash_binary_end - &__flash_binary_start) / 1024);
             // round ROM_FILE_ADDRESS address up to 4k boundary of flash_binary_end
             ROM_FILE_ADDR = ((uintptr_t)&__flash_binary_end + 0xFFF) & ~0xFFF;
             // ROM_FILE_ADDR =  0x1004a000;
