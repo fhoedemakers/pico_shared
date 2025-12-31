@@ -50,19 +50,25 @@ namespace Frens {
             return false; // Invalid params
         }
       
+       
+#if 1
         auto ofs = FLASHPARAM_ADDRESS - XIP_BASE;
         printf("Erasing and programming flash at offset: 0x%08X\n", ofs);
-#if 1
+        printf("New FlashParams: cpuFreqKHz=%u, voltage=%u\n", params.cpuFreqKHz, params.voltage);
+        // Program the hardware watchdog timer to reboot after 100 ms and do this before writing to flash, 
+        // system will likely hang after flash write.
+        // Must be time enough to complete flash write.
+        // This ensures the reboot even if the system crashes after flash write.
+        watchdog_enable(100, 1);
+    
         uint32_t ints = save_and_disable_interrupts();
         flash_range_erase(ofs, 4096);
         flash_range_program(ofs, (const uint8_t *)&params, sizeof(FlashParams));
         restore_interrupts(ints);
-        printf("FlashParams written. Rebooting to apply changes...\n");
-        watchdog_enable(1, 1);
+        // Will likely to crash here.  
         while (1)
         {
             tight_loop_contents();
-            // printf("Waiting for reboot...\n");
         };
         __unreachable();
 #endif
