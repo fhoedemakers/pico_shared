@@ -668,7 +668,8 @@ void displayRoms(Frens::RomLister &romlister, int startIndex)
     ClearScreen(settings.bgcolor);
     snprintf(s, sizeof(s), "- %s -", menutitle);
     putText(SCREEN_COLS / 2 - strlen(s) / 2, 0, s, settings.fgcolor, settings.bgcolor);
-
+    snprintf(buffer, sizeof(buffer), "%uMHZ", clock_get_hz(clk_sys) / 1000000);
+    putText(1, 0, buffer, settings.fgcolor, settings.bgcolor);
     strcpy(s, "Choose a rom to play:");
     putText(SCREEN_COLS / 2 - strlen(s) / 2, 1, s, settings.fgcolor, settings.bgcolor);
     // strcpy(s, "---------------------");
