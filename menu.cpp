@@ -1364,7 +1364,7 @@ static void showLoadingScreen(const char *message = nullptr, int framesToWait = 
         {
             putText(SCREEN_COLS / 2 - 5, SCREEN_ROWS / 2, "Loading...", settings.fgcolor, settings.bgcolor);
         }
-        while(framesToWait-- > 0)
+        while (framesToWait-- > 0)
         {
             Menu_LoadFrame();
             DrawScreen(-1);
@@ -2984,61 +2984,63 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
     displayRoms(romlister, settings.firstVisibleRowINDEX);
     bool startGame = false;
     int oldIndex = -1;
+    bool isWav = false;
     waitForNoButtonPress();
     while (1)
     {
-
+        char fileExt[8];
         auto frameCount = Menu_LoadFrame();
-        // Pump background audio each frame (approx 60 FPS -> ~735 frames @ 44.1kHz)
-        // #if HW_CONFIG == 8
-        //         if (wavplayer::ready()) {
-        //             wavplayer::pump(wavplayer::sample_rate() / 60);
-        //         }
-        // #endif
+      
         auto index = settings.selectedRow - STARTROW + settings.firstVisibleRowINDEX;
         auto entries = romlister.GetEntries();
         selectedRomOrFolder = (romlister.Count() > 0) ? entries[index].Path : nullptr;
-        bool isWav = false;
+   
 #if PICO_RP2350
-        if (selectedRomOrFolder && entries[index].IsDirectory == false && oldIndex != index)
+        if (selectedRomOrFolder  && entries[index].IsDirectory == false )
         {
-            char fileExt[8];
-            oldIndex = index;
-            // set emulator type based on file extension of the currently selected ROM
+            // check if selected file is a .wav file
             Frens::getextensionfromfilename(selectedRomOrFolder, fileExt, sizeof(fileExt));
             isWav = (strcasecmp(fileExt, ".wav") == 0);
-            if ( ! isWav ) {
+        } else {
+            isWav = false;
+        }
+#endif
+#if RETROJAM
+        // retroJam: adjust clock speed and crc offset based on selected ROM type
+        if (selectedRomOrFolder && entries[index].IsDirectory == false && oldIndex != index)
+        {        
+            oldIndex = index;
+            // set emulator type based on file extension of the currently selected ROM           
+            if (!isWav)
+            {
                 FrensSettings::setEmulatorType((const char *)fileExt);
                 crcOffset = FrensSettings::getEmulatorType() == FrensSettings::emulators::NES ? 16 : 0; // crc offset according to  https://github.com/ducalex/retro-go-covers
             }
             // printf("Emulator: %s, settingstype %s, crcOffset: %d, Current clock freq: %d kHz\n", FrensSettings::getEmulatorTypeString(), FrensSettings::getEmulatorTypeString(true), crcOffset, (unsigned int)clockFreq);
-            // adjust clock speed if needed, only for MULTI emulator type
-            if (FrensSettings::getEmulatorTypeForSettings() == FrensSettings::emulators::MULTI)
+            // Sega Genesis: adjust to higher clock speed.
+            // printf(" Current clock freq: %d kHz\n", (unsigned int)clockFreq);
+            if (FrensSettings::getEmulatorType() == FrensSettings::emulators::GENESIS && !isWav)
             {
-               
-                //printf(" Current clock freq: %d kHz\n", (unsigned int)clockFreq);
-                if (FrensSettings::getEmulatorType() == FrensSettings::emulators::GENESIS && !isWav )
+
+                if (clockFreq != FLASHPARAM_MAX_FREQ_KHZ)
                 {
-                  
-                    if (clockFreq != FLASHPARAM_MAX_FREQ_KHZ)
+                    showLoadingScreen("Setting clock for Genesis...", 60);
+                    FrensSettings::savesettings(); // save current settings before changing clock
+                    if (Frens::writeFlashParamsToFlash(FLASHPARAM_MAX_FREQ_KHZ, FLASHPARAM_MAX_VOLTAGE) == false)
                     {
-                        showLoadingScreen("Setting clock for Genesis...", 60);
-                        FrensSettings::savesettings(); // save current settings before changing clock
-                        if ( Frens::writeFlashParamsToFlash(FLASHPARAM_MAX_FREQ_KHZ, FLASHPARAM_MAX_VOLTAGE) == false ) {
-                            printf("Failed to write flash params for high clock\n");
-                        }
+                        printf("Failed to write flash params for high clock\n");
                     }
                 }
-                else
+            }
+            else
+            {
+                if (clockFreq != FLASHPARAM_MIN_FREQ_KHZ)
                 {
-                  
-                    if (clockFreq != FLASHPARAM_MIN_FREQ_KHZ)
+                    showLoadingScreen("Setting clock for 8-bit emulators...", 60);
+                    FrensSettings::savesettings(); // save current settings before changing clock
+                    if (Frens::writeFlashParamsToFlash(FLASHPARAM_MIN_FREQ_KHZ, FLASHPARAM_MIN_VOLTAGE) == false)
                     {
-                        showLoadingScreen("Setting clock for 8-bit emulators...", 60);
-                        FrensSettings::savesettings(); // save current settings before changing clock
-                        if ( Frens::writeFlashParamsToFlash(FLASHPARAM_MIN_FREQ_KHZ, FLASHPARAM_MIN_VOLTAGE) == false ) {
-                            printf("Failed to write flash params for low clock\n");
-                        }
+                        printf("Failed to write flash params for low clock\n");
                     }
                 }
             }
@@ -3054,6 +3056,22 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
         }
         if (PAD1_Latch > 0 || startGame)
         {
+#if !HSTX
+            if ((PAD1_Latch)&UP && (PAD1_Latch & SELECT))
+            {
+                if (clockFreq == FLASHPARAM_MAX_FREQ_KHZ)
+                {
+                    printf("Emergency reset to low clock speed requested\n");
+                    // Emergency reset to default settings and clock speed
+                    // This can be used to in case there is no display or unstable display because of high clock speed settings
+                    FrensSettings::resetsettings();
+                    FrensSettings::savesettings();
+                    Frens::writeFlashParamsToFlash(FLASHPARAM_MIN_FREQ_KHZ, FLASHPARAM_MIN_VOLTAGE);
+                } else {
+                    printf("Emergency reset requested, but already at low clock speed\n");
+                }
+            }
+#endif
             // reset horizontal scroll of highlighted row
             settings.horzontalScrollIndex = 0;
             putText(3, settings.selectedRow, selectedRomOrFolder, settings.fgcolor, settings.bgcolor);
