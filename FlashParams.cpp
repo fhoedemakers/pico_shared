@@ -64,6 +64,7 @@ namespace Frens {
             tight_loop_contents();
             // printf("Waiting for reboot...\n");
         };
+        __unreachable();
 #endif
         return true; 
     }
