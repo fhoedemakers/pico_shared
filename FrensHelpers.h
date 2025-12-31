@@ -64,6 +64,10 @@ enum class ScreenMode
 #define SCREENWIDTH 320
 #define SCREENHEIGHT 240
 
+#ifndef RETROJAM
+#define RETROJAM 0
+#endif
+
 extern uintptr_t ROM_FILE_ADDR ; //0x10090000
 extern int maxRomSize;
 extern char ErrorMessage[];
