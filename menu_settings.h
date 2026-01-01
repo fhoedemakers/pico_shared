@@ -49,4 +49,4 @@ extern const int8_t *g_settings_visibility; // Visibility configuration for opti
 
 
 // Available screen modes for selection in settings menu
-extern const uint8_t g_available_screen_modes[];
+extern const uint8_t *g_available_screen_modes;

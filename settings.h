@@ -66,6 +66,7 @@ namespace FrensSettings
     emulators getEmulatorTypeForSettings();
 }
 extern const int8_t *g_settings_visibility; 
+extern const uint8_t *g_available_screen_modes;
 extern const int8_t g_settings_visibility_nes[];
 extern const int8_t g_settings_visibility_gb[];
 extern const int8_t g_settings_visibility_sms[];

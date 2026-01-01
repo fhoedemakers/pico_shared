@@ -25,6 +25,7 @@
 #include <stdint.h>
 #include "wavplayer.h"
 const int8_t *g_settings_visibility;
+const uint8_t *g_available_screen_modes;
 #if !HSTX
 #define CC(x) (((x >> 1) & 15) | (((x >> 6) & 15) << 4) | (((x >> 11) & 15) << 8))
 const __UINT16_TYPE__ NesMenuPalette[64] = {
