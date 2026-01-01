@@ -3025,7 +3025,9 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
 
                 if (clockFreq != FLASHPARAM_MAX_FREQ_KHZ)
                 {
-                    showLoadingScreen("Setting clock for Genesis...", 60);
+                    char message[40];
+                    snprintf(message, sizeof(message), "Setting clock to  %dMHZ", FLASHPARAM_MAX_FREQ_KHZ /1000);
+                    showLoadingScreen(message, 60);
                     FrensSettings::savesettings(); // save current settings before changing clock
                     if (Frens::writeFlashParamsToFlash(FLASHPARAM_MAX_FREQ_KHZ, FLASHPARAM_MAX_VOLTAGE) == false)
                     {
@@ -3037,7 +3039,9 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
             {
                 if (clockFreq != FLASHPARAM_MIN_FREQ_KHZ)
                 {
-                    showLoadingScreen("Setting clock for 8-bit emulators...", 60);
+                    char message[40];
+                    snprintf(message, sizeof(message), "Setting clock to  %dMHZ", FLASHPARAM_MIN_FREQ_KHZ /1000);
+                    showLoadingScreen(message, 60);
                     FrensSettings::savesettings(); // save current settings before changing clock
                     if (Frens::writeFlashParamsToFlash(FLASHPARAM_MIN_FREQ_KHZ, FLASHPARAM_MIN_VOLTAGE) == false)
                     {
