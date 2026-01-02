@@ -93,7 +93,7 @@ namespace Frens
     // extern volatile bool framebuffer2_rendering;
     // // Mutex for synchronization
     // extern mutex_t framebuffer_mutex;
-    extern WORD *framebuffer;
+    extern WORD framebuffer[];
 #endif  
     bool endsWith(std::string const &str, std::string const &suffix);
     std::string str_tolower(std::string s);
