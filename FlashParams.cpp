@@ -63,6 +63,10 @@ namespace Frens
         // system will likely hang after flash write.
         // Must be time enough to complete flash write.
         // This ensures the reboot even if the system crashes after flash write.
+       
+        printf("Resetting core 1...\n");
+        multicore_reset_core1();
+        printf("Setting watchdog timer to reboot in 100 ms\n");
         watchdog_enable(100, 1);
 
         uint32_t ints = save_and_disable_interrupts();

@@ -2,6 +2,7 @@
 #include "FrensHelpers.h"
 #include "hardware/flash.h"
 #include "hardware/watchdog.h"
+#include "pico/multicore.h"
 #define FLASHPARAM_ADDRESS (((uintptr_t)&__flash_binary_end + 0xFFF) & ~0xFFF)
 #define FLASHPARAM_MAGIC "FRENS01"
 #define FLASHPARAM_MIN_FREQ_KHZ 252000 // NES, GB, SMS
