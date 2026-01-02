@@ -17,6 +17,7 @@
 #include "ffwrappers.h"
 #include "tf_card.h"
 #include "crc32.h"
+#include "FlashParams.h"
 #if !HSTX
 #include "dvi/dvi.h"
 #include "dvi_configs.h"
@@ -63,6 +64,10 @@ enum class ScreenMode
 #define SCREENWIDTH 320
 #define SCREENHEIGHT 240
 
+#ifndef RETROJAM
+#define RETROJAM 0
+#endif
+
 extern uintptr_t ROM_FILE_ADDR ; //0x10090000
 extern int maxRomSize;
 extern char ErrorMessage[];
@@ -88,7 +93,7 @@ namespace Frens
     // extern volatile bool framebuffer2_rendering;
     // // Mutex for synchronization
     // extern mutex_t framebuffer_mutex;
-    extern WORD *framebuffer;
+    extern WORD framebuffer[];
 #endif  
     bool endsWith(std::string const &str, std::string const &suffix);
     std::string str_tolower(std::string s);
@@ -142,6 +147,7 @@ namespace Frens
     FRESULT pick_random_file_fullpath(const char *path, char *chosen, size_t bufsize);
     uint32_t getCrcOfLoadedRom();
     bool fileExists(const char *filename);
+   
 } // namespace Frens
 
 

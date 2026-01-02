@@ -34,7 +34,6 @@
 #include "pico/cyw43_arch.h"
 #endif
 
-
 // Valid values arr:
 //  44100
 //  48000
@@ -55,7 +54,7 @@ namespace Frens
 {
     static uint32_t crcOfRom = 0;
     static FATFS fs;
-    static bool  fatfsUsesPioSpi = false;
+    static bool fatfsUsesPioSpi = false;
     static DWORD totalSpace = 0;
     static DWORD freeSpace = 0;
 #if !HSTX && FRAMEBUFFERISPOSSIBLE
@@ -71,18 +70,22 @@ namespace Frens
     // volatile bool framebuffer2_rendering = false;
     // volatile ProcessScanLineFunction processScanLineFunction;
     // // Mutex for synchronization
-
+     WORD framebuffer[SCREENWIDTH * SCREENHEIGHT];
 #endif
-
-    WORD *framebuffer;
+   
+   
     static bool usingFramebuffer = false;
     bool psRamEnabled = false;
     size_t psramMemorySize = 0;
     static bool byteSwapped = false;
+
     bool romIsByteSwapped()
     {
-        return byteSwapped;
+
+        return (FrensSettings::getEmulatorType() == FrensSettings::emulators::GENESIS);
+        return false;
     }
+
     bool isPsramEnabled()
     {
         return psRamEnabled;
@@ -119,7 +122,7 @@ namespace Frens
 #if !HSTX
         return usingFramebuffer;
 #else
-        return true;  // HSTX always uses framebuffer
+        return true; // HSTX always uses framebuffer
 #endif
     }
 
@@ -403,24 +406,36 @@ namespace Frens
         }
     }
 
-    void getFsInfo(char *fstype, size_t fstypeSize) {
+    void getFsInfo(char *fstype, size_t fstypeSize)
+    {
         const char *base;
-        switch (fs.fs_type) {
-        case FS_FAT12: base = "FAT12"; break;
-        case FS_FAT16: base = "FAT16"; break;
-        case FS_FAT32: base = "FAT32"; break;
-        case FS_EXFAT: base = "EXFAT"; break;
-        default:       base = "Unknown"; break;
+        switch (fs.fs_type)
+        {
+        case FS_FAT12:
+            base = "FAT12";
+            break;
+        case FS_FAT16:
+            base = "FAT16";
+            break;
+        case FS_FAT32:
+            base = "FAT32";
+            break;
+        case FS_EXFAT:
+            base = "EXFAT";
+            break;
+        default:
+            base = "Unknown";
+            break;
         }
         snprintf(fstype, fstypeSize, "%s %sSPI %7.2fGB Free:%7.2fGB", base, fatfsUsesPioSpi ? "PIO " : "", totalSpace / 1024.0 / 1024.0, freeSpace / 1024.0 / 1024.0);
     }
-    
+
     // Initialize the SD card
     bool initSDCard()
     {
         FRESULT fr;
         TCHAR str[40];
-        //sleep_ms(1000);
+        // sleep_ms(1000);
 
         printf("Mounting SDcard ");
 
@@ -595,17 +610,17 @@ namespace Frens
     {
 #if !HSTX
 #else
-    settings.flags.scanlineOn = settings.flags.scanlineOn ? 0 : 1; // toggle
-    FrensSettings::savesettings();
-    hstx_setScanLines(settings.flags.scanlineOn);
-    printf("Scanlines %s\n", settings.flags.scanlineOn ? "enabled" : "disabled");
+        settings.flags.scanlineOn = settings.flags.scanlineOn ? 0 : 1; // toggle
+        FrensSettings::savesettings();
+        hstx_setScanLines(settings.flags.scanlineOn);
+        printf("Scanlines %s\n", settings.flags.scanlineOn ? "enabled" : "disabled");
 #endif
     }
     void restoreScanlines()
     {
 #if !HSTX
 #else
-    hstx_setScanLines(settings.flags.scanlineOn);
+        hstx_setScanLines(settings.flags.scanlineOn);
 #endif
     }
 
@@ -844,12 +859,13 @@ namespace Frens
         }
         else
         {
-            if ( fr != FR_NO_FILE ) {
+            if (fr != FR_NO_FILE)
+            {
                 snprintf(ErrorMessage, 40, "Cannot open %s:%d\n", ROMINFOFILE, fr);
                 printf(ErrorMessage);
             }
         }
-      
+
         if (selectedRom[0] != 0)
         {
             printf("Starting (%d) %s\n", strlen(selectedRom), selectedRom);
@@ -1253,7 +1269,7 @@ namespace Frens
         {
             printf("Error initializing LED: %d\n", rc);
         }
-        // Init PSRAM if available, otherwise use flash memory to store roms.
+       
         if (initPsram() == false)
         {
             auto flashcap = storage_get_flash_capacity();
@@ -1287,7 +1303,7 @@ namespace Frens
         if (initSDCard())
         {
             ok = true;
-             FrensSettings::loadsettings();
+            FrensSettings::loadsettings();
             // When a game is started from the menu, the menu will reboot the device.
             // After reboot the emulator will start the selected game.
             // The watchdog timer is used to detect if the reboot was caused by the menu.
@@ -1298,7 +1314,7 @@ namespace Frens
                 // If the watchdog was triggered, we assume that the menu started the game.
                 // So we flash the rom to flash memory.
                 printf("Rebooted by menu, flashing rom.\n");
-                flashrom(selectedRom, swapbytes);
+                flashrom(selectedRom, byteSwapped);
             }
         }
 #if !HSTX && FRAMEBUFFERISPOSSIBLE
@@ -1306,8 +1322,8 @@ namespace Frens
         if (usingFramebuffer)
         {
             // always allocate framebuffer in SRAM
-            printf("Allocating %d bytes for framebuffer in SRAM\n", SCREENWIDTH * SCREENHEIGHT * sizeof(WORD));
-            framebuffer = (WORD *)malloc(SCREENWIDTH * SCREENHEIGHT * sizeof(WORD));
+            //printf("Allocating %d bytes for framebuffer in SRAM\n", SCREENWIDTH * SCREENHEIGHT * sizeof(WORD));
+            //framebuffer = (WORD *)malloc(SCREENWIDTH * SCREENHEIGHT * sizeof(WORD));
             memset(framebuffer, 0, SCREENWIDTH * SCREENHEIGHT * sizeof(WORD));
             marginTop = marginBottom = 0; // ignore margins when using framebuffer
         }
@@ -1407,13 +1423,13 @@ namespace Frens
     void setClocksAndStartStdio(uint32_t cpuFreqKHz, vreg_voltage voltage)
     {
         // Set voltage and clock frequency
-       
+
         vreg_disable_voltage_limit();
         vreg_set_voltage(voltage);
 #if !HSTX
         set_sys_clock_khz(cpuFreqKHz, true);
         sleep_ms(100);
-#else  
+#else
         if (cpuFreqKHz >= 378000)
         {
             /*
@@ -1433,9 +1449,9 @@ namespace Frens
              * system clock does not overdrive the flash. Without this, random faults or hard
              * crashes can occur when fetching code/data from XIP at these frequencies.
              */
-              qmi_hw->m[0].timing = 0x60007304; // 4x FLASH divisor
+            qmi_hw->m[0].timing = 0x60007304; // 4x FLASH divisor
         }
-     
+
         sleep_ms(100);
         set_sys_clock_khz(cpuFreqKHz, true);
         sleep_ms(100);
@@ -1593,10 +1609,11 @@ namespace Frens
     /// If the file cannot be loaded, the overlay is loaded from memory.
     /// The overlay in memory must have the same format as the file.
     /// If both file and memory overlay are not available, no overlay is loaded.
-    /// @param filename 
-    /// @param overlay 
+    /// @param filename
+    /// @param overlay
     void loadOverLay(const char *filename, const char *overlay)
     {
+#if PICO_RP2350
         // Only possible when using framebuffer
         if (!Frens::isFrameBufferUsed())
         {
@@ -1663,6 +1680,7 @@ namespace Frens
 #else
         memcpy(hstx_getframebuffer(), overlay + 4, width * height * sizeof(WORD));
 #endif
+#endif
     }
     uint32_t getCrcOfLoadedRom()
     {
@@ -1670,13 +1688,13 @@ namespace Frens
     }
 
     /// @brief Check if a file exists
-    /// @param filepath 
-    /// @return 
+    /// @param filepath
+    /// @return
     bool fileExists(const char *filepath)
     {
-        FILINFO fno;   
+        FILINFO fno;
         return (f_stat(filepath, &fno) == FR_OK);
-    }   
+    }
 
 }
 // C-compatible wrappers

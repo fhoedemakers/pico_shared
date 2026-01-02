@@ -18,6 +18,7 @@ vumeter.cpp
 soundrecorder.cpp
 samplesound.c
 wavplayer.cpp
+FlashParams.cpp
 #PicoPlusPsram.cpp
 )
 add_subdirectory(drivers/pico_fatfs)     

@@ -24,6 +24,8 @@
 #include "DefaultSS.h"
 #include <stdint.h>
 #include "wavplayer.h"
+const int8_t *g_settings_visibility;
+const uint8_t *g_available_screen_modes;
 #if !HSTX
 #define CC(x) (((x >> 1) & 15) | (((x >> 6) & 15) << 4) | (((x >> 11) & 15) << 8))
 const __UINT16_TYPE__ NesMenuPalette[64] = {
@@ -77,7 +79,7 @@ static char *selectedRomOrFolder;
 static bool errorInSavingRom = false;
 static char *globalErrorMessage;
 
-static bool artworkEnabled = false;
+// static bool artworkEnabled = false;
 static uint8_t crcOffset = 0; // Default offset for CRC calculation
 #define LONG_PRESS_TRESHOLD (500)
 #define REPEAT_DELAY (40)
@@ -137,7 +139,6 @@ static void getButtonLabels(char *buttonLabel1, char *buttonLabel2)
     {
         strcpy(buttonLabel1, "O");
         strcpy(buttonLabel2, "X");
-
     }
     else if (strcmp(connectedGamePadName, "XInput") == 0 || strncmp(connectedGamePadName, "Genesis", 7) == 0 || strcmp(connectedGamePadName, "MDArcade") == 0)
     {
@@ -158,14 +159,23 @@ static void getButtonLabels(char *buttonLabel1, char *buttonLabel2)
 
 static bool isArtWorkEnabled()
 {
-    FILINFO fi;
     char PATH[FF_MAX_LFN];
-    bool exists = false;
+    FILINFO fi;
+    static bool artworkEnabled = false;
+    static FrensSettings::emulators lastEmulatorType = FrensSettings::emulators::MULTI;
+    FrensSettings::emulators currentEmulatorType = FrensSettings::getEmulatorType();
+    if (lastEmulatorType == currentEmulatorType)
+    {
+        return artworkEnabled;
+    }
+
     PATH[0] = 0;
     const char *emulator = FrensSettings::getEmulatorTypeString();
-    switch (FrensSettings::getEmulatorType())
+
+    switch (currentEmulatorType)
     {
     case FrensSettings::emulators::NES:
+
         snprintf(PATH, sizeof(PATH), "/Metadata/%s/Images/320/D/D0E96F6B.444", emulator);
         break;
     case FrensSettings::emulators::SMS:
@@ -180,14 +190,15 @@ static bool isArtWorkEnabled()
     default:
         return false;
     }
+    lastEmulatorType = FrensSettings::getEmulatorType();
     if (PATH[0])
     {
+        printf("Checking for artwork at: %s\n", PATH);
         FRESULT res = f_stat(PATH, &fi);
-        bool exists = (res == FR_OK);
-        printf("Artwork %s for %s\n", exists ? "enabled" : "not found", emulator);
-        return exists;
+        artworkEnabled = (res == FR_OK);
+        // printf("Artwork %s for %s\n", exists ? "enabled" : "not found", emulator);
     }
-    return false;
+    return artworkEnabled;
 }
 
 int Menu_LoadFrame()
@@ -596,6 +607,7 @@ void DrawScreen(int selectedRow, int w = 0, int h = 0, uint16_t *imagebuffer = n
         snprintf(s, sizeof(s), "%s:Open %s:Back", buttonLabel1, buttonLabel2);
 
         putText(1, ENDROW + 2, s, settings.fgcolor, settings.bgcolor);
+        bool artworkEnabled = isArtWorkEnabled();
         if (artworkEnabled)
         {
             strcpy(s, "START:Info");
@@ -657,7 +669,8 @@ void displayRoms(Frens::RomLister &romlister, int startIndex)
     ClearScreen(settings.bgcolor);
     snprintf(s, sizeof(s), "- %s -", menutitle);
     putText(SCREEN_COLS / 2 - strlen(s) / 2, 0, s, settings.fgcolor, settings.bgcolor);
-
+    snprintf(buffer, sizeof(buffer), "%uMHZ", clock_get_hz(clk_sys) / 1000000);
+    putText(1, 0, buffer, settings.fgcolor, settings.bgcolor);
     strcpy(s, "Choose a rom to play:");
     putText(SCREEN_COLS / 2 - strlen(s) / 2, 1, s, settings.fgcolor, settings.bgcolor);
     // strcpy(s, "---------------------");
@@ -1032,9 +1045,10 @@ void screenSaver()
     }
 #endif
 #if PICO_RP2350
-    if ( !wavplayer::isPlaying() ) {
+    if (!wavplayer::isPlaying())
+    {
 #endif
-       screenSaverWithArt(!artworkEnabled);
+        screenSaverWithArt(!isArtWorkEnabled());
 #if PICO_RP2350
     }
 #endif
@@ -1265,7 +1279,7 @@ int showartwork(uint32_t crc, FSIZE_t romsize)
     // }
     return startGame;
 }
-static void showLoadingScreen(const char *message = nullptr)
+static void showLoadingScreen(const char *message = nullptr, int framesToWait = 0)
 {
 #if !HSTX
     if (Frens::isFrameBufferUsed())
@@ -1352,8 +1366,11 @@ static void showLoadingScreen(const char *message = nullptr)
         {
             putText(SCREEN_COLS / 2 - 5, SCREEN_ROWS / 2, "Loading...", settings.fgcolor, settings.bgcolor);
         }
-        DrawScreen(-1);
-        Menu_LoadFrame();
+        while (framesToWait-- > 0)
+        {
+            Menu_LoadFrame();
+            DrawScreen(-1);
+        }
         DrawScreen(-1);
         Menu_LoadFrame();
 #if !HSTX
@@ -1444,7 +1461,7 @@ void DisplayDacError()
 
 void getQuickSavePath(char *path, size_t pathsize)
 {
-    snprintf(path, pathsize, QUICKSAVEFILEFORMAT, FrensSettings::getEmulatorTypeString(), Frens::getCrcOfLoadedRom(), MAXSAVESTATESLOTS -1);
+    snprintf(path, pathsize, QUICKSAVEFILEFORMAT, FrensSettings::getEmulatorTypeString(), Frens::getCrcOfLoadedRom(), MAXSAVESTATESLOTS - 1);
 }
 
 void getAutoSaveIsConfiguredPath(char *path, size_t pathsize)
@@ -1485,12 +1502,13 @@ static bool ensureSaveStateDirectories(uint32_t crc)
         showMessageBox("Save failed, cannot create folder.", CRED, tmppath);
         return false;
     }
-    if ( fr == FR_OK ) {
+    if (fr == FR_OK)
+    {
         printf("Save state base directory created: %s\n", tmppath);
     }
     // /SAVESTATES/<emulator>
     snprintf(tmppath, sizeof(tmppath), "%s/%s", SAVESTATEDIR, FrensSettings::getEmulatorTypeString());
-    
+
     fr = f_mkdir(tmppath);
     if (fr != FR_OK && fr != FR_EXIST)
     {
@@ -1498,9 +1516,10 @@ static bool ensureSaveStateDirectories(uint32_t crc)
         showMessageBox("Save failed, cannot create folder.", CRED, tmppath);
         return false;
     }
-    if ( fr == FR_OK ) {
+    if (fr == FR_OK)
+    {
         printf("Save state emulator directory created: %s\n", tmppath);
-    }   
+    }
     // /SAVESTATES/<emulator>/<CRC>
     snprintf(tmppath, sizeof(tmppath), "%s/%s/%08X", SAVESTATEDIR, FrensSettings::getEmulatorTypeString(), crc);
     fr = f_mkdir(tmppath);
@@ -1510,9 +1529,10 @@ static bool ensureSaveStateDirectories(uint32_t crc)
         showMessageBox("Save failed, cannot create folder.", CRED, tmppath);
         return false;
     }
-    if ( fr == FR_OK ) {
+    if (fr == FR_OK)
+    {
         printf("Save state CRC directory created: %s\n", tmppath);
-    }   
+    }
 
     return true;
 }
@@ -1549,12 +1569,12 @@ bool showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
     // Handle quicksave and quick load
     if (quickSave == SaveStateTypes::LOAD || quickSave == SaveStateTypes::SAVE || quickSave == SaveStateTypes::LOAD_AND_START || quickSave == SaveStateTypes::SAVE_AND_EXIT)
     {
-        
+
         if (quickSave == SaveStateTypes::LOAD)
         {
             getQuickSavePath(tmppath, sizeof(tmppath));
             // do nothing if file does not exist
-            if (Frens::fileExists(tmppath) )
+            if (Frens::fileExists(tmppath))
             {
                 bool ok = true;
                 ok = showDialogYesNo("Load quick save state?");
@@ -1564,7 +1584,7 @@ bool showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
                     if (loadstatefunc(tmppath) == 0)
                     {
                         printf("Quick load successful\n");
-                        //showMessageBox("State loaded successfully.", settings.fgcolor);
+                        // showMessageBox("State loaded successfully.", settings.fgcolor);
                     }
                     else
                     {
@@ -1596,7 +1616,7 @@ bool showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
                     if (savestatefunc(tmppath) == 0)
                     {
                         printf("Quick save successful\n");
-                        //showMessageBox("State saved successfully.", settings.fgcolor);
+                        // showMessageBox("State saved successfully.", settings.fgcolor);
                     }
                     else
                     {
@@ -1605,7 +1625,9 @@ bool showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
                     }
                 }
             }
-        } else if ( quickSave == SaveStateTypes::LOAD_AND_START) {
+        }
+        else if (quickSave == SaveStateTypes::LOAD_AND_START)
+        {
             // do nothing if file does not exist
             if (autosaveFileExists)
             {
@@ -1617,7 +1639,7 @@ bool showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
                     if (loadstatefunc(tmppath) == 0)
                     {
                         printf("Auto load successful\n");
-                        //showMessageBox("State loaded successfully.", settings.fgcolor);
+                        // showMessageBox("State loaded successfully.", settings.fgcolor);
                     }
                     else
                     {
@@ -1627,7 +1649,9 @@ bool showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
                     }
                 }
             }
-        } else if ( quickSave == SaveStateTypes::SAVE_AND_EXIT) {
+        }
+        else if (quickSave == SaveStateTypes::SAVE_AND_EXIT)
+        {
             getAutoSaveStatePath(tmppath, sizeof(tmppath));
             if (ensureSaveStateDirectories(crc))
             {
@@ -1643,7 +1667,7 @@ bool showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
                     {
                         autosaveFileExists = true;
                         printf("Auto save successful\n");
-                        //showMessageBox("State saved successfully.", settings.fgcolor);
+                        // showMessageBox("State saved successfully.", settings.fgcolor);
                     }
                     else
                     {
@@ -1653,11 +1677,10 @@ bool showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
                 }
             }
         }
-
     }
     else
     {
-        
+
         for (int i = 0; i < MAXSAVESTATESLOTS; i++)
         {
             getSaveStatePath(tmppath, sizeof(tmppath), i);
@@ -1688,9 +1711,12 @@ bool showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
             {
                 const char *status = saveslots[i] ? "Used" : "Empty";
                 // Last soft used for quick save
-                if (i == (MAXSAVESTATESLOTS - 1)) {
+                if (i == (MAXSAVESTATESLOTS - 1))
+                {
                     snprintf(linebuf, sizeof(linebuf), "Quick Save: %s%s", status, (i == selected && saved) ? " Saved" : "");
-                } else {
+                }
+                else
+                {
                     snprintf(linebuf, sizeof(linebuf), "Slot %d____: %s%s", i, status, (i == selected && saved) ? " Saved" : "");
                 }
                 int fg = settings.fgcolor;
@@ -1721,7 +1747,9 @@ bool showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
                 {
                     fg = settings.bgcolor;
                     bg = settings.fgcolor;
-                } else if (confirmSlot == MAXSAVESTATESLOTS) {
+                }
+                else if (confirmSlot == MAXSAVESTATESLOTS)
+                {
                     // Highlight slot being confirmed (overwrite/delete)
                     fg = CWHITE;
                     bg = CRED;
@@ -1746,22 +1774,25 @@ bool showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
             else
             {
                 bool saveSlotHasData = false;
-                if ( selected < MAXSAVESTATESLOTS )
+                if (selected < MAXSAVESTATESLOTS)
                 {
                     saveSlotHasData = saveslots[selected];
-                }  else {
-                    saveSlotHasData = autosaveFileExists; 
+                }
+                else
+                {
+                    saveSlotHasData = autosaveFileExists;
                 }
                 // General instructions (each action on its own line)
-                if ( selected == MAXSAVESTATESLOTS ) {
+                if (selected == MAXSAVESTATESLOTS)
+                {
                     putText(0, ENDROW - 7, "LEFT/RIGHT: Toggle autosave", settings.fgcolor, settings.bgcolor);
-                } 
-                //if ( selected < MAXSAVESTATESLOTS) {
-                    snprintf(linebuf, sizeof(linebuf), "%s_____:Save state", buttonLabel1);
-                    putText(0, ENDROW - 6, linebuf, settings.fgcolor, settings.bgcolor);
+                }
+                // if ( selected < MAXSAVESTATESLOTS) {
+                snprintf(linebuf, sizeof(linebuf), "%s_____:Save state", buttonLabel1);
+                putText(0, ENDROW - 6, linebuf, settings.fgcolor, settings.bgcolor);
                 //}
                 if (saveSlotHasData)
-                {                 
+                {
                     snprintf(linebuf, sizeof(linebuf), "SELECT:Delete state");
                     putText(0, ENDROW - 5, linebuf, settings.fgcolor, settings.bgcolor);
                     putText(0, ENDROW - 4, "START :Load state.", settings.fgcolor, settings.bgcolor);
@@ -1777,10 +1808,10 @@ bool showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
                     putText(0, ENDROW - 5, linebuf, settings.fgcolor, settings.bgcolor);
                 }
                 putText(0, SCREEN_ROWS - 4, "In-Game Quick Save/Load state: ", settings.fgcolor, settings.bgcolor);
-                //snprintf(linebuf, sizeof(linebuf), "SELECT + %s : Quick Save", buttonLabel1);
+                // snprintf(linebuf, sizeof(linebuf), "SELECT + %s : Quick Save", buttonLabel1);
                 snprintf(linebuf, sizeof(linebuf), "START + DOWN : Quick Save");
                 putText(1, SCREEN_ROWS - 3, linebuf, settings.fgcolor, settings.bgcolor);
-                //snprintf(linebuf, sizeof(linebuf), "SELECT + %s : Quick Load", buttonLabel2);
+                // snprintf(linebuf, sizeof(linebuf), "SELECT + %s : Quick Load", buttonLabel2);
                 snprintf(linebuf, sizeof(linebuf), "START + UP___: Quick Load");
                 putText(1, SCREEN_ROWS - 2, linebuf, settings.fgcolor, settings.bgcolor);
             }
@@ -1820,11 +1851,13 @@ bool showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
             else if (!(pad & SELECT) && (pad & START))
             {
                 bool saveSlotHasData = false;
-                if ( selected < MAXSAVESTATESLOTS )
+                if (selected < MAXSAVESTATESLOTS)
                 {
                     saveSlotHasData = saveslots[selected];
                     getSaveStatePath(tmppath, sizeof(tmppath), selected);
-                } else {
+                }
+                else
+                {
                     saveSlotHasData = autosaveFileExists;
                     getAutoSaveStatePath(tmppath, sizeof(tmppath));
                 }
@@ -1833,12 +1866,12 @@ bool showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
                     // No save state in this slot
                     continue;
                 }
-               
+
                 printf("Loading state  %s from slot %d\n", tmppath, selected);
                 if (loadstatefunc(tmppath) == 0)
                 {
                     printf("Save state loaded from slot %d: %s\n", selected, tmppath);
-                    //showMessageBox("Loaded state from", CBLUE, tmppath, "Press any button to resume game.");
+                    // showMessageBox("Loaded state from", CBLUE, tmppath, "Press any button to resume game.");
                     exitMenu = true;
                     break;
                 }
@@ -1853,11 +1886,13 @@ bool showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
             else if ((pad & SELECT) && !(pad & START))
             {
                 bool saveSlotHasData = false;
-                if ( selected < MAXSAVESTATESLOTS )
+                if (selected < MAXSAVESTATESLOTS)
                 {
                     saveSlotHasData = saveslots[selected];
                     getSaveStatePath(tmppath, sizeof(tmppath), selected);
-                } else {
+                }
+                else
+                {
                     // Auto save slot
                     getAutoSaveStatePath(tmppath, sizeof(tmppath));
                     saveSlotHasData = autosaveFileExists;
@@ -1913,7 +1948,7 @@ bool showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
                     else
                     {
                         autosaveEnabled = false;
-                        //showMessageBox("Auto save disabled.", CBLUE);
+                        // showMessageBox("Auto save disabled.", CBLUE);
                     }
                 }
                 else
@@ -1923,7 +1958,7 @@ bool showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
                     {
                         f_close(&fil);
                         autosaveEnabled = true;
-                       // showMessageBox("Auto save enabled.", CBLUE);
+                        // showMessageBox("Auto save enabled.", CBLUE);
                     }
                     else
                     {
@@ -1940,11 +1975,13 @@ bool showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
             else if (pad & A)
             {
                 bool saveSlotHasData = false;
-                if ( selected < MAXSAVESTATESLOTS )
+                if (selected < MAXSAVESTATESLOTS)
                 {
                     saveSlotHasData = saveslots[selected];
                     getSaveStatePath(tmppath, sizeof(tmppath), selected);
-                } else {
+                }
+                else
+                {
                     // Auto save slot
                     getAutoSaveStatePath(tmppath, sizeof(tmppath));
                     saveSlotHasData = autosaveFileExists;
@@ -1985,10 +2022,12 @@ bool showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
                     if (savestatefunc(tmppath) == 0)
                     {
                         printf("Save state saved to slot %d: %s\n", selected + 1, tmppath);
-                        if ( selected < MAXSAVESTATESLOTS )
+                        if (selected < MAXSAVESTATESLOTS)
                         {
                             saveslots[selected] = 1;
-                        } else {
+                        }
+                        else
+                        {
                             autosaveFileExists = true;
                         }
                         saved = true;
@@ -2019,7 +2058,6 @@ bool showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
     Frens::f_free(screenBuffer);
     return saveStateLoadedOK;
 }
-
 
 // --- Settings Menu Implementation ---
 // returns 0 if no changes, 1 if settings applied
@@ -2483,20 +2521,22 @@ int showSettingsMenu(bool calledFromGame)
     // for volume control option: initialize audio stream
 #if HW_CONFIG == 8
     // Initialize menu music
-    ///wavplayer::init_memory();
+    /// wavplayer::init_memory();
     // Optional: set offset and/or switch to file
     // wavplayer::set_offset_seconds(0.8f); // skip initial silence
     // Uncomment to stream from a file on SD (must be a valid PCM 16-bit stereo WAV)
     char wavPath[40];
     strcpy(wavPath, RECORDEDSAMPLEFILE);
-    if ( !Frens::fileExists(wavPath) ) {
+    if (!Frens::fileExists(wavPath))
+    {
         snprintf(wavPath, sizeof(wavPath), DEFAULTSAMPLEFILEFORMAT, FrensSettings::getEmulatorTypeString());
         printf("Menu music file not found at /soundrecorder.wav, trying %s\n", wavPath);
     }
-    if (wavplayer::use_file(wavPath)) {
-        
+    if (wavplayer::use_file(wavPath))
+    {
+
         printf("Streaming menu music from file.\n");
-        //wavplayer::resume();
+        // wavplayer::resume();
     }
 #endif
 
@@ -2521,10 +2561,13 @@ int showSettingsMenu(bool calledFromGame)
             optIndex = visibleIndices[selectedRowLocal - rowStartOptions]; // map screen row to option index
         }
 #if HW_CONFIG == 8 && PICO_RP2350
-        if ( optIndex == MOPT_FRUITJAM_VOLUME_CONTROL) {
+        if (optIndex == MOPT_FRUITJAM_VOLUME_CONTROL)
+        {
             // resume audio stream for volume adjustment feedback
             wavplayer::resume();
-        } else {
+        }
+        else
+        {
             // pause audio stream
             wavplayer::pause();
         }
@@ -2857,6 +2900,15 @@ int showSettingsMenu(bool calledFromGame)
 #endif
     return rval;
 }
+void setclockInFlashAndReboot(uint32_t freq, vreg_voltage voltage)
+{
+    Frens::FlashParams flashParams;
+    flashParams.cpuFreqKHz = freq;
+    flashParams.voltage = voltage;
+    auto flashparamInFlash = ((uintptr_t)&__flash_binary_end + 0xFFF) & ~0xFFF;
+    flashparamInFlash -= XIP_BASE;
+    printf("Writing clock params to flash at 0x%08X: freq %d kHz, voltage %d\n", (unsigned int)flashparamInFlash, flashParams.cpuFreqKHz, (int)flashParams.voltage);
+}
 
 void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, const char *allowedExtensions, char *rompath)
 {
@@ -2864,14 +2916,14 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
     FIL fil;
     DWORD PAD1_Latch;
     char curdir[FF_MAX_LFN];
+    auto clockFreq = clock_get_hz(clk_sys) / 1000; // in kHz
 #if !PICO_RP2350
     EXT_AUDIO_DISABLE();
 #endif
 #if ENABLE_VU_METER
     turnOffAllLeds();
 #endif
-
-    artworkEnabled = isArtWorkEnabled();
+    // artworkEnabled = isArtWorkEnabled();
     crcOffset = FrensSettings::getEmulatorType() == FrensSettings::emulators::NES ? 16 : 0; // crc offset according to  https://github.com/ducalex/retro-go-covers
     printf("Emulator: %s, crcOffset: %d\n", FrensSettings::getEmulatorTypeString(), crcOffset);
 #if !HSTX
@@ -2933,25 +2985,70 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
     romlister.list(settings.currentDir);
     displayRoms(romlister, settings.firstVisibleRowINDEX);
     bool startGame = false;
+    int oldIndex = -1;
+    bool isWav = false;
     waitForNoButtonPress();
     while (1)
     {
-
+        char fileExt[8];
         auto frameCount = Menu_LoadFrame();
-        // Pump background audio each frame (approx 60 FPS -> ~735 frames @ 44.1kHz)
-// #if HW_CONFIG == 8
-//         if (wavplayer::ready()) {
-//             wavplayer::pump(wavplayer::sample_rate() / 60);
-//         }
-// #endif
+      
         auto index = settings.selectedRow - STARTROW + settings.firstVisibleRowINDEX;
         auto entries = romlister.GetEntries();
         selectedRomOrFolder = (romlister.Count() > 0) ? entries[index].Path : nullptr;
-        bool isWav = false;
+   
 #if PICO_RP2350
-        if (selectedRomOrFolder) {
-            if ( Frens::cstr_endswith(selectedRomOrFolder, ".wav") || Frens::cstr_endswith(selectedRomOrFolder, ".WAV") ) {
-                isWav = true;
+        if (selectedRomOrFolder  && entries[index].IsDirectory == false )
+        {
+            // check if selected file is a .wav file
+            Frens::getextensionfromfilename(selectedRomOrFolder, fileExt, sizeof(fileExt));
+            isWav = (strcasecmp(fileExt, ".wav") == 0);
+        } else {
+            isWav = false;
+        }
+#endif
+#if RETROJAM
+        // retroJam: adjust clock speed and crc offset based on selected ROM type
+        if (selectedRomOrFolder && entries[index].IsDirectory == false && oldIndex != index)
+        {        
+            oldIndex = index;
+            // set emulator type based on file extension of the currently selected ROM           
+            if (!isWav)
+            {
+                FrensSettings::setEmulatorType((const char *)fileExt);
+                crcOffset = FrensSettings::getEmulatorType() == FrensSettings::emulators::NES ? 16 : 0; // crc offset according to  https://github.com/ducalex/retro-go-covers
+            }
+            // printf("Emulator: %s, settingstype %s, crcOffset: %d, Current clock freq: %d kHz\n", FrensSettings::getEmulatorTypeString(), FrensSettings::getEmulatorTypeString(true), crcOffset, (unsigned int)clockFreq);
+            // Sega Genesis: adjust to higher clock speed.
+            // printf(" Current clock freq: %d kHz\n", (unsigned int)clockFreq);
+            if (FrensSettings::getEmulatorType() == FrensSettings::emulators::GENESIS && !isWav)
+            {
+
+                if (clockFreq != FLASHPARAM_MAX_FREQ_KHZ)
+                {
+                    char message[40];
+                    snprintf(message, sizeof(message), "Setting clock to  %dMHZ", FLASHPARAM_MAX_FREQ_KHZ /1000);
+                    showLoadingScreen(message, 60);
+                    FrensSettings::savesettings(); // save current settings before changing clock
+                    if (Frens::writeFlashParamsToFlash(FLASHPARAM_MAX_FREQ_KHZ, FLASHPARAM_MAX_VOLTAGE) == false)
+                    {
+                        printf("Failed to write flash params for high clock\n");
+                    }
+                }
+            }
+            else
+            {
+                if (clockFreq != FLASHPARAM_MIN_FREQ_KHZ)
+                {
+                    char message[40];
+                    snprintf(message, sizeof(message), "Setting clock to  %dMHZ", FLASHPARAM_MIN_FREQ_KHZ /1000);
+                    showLoadingScreen(message, 60);
+                    FrensSettings::savesettings(); // save current settings before changing clock
+                    if (Frens::writeFlashParamsToFlash(FLASHPARAM_MIN_FREQ_KHZ, FLASHPARAM_MIN_VOLTAGE) == false)
+                    {
+                        printf("Failed to write flash params for low clock\n");
+                    }
+                }
             }
         }
 #endif
@@ -2965,6 +3062,22 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
         }
         if (PAD1_Latch > 0 || startGame)
         {
+#if !HSTX
+            if ((PAD1_Latch)&UP && (PAD1_Latch & SELECT))
+            {
+                if (clockFreq == FLASHPARAM_MAX_FREQ_KHZ)
+                {
+                    printf("Emergency reset to low clock speed requested\n");
+                    // Emergency reset to default settings and clock speed
+                    // This can be used to in case there is no display or unstable display because of high clock speed settings
+                    FrensSettings::resetsettings();
+                    FrensSettings::savesettings();
+                    Frens::writeFlashParamsToFlash(FLASHPARAM_MIN_FREQ_KHZ, FLASHPARAM_MIN_VOLTAGE);
+                } else {
+                    printf("Emergency reset requested, but already at low clock speed\n");
+                }
+            }
+#endif
             // reset horizontal scroll of highlighted row
             settings.horzontalScrollIndex = 0;
             putText(3, settings.selectedRow, selectedRomOrFolder, settings.fgcolor, settings.bgcolor);
@@ -3068,6 +3181,7 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
             }
             else if ((PAD1_Latch & B) == B)
             {
+                oldIndex = -1;
                 fr = f_getcwd(settings.currentDir, FF_MAX_LFN); // f_getcwd(settings.currentDir, FF_MAX_LFN);
                 if (fr == FR_OK)
                 {
@@ -3178,7 +3292,7 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
 
                 // show screen with ArtWork
 
-                if (!entries[index].IsDirectory && selectedRomOrFolder && artworkEnabled)
+                if (!entries[index].IsDirectory && selectedRomOrFolder && isArtWorkEnabled())
                 {
                     // if (strcmp(emulator, "MD") == 0)
                     // {
@@ -3213,6 +3327,7 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
             }
             else if ((startGame || (PAD1_Latch & A) == A) && selectedRomOrFolder && !isWav)
             {
+                oldIndex = -1;
                 if (entries[index].IsDirectory && !startGame)
                 {
                     romlister.list(selectedRomOrFolder);
@@ -3293,7 +3408,8 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
                         break; // from while(1) loop, so we can reboot or return to main.cpp
                     }
                 }
-            } else if ( ( (PAD1_Latch & A) == A || (PAD1_Latch & START) == START) && selectedRomOrFolder && isWav)
+            }
+            else if (((PAD1_Latch & A) == A || (PAD1_Latch & START) == START) && selectedRomOrFolder && isWav)
             {
 #if PICO_RP2350
                 // Build full path of highlighted WAV
@@ -3312,15 +3428,17 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
                 {
                     printf("Playing WAV file: %s\n", fullWavPath);
                     wavplayer::reset();
-                    if ( wavplayer::use_file(fullWavPath) ) {
+                    if (wavplayer::use_file(fullWavPath))
+                    {
                         EXT_AUDIO_SETVOLUME(settings.fruitjamVolumeLevel);
                         wavplayer::resume();
                         strncpy(lastWavPath, fullWavPath, sizeof(lastWavPath) - 1);
                         lastWavPath[sizeof(lastWavPath) - 1] = '\0';
-                    } else {
+                    }
+                    else
+                    {
                         printf("Error opening WAV file: %s\n", fullWavPath);
                     }
-
                 }
 #endif
             }
@@ -3351,8 +3469,9 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
             // printf("Starting screensaver\n");
             totalFrames = -1;
             // romlister.ClearMemory();
-           
-            if (! wavplayer::isPlaying() ) {
+
+            if (!wavplayer::isPlaying())
+            {
                 screenSaver();
                 romlister.list(".");
                 displayRoms(romlister, settings.firstVisibleRowINDEX);
