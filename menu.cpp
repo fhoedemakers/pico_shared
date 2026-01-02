@@ -615,15 +615,15 @@ void DrawScreen(int selectedRow, int w = 0, int h = 0, uint16_t *imagebuffer = n
         }
         int optionsRow = artworkEnabled ? ENDROW + 3 : ENDROW + 2;
         bool showSettingsbutton = true;
-#if PICO_RP2350
-#else
-#if HW_CONFIG == 1
-        if (FrensSettings::getEmulatorType() == FrensSettings::emulators::SMS)
-        {
-            showSettingsbutton = false;
-        }
-#endif
-#endif
+//#if PICO_RP2350
+//#else
+//#if HW_CONFIG == 1
+        // if (FrensSettings::getEmulatorType() == FrensSettings::emulators::SMS)
+        // {
+        //     showSettingsbutton = false;
+        // }
+//#endif
+//#endif
         if (strcmp(connectedGamePadName, "Genesis Mini 2") == 0 || strcmp(connectedGamePadName, "MDArcade") == 0)
         {
             strcpy(s, showSettingsbutton ? "Mode:Settings" : "Press MODE+START in-game for settings");
@@ -3210,20 +3210,20 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
             }
             else if ((PAD1_Latch & SELECT) == SELECT)
             {
-#if PICO_RP2350
-#else
-#if HW_CONFIG == 1
+//#if PICO_RP2350
+//#else
+//#if HW_CONFIG == 1
                 // On RP2040 with Pimoroni Pico DV Demo base, intermittent crashes have been observed in the settings menu
                 // from within the SMS emulator only.
                 // As a workaround, disable the settings menu for SMS emulator on HW_CONFIG 1.
                 // Settings can still be opened in-game.
-                if (FrensSettings::getEmulatorType() == FrensSettings::emulators::SMS)
-                {
-                    // printf("Settings menu not available for SMS emulator\n");
-                    continue; // skip other processing this frame
-                }
-#endif
-#endif
+                // if (FrensSettings::getEmulatorType() == FrensSettings::emulators::SMS)
+                // {
+                //     // printf("Settings menu not available for SMS emulator\n");
+                //     continue; // skip other processing this frame
+                // }
+//#endif
+//#endif
                 // Open settings menu
                 auto settingsResult = showSettingsMenu();
                 if (settingsResult == 1)
