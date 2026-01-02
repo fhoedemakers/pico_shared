@@ -1613,6 +1613,7 @@ namespace Frens
     /// @param overlay
     void loadOverLay(const char *filename, const char *overlay)
     {
+#if PICO_RP2350
         // Only possible when using framebuffer
         if (!Frens::isFrameBufferUsed())
         {
@@ -1678,6 +1679,7 @@ namespace Frens
         memcpy(framebuffer, overlay + 4, width * height * sizeof(WORD));
 #else
         memcpy(hstx_getframebuffer(), overlay + 4, width * height * sizeof(WORD));
+#endif
 #endif
     }
     uint32_t getCrcOfLoadedRom()
