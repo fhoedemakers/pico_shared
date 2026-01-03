@@ -1,5 +1,5 @@
 #include "hardware/pio.h"
-
+#include "pico/time.h"
 #define nespad_wrap_target 0
 #define nespad_wrap 7
 
@@ -88,26 +88,38 @@ bool nespad_begin(uint8_t padnum, uint32_t cpu_khz, uint8_t clkPin, uint8_t data
   pio_sm_set_enabled(pio[padnum], sm[padnum], true);
   return true;
 }
-
+static inline void readPad(int padnum) {
+  if (padnum == 0) {
+    pio_interrupt_clear(pio[padnum], 0);
+  }
+  if ( padnum == 1) {
+    if ( pio_get_index(pio[0]) != pio_get_index(pio[1]) ) {
+      pio_interrupt_clear(pio[padnum], 0);
+    }   
+  }
+  sleep_us(100); 
+  // Finish nespad read. Ideally should be called ~100 uS after
+  // nespad_read_start(), but can be sooner (will block until ready), or later
+  // (will introduce latency). Sets value of global nespad_state variable, a
+  // bitmask of button/D-pad state (1 = pressed). 0x01=Right, 0x02=Left,
+  // 0x04=Down, 0x08=Up, 0x10=Start, 0x20=Select, 0x40=B, 0x80=A. Must first
+  // call nespad_begin() once to set up PIO. Result will be 0 if PIO failed to
+  // init (e.g. no free state machine).
+  nespad_states[padnum] = (sm[padnum] >= 0) ? ((pio_sm_get_blocking(pio[padnum], sm[padnum]) >> 24) ^ 0xFF) : 0;
+}
 // Initiate nespad read. Non-blocking; result will be available in ~100 uS
 // via nespad_read_finish(). Must first call nespad_begin() once to set up PIO.
-void nespad_read_start(void) { pio_interrupt_clear(pio[0], 0); if ( second_pad ) { pio_interrupt_clear(pio[1], 0);}}
-
-// Finish nespad read. Ideally should be called ~100 uS after
-// nespad_read_start(), but can be sooner (will block until ready), or later
-// (will introduce latency). Sets value of global nespad_state variable, a
-// bitmask of button/D-pad state (1 = pressed). 0x01=Right, 0x02=Left,
-// 0x04=Down, 0x08=Up, 0x10=Start, 0x20=Select, 0x40=B, 0x80=A. Must first
-// call nespad_begin() once to set up PIO. Result will be 0 if PIO failed to
-// init (e.g. no free state machine).
-void nespad_read_finish(void)
-{
-  // Right-shift was used in sm config so bit order matches NES controller
-  // bits used elsewhere in picones, but does require shifting down...
-  nespad_states[0] = (sm[0] >= 0) ? ((pio_sm_get_blocking(pio[0], sm[0]) >> 24) ^ 0xFF) : 0;
+void nespad_read_start(void) { 
+  readPad(0);
   if (second_pad) {
-    nespad_states[1] = (sm[1] >= 0) ? ((pio_sm_get_blocking(pio[1], sm[1]) >> 24) ^ 0xFF) : 0;
+    readPad(1);
   } else {
     nespad_states[1] = 0;
   }
+}
+
+// Finish nespad read. Implementd as empty function for compatibility.
+void nespad_read_finish(void)
+{
+ 
 }
