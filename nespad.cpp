@@ -2,7 +2,19 @@
 
 #define nespad_wrap_target 0
 #define nespad_wrap 7
-#if 0 // Current version
+#if HW_CONFIG == 12 || HW_CONFIG == 13  // Murmulator M1/M2 will need the older version of the PIO program.
+static const uint16_t nespad_program_instructions[] = {
+    //     .wrap_target
+    0xc020, //  0: irq    wait 0          side 0
+    0xea01, //  1: set    pins, 1         side 0 [10]
+    0xe027, //  2: set    x, 7            side 0
+    0xe000, //  3: set    pins, 0         side 0
+    0x4401, //  4: in     pins, 1         side 0 [4]
+    0xf500, //  5: set    pins, 0         side 1 [5]
+    0x0044, //  6: jmp    x--, 4          side 0
+            //     .wrap
+};
+#else // Most recent version of the NES pad PIO program, needed for all the other boards
 static const uint16_t nespad_program_instructions[] = {
           //     .wrap_target
     0xd020, //  0: irq    wait 0          side 1     
@@ -13,18 +25,6 @@ static const uint16_t nespad_program_instructions[] = {
     0xe100, //  5: set    pins, 0         side 0 [1] 
     0x5301, //  6: in     pins, 1         side 1 [3] 
     0x1044, //  7: jmp    x--, 4          side 1     
-            //     .wrap
-};
-#else // Old version, test Murmulator
-static const uint16_t nespad_program_instructions[] = {
-    //     .wrap_target
-    0xc020, //  0: irq    wait 0          side 0
-    0xea01, //  1: set    pins, 1         side 0 [10]
-    0xe027, //  2: set    x, 7            side 0
-    0xe000, //  3: set    pins, 0         side 0
-    0x4401, //  4: in     pins, 1         side 0 [4]
-    0xf500, //  5: set    pins, 0         side 1 [5]
-    0x0044, //  6: jmp    x--, 4          side 0
             //     .wrap
 };
 #endif
