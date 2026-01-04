@@ -13,13 +13,12 @@ APP=${PROJECT}
 function usage() {
 	echo "Build script for the ${PROJECT} project"
 	echo  ""
-	echo "Usage: $0 [-d] [-2 | -r] [-w] [-u] [-m] [-s ps-ram-cs] [-t path to toolchain] [ -p nprocessors] [-c <hwconfig>]"
+	echo "Usage: $0 [-d] [-2 | -r] [-w] [-u] [-m] [-t path to toolchain] [ -p nprocessors] [-c <hwconfig>]"
 	echo "Options:"
 	echo "  -d: build in DEBUG configuration"
 	echo "  -2: build for Pico 2 board (RP2350)"
 	echo "  -r: build for Pico 2 board (RP2350) with riscv core"
 	echo "  -u: enable PIO USB support (RP2350 only) disabled by default except for Waveshare RP2350-PiZero and Adafruit Fruit Jam."
-	echo "  -s <ps-ram-cs>: specify the GPIO pin for PSRAM chip select (default is 47 for RP2350 boards)"
 	echo "  -w: build for Pico_w or Pico2_w"
 	echo "  -t <path to riscv toolchain>: only needed for riscv, specify the path to the riscv toolchain bin folder"
 	echo "     Default is \$PICO_SDK_PATH/toolchain/RISCV_RPI_2_0_0_2/bin"
@@ -84,9 +83,8 @@ picoRiscIsSet=0
 USEPICOW=0
 USEPIOUSB=0
 CMAKEONLY=0
-PSRAM_CS_PIN=47 # default for RP2350 boards
 USESIMPLEFILENAMES=0
-while getopts "muwhd2rc:t:p:s:" opt; do
+while getopts "muwhd2rc:t:p:" opt; do
   case $opt in
     p)
 	  BUILDPROC=$OPTARG
@@ -134,9 +132,6 @@ while getopts "muwhd2rc:t:p:s:" opt; do
 	h)
 	  usage
 	  exit 0
-	  ;;
-	s)
-	  PSRAM_CS_PIN=$OPTARG
 	  ;;
 	w) USEPICOW=1 
 	  ;;
@@ -354,9 +349,9 @@ fi
 mkdir build || exit 1
 cd build || exit 1
 if [ -z "$TOOLCHAIN_PATH" ] ; then
-	cmake -DCMAKE_BUILD_TYPE=$BUILD -DPICO_BOARD=$PICO_BOARD -DHW_CONFIG=$HWCONFIG -DPICO_PLATFORM=$PICO_PLATFORM -DENABLE_PIO_USB=$USEPIOUSB -DPSRAM_CS_PIN=$PSRAM_CS_PIN .. || exit 1
+	cmake -DCMAKE_BUILD_TYPE=$BUILD -DPICO_BOARD=$PICO_BOARD -DHW_CONFIG=$HWCONFIG -DPICO_PLATFORM=$PICO_PLATFORM -DENABLE_PIO_USB=$USEPIOUSB .. || exit 1
 else
-	cmake -DCMAKE_BUILD_TYPE=$BUILD -DPICO_BOARD=$PICO_BOARD -DHW_CONFIG=$HWCONFIG -DPICO_PLATFORM=$PICO_PLATFORM -DENABLE_PIO_USB=$USEPIOUSB -DPSRAM_CS_PIN=$PSRAM_CS_PIN -DPICO_TOOLCHAIN_PATH=$TOOLCHAIN_PATH  .. ||  exit 1
+	cmake -DCMAKE_BUILD_TYPE=$BUILD -DPICO_BOARD=$PICO_BOARD -DHW_CONFIG=$HWCONFIG -DPICO_PLATFORM=$PICO_PLATFORM -DENABLE_PIO_USB=$USEPIOUSB -DPICO_TOOLCHAIN_PATH=$TOOLCHAIN_PATH  .. ||  exit 1
 fi
 if [ $CMAKEONLY -eq 1 ] ; then
 	echo "CMake configuration done, exiting as requested."
