@@ -1,40 +1,54 @@
 #include "hardware/pio.h"
 
 #define nespad_wrap_target 0
-#define nespad_wrap 7
-
+#if HW_CONFIG == 12 || HW_CONFIG == 13 // Murmulator M1/M2 will need the older version of the PIO program.
 static const uint16_t nespad_program_instructions[] = {
-          //     .wrap_target
-    0xd020, //  0: irq    wait 0          side 1     
-    0xf101, //  1: set    pins, 1         side 1 [1] 
-    0xf027, //  2: set    x, 7            side 1     
-    0xf000, //  3: set    pins, 0         side 1     
-    0xf400, //  4: set    pins, 0         side 1 [4] 
-    0xe100, //  5: set    pins, 0         side 0 [1] 
-    0x5301, //  6: in     pins, 1         side 1 [3] 
-    0x1044, //  7: jmp    x--, 4          side 1     
+    //     .wrap_target
+    0xc020, //  0: irq    wait 0          side 0
+    0xea01, //  1: set    pins, 1         side 0 [10]
+    0xe027, //  2: set    x, 7            side 0
+    0xe000, //  3: set    pins, 0         side 0
+    0x4401, //  4: in     pins, 1         side 0 [4]
+    0xf500, //  5: set    pins, 0         side 1 [5]
+    0x0044, //  6: jmp    x--, 4          side 0
             //     .wrap
 };
-
+#else // Most recent version of the NES pad PIO program, needed for all the other boards
+static const uint16_t nespad_program_instructions[] = {
+    //     .wrap_target
+    0xd020, //  0: irq    wait 0          side 1
+    0xf101, //  1: set    pins, 1         side 1 [1]
+    0xf027, //  2: set    x, 7            side 1
+    0xf000, //  3: set    pins, 0         side 1
+    0xf400, //  4: set    pins, 0         side 1 [4]
+    0xe100, //  5: set    pins, 0         side 0 [1]
+    0x5301, //  6: in     pins, 1         side 1 [3]
+    0x1044, //  7: jmp    x--, 4          side 1
+            //     .wrap
+};
+#endif
+// Derive program length from instruction array (works for both variants)
+#define NESPAD_PROG_LEN (sizeof(nespad_program_instructions) / sizeof(nespad_program_instructions[0]))
 static const struct pio_program nespad_program = {
     .instructions = nespad_program_instructions,
-    .length = 8,
+    .length = NESPAD_PROG_LEN,
     .origin = -1,
 };
 
-static inline pio_sm_config nespad_program_get_default_config(uint offset) {
-    pio_sm_config c = pio_get_default_sm_config();
-    sm_config_set_wrap(&c, offset + nespad_wrap_target, offset + nespad_wrap);
-    sm_config_set_sideset(&c, 1, false, false);
-    return c;
+static inline pio_sm_config nespad_program_get_default_config(uint offset)
+{
+  pio_sm_config c = pio_get_default_sm_config();
+  sm_config_set_wrap(&c, offset + nespad_wrap_target, offset + (NESPAD_PROG_LEN - 1));
+  sm_config_set_sideset(&c, 1, false, false);
+  return c;
 }
 
 #if defined(PICO_RP2350)
-  #define NES_NUM_PIOS 3
+#define NES_NUM_PIOS 3
 #elif defined(PICO_RP2040)
-  #define NES_NUM_PIOS 2
+#define NES_NUM_PIOS 2
 #else
-  #define NES_NUM_PIOS 2
+#define NES_NUM_PIOS 2
 #endif
 
 static PIO pio[2];
@@ -50,18 +64,23 @@ uint8_t nespad_state = 0;
 bool nespad_begin(uint8_t padnum, uint32_t cpu_khz, uint8_t clkPin, uint8_t dataPin,
                   uint8_t latPin, PIO _pio)
 {
-  if (padnum > 1) return false;
-  if (padnum == 1) second_pad = true;
+  if (padnum > 1)
+    return false;
+  if (padnum == 1)
+    second_pad = true;
 
   pio[padnum] = _pio;
   int pio_idx = pio_get_index(_pio);
 
   // Claim an SM first
-  if ((sm[padnum] = pio_claim_unused_sm(pio[padnum], true)) < 0) return false;
+  if ((sm[padnum] = pio_claim_unused_sm(pio[padnum], true)) < 0)
+    return false;
 
   // Load program once per PIO instance
-  if (!program_added[pio_idx]) {
-    if (!pio_can_add_program(pio[padnum], &nespad_program)) return false;
+  if (!program_added[pio_idx])
+  {
+    if (!pio_can_add_program(pio[padnum], &nespad_program))
+      return false;
     program_offset[pio_idx] = pio_add_program(pio[padnum], &nespad_program);
     program_added[pio_idx] = true;
   }
@@ -91,7 +110,14 @@ bool nespad_begin(uint8_t padnum, uint32_t cpu_khz, uint8_t clkPin, uint8_t data
 
 // Initiate nespad read. Non-blocking; result will be available in ~100 uS
 // via nespad_read_finish(). Must first call nespad_begin() once to set up PIO.
-void nespad_read_start(void) { pio_interrupt_clear(pio[0], 0); if ( second_pad ) { pio_interrupt_clear(pio[1], 0);}}
+void nespad_read_start(void)
+{
+  pio_interrupt_clear(pio[0], 0);
+  if (second_pad)
+  {
+    pio_interrupt_clear(pio[1], 0);
+  }
+}
 
 // Finish nespad read. Ideally should be called ~100 uS after
 // nespad_read_start(), but can be sooner (will block until ready), or later
@@ -105,9 +131,12 @@ void nespad_read_finish(void)
   // Right-shift was used in sm config so bit order matches NES controller
   // bits used elsewhere in picones, but does require shifting down...
   nespad_states[0] = (sm[0] >= 0) ? ((pio_sm_get_blocking(pio[0], sm[0]) >> 24) ^ 0xFF) : 0;
-  if (second_pad) {
+  if (second_pad)
+  {
     nespad_states[1] = (sm[1] >= 0) ? ((pio_sm_get_blocking(pio[1], sm[1]) >> 24) ^ 0xFF) : 0;
-  } else {
+  }
+  else
+  {
     nespad_states[1] = 0;
   }
 }
