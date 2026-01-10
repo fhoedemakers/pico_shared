@@ -2510,7 +2510,7 @@ int showSettingsMenu(bool calledFromGame)
         drawAllLines(selectedRowLocal);
     }; // redraw lambda
     // for volume control option: initialize audio stream
-#if HW_CONFIG == 8
+#if USE_I2S_AUDIO == PICO_AUDIO_I2S_DRIVER_TLV320
     // Initialize menu music
     /// wavplayer::init_memory();
     // Optional: set offset and/or switch to file
@@ -2551,7 +2551,7 @@ int showSettingsMenu(bool calledFromGame)
         {
             optIndex = visibleIndices[selectedRowLocal - rowStartOptions]; // map screen row to option index
         }
-#if HW_CONFIG == 8 && PICO_RP2350
+#if USE_I2S_AUDIO == PICO_AUDIO_I2S_DRIVER_TLV320 && PICO_RP2350
         if (optIndex == MOPT_FRUITJAM_VOLUME_CONTROL)
         {
             // resume audio stream for volume adjustment feedback
@@ -2886,7 +2886,7 @@ int showSettingsMenu(bool calledFromGame)
         EXT_AUDIO_SETVOLUME(settings.fruitjamVolumeLevel);
         Frens::PaceFrames60fps(true);
     }
-#if HW_CONFIG == 8
+#if USE_I2S_AUDIO == PICO_AUDIO_I2S_DRIVER_TLV320
     wavplayer::reset(); // stop menu music
 #endif
     return rval;
