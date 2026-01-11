@@ -453,8 +453,8 @@ namespace wavplayer
     {
         if (!g_wav.ready || !g_wav.isplaying)
             return;
-        if (!settings.flags.audioEnabled)
-            return;
+        // if (!settings.flags.audioEnabled)
+        //     return;
 
         if (g_wav.kind == WavSrcKind::Memory)
         {
