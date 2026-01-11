@@ -547,7 +547,7 @@ elseif ( HW_CONFIG EQUAL 14 )
     set(PICO_AUDIO_I2S_CLOCK_PIN_BASE 9 CACHE STRING "Select the GPIO pin for I2S clock")
     set(PICO_AUDIO_I2S_PIO 1 CACHE STRING "Select the PIO for I2S audio output")
     set(PICO_AUDIO_I2S_CLOCK_PINS_SWAPPED 0 CACHE STRING "Set to 1 if the I2S clock pins are swapped")
-    set(PICO_AUDIO_I2S_RESET_PIN 22 CACHE STRING "Select the GPIO pin for I2S reset")
+    set(PICO_AUDIO_I2S_RESET_PIN 26 CACHE STRING "Select the GPIO pin for I2S reset")
     #set(BOARD "adafruit_metro_rp2350")         # found in $PICO__SDK_PATH/lib/tinyusb/hw/bsp/rp2040/boards/adafruit_metro_rp2350/board.h
     #set(PICO_BOARD "adafruit_metro_rp2350")    # found in $PICO__SDK_PATH/lib/tinyusb/hw/bsp/rp2040/boards/adafruit_metro_rp2350/adafruit_metro_rp2350.h
     set(ENABLE_PIO_USB 1 CACHE BOOL "Enable PIO USB support")
