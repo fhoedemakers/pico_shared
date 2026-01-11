@@ -20,6 +20,11 @@ PicoPlusPsram::PicoPlusPsram(void)
   m_uMemorySize = Init(PSRAM_CS_PIN);
 #else
     m_uMemorySize = SetupPsram(PSRAM_CS_PIN);
+    if (m_uMemorySize == 0 && PSRAM_CS_PIN != 47)
+    {
+        printf("No PSRAM found at GPIO %d. Retrying PSRAM setup on GPIO 47...\n", PSRAM_CS_PIN);
+        m_uMemorySize = SetupPsram(47);
+    }
 #endif
     if (m_uMemorySize>0)
     {
