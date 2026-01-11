@@ -443,7 +443,7 @@ elseif ( HW_CONFIG EQUAL 11 )
     set(ENABLE_PIO_USB 1 CACHE BOOL "Enable PIO USB support")
     set(PIO_USB_USE_PIO 2 CACHE BOOL "Select the PIO used for PIO-USB")
     set(PIO_DP_PLUS_PIN 12 CACHE STRING "PIO USB DP pin.")
-    elseif ( HW_CONFIG EQUAL 12 )
+elseif ( HW_CONFIG EQUAL 12 )
     # --------------------------------------------------------------------    
     # Murmulator M1
     # --------------------------------------------------------------------
@@ -475,7 +475,7 @@ elseif ( HW_CONFIG EQUAL 11 )
     set(PIO_USB_USE_PIO 2 CACHE BOOL "Select the PIO used for PIO-USB")
     set(PIO_DP_PLUS_PIN -1 CACHE STRING "PIO USB DP pin.")
     set(PSRAM_CS_PIN 19 CACHE STRING "Select the GPIO pin for PSRAM chip select")
-    elseif ( HW_CONFIG EQUAL 13 )
+elseif ( HW_CONFIG EQUAL 13 )
     # --------------------------------------------------------------------
     # Murmulator M2
     # --------------------------------------------------------------------
