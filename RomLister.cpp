@@ -77,7 +77,7 @@ namespace Frens
 								   : strlen(start);
 
 			if (token_len == ext_len &&
-				strncmp(start, extension, ext_len) == 0)
+				strncasecmp(start, extension, ext_len) == 0)
 			{
 				return true;
 			}
