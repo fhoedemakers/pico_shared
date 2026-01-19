@@ -11,7 +11,11 @@
 // Genesis max settings
 #if !HSTX
 #define FLASHPARAM_MAX_FREQ_KHZ 324000 
+#if HW_CONFIG == 7
+#define FLASHPARAM_MAX_VOLTAGE vreg_voltage::VREG_VOLTAGE_2_50
+#else
 #define FLASHPARAM_MAX_VOLTAGE vreg_voltage::VREG_VOLTAGE_1_30
+#endif
 #else
 #define FLASHPARAM_MAX_FREQ_KHZ 378000 // 
 #define FLASHPARAM_MAX_VOLTAGE vreg_voltage::VREG_VOLTAGE_1_60
