@@ -29,7 +29,7 @@ namespace Frens
             return true;
         }
 
-        return true;
+        return false;
     }
 
     /// @brief Get a pointer to the FlashParams stored in flash memory.
