@@ -11,7 +11,9 @@
 // Genesis max settings
 #if !HSTX
 #define FLASHPARAM_MAX_FREQ_KHZ 324000 
-#if HW_CONFIG == 7   // Because of high overclock, RP2450-Pizero needs higher voltage for stable image. THIS MAY DAMAGE THE CPU, USE HEATSINK!!!
+// Because of high overclock, RP2450-Pizero needs high voltage for stable image. 
+// THIS MAY OVERHEAT AND DAMAGE THE CPU, USE HEATSINK!!!
+#if HW_CONFIG == 7   
 #define FLASHPARAM_MAX_VOLTAGE vreg_voltage::VREG_VOLTAGE_2_50
 #else
 #define FLASHPARAM_MAX_VOLTAGE vreg_voltage::VREG_VOLTAGE_1_30
