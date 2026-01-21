@@ -147,6 +147,7 @@ namespace Frens
     FRESULT pick_random_file_fullpath(const char *path, char *chosen, size_t bufsize);
     uint32_t getCrcOfLoadedRom();
     bool fileExists(const char *filename);
+    float read_onboard_temperature(const char unit);
    
 } // namespace Frens
 

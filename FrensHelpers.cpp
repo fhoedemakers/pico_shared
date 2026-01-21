@@ -18,6 +18,7 @@
 #endif
 #include "tusb.h"
 #include "hardware/dma.h"
+#include "hardware/adc.h"
 
 #include "nespad.h"
 #include "wiipad.h"
@@ -79,6 +80,41 @@ namespace Frens
     size_t psramMemorySize = 0;
     static bool byteSwapped = false;
 
+    /* Choose 'C' for Celsius or 'F' for Fahrenheit. */
+#define TEMPERATURE_UNITS 'C'
+
+    /* References for this implementation:
+     * raspberry-pi-pico-c-sdk.pdf, Section '4.1.1. hardware_adc'
+     * pico-examples/adc/adc_console/adc_console.c */
+    float read_onboard_temperature(const char unit)
+    {
+        static bool adc_initialized = false;
+        if (!adc_initialized)
+        {
+            printf("Initializing ADC for temperature sensor...\n");
+            adc_init();
+            adc_set_temp_sensor_enabled(true);
+            adc_select_input(8); 
+            adc_initialized = true;    
+        }
+
+        /* 12-bit conversion, assume max value == ADC_VREF == 3.3 V */
+        const float conversionFactor = 3.3f / (1 << 12);
+
+        float adc = (float)adc_read() * conversionFactor;
+        float tempC = 27.0f - (adc - 0.706f) / 0.001721f;
+
+        if (unit == 'C')
+        {
+            return tempC;
+        }
+        else if (unit == 'F')
+        {
+            return tempC * 9 / 5 + 32;
+        }
+
+        return -1.0f;
+    }
     bool romIsByteSwapped()
     {
 
