@@ -7,6 +7,7 @@
 #if !USE_OLD_PIO_NESPAD_PROGRAM
   static const uint16_t nespad_program_instructions[] = {
     //     .wrap_target
+    // @javavi pull request
     // from https://github.com/fhoedemakers/pico-infonesPlus/pull/167
     0xD020, //  0: irq    wait 0          side 1
     0xFA01, //  1: set    pins, 1         side 1 [10]
