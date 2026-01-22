@@ -14,7 +14,9 @@
 // Because of high overclock, RP2450-Pizero needs high voltage for stable image. 
 // THIS MAY OVERHEAT AND DAMAGE THE CPU, USE HEATSINK!!!
 #if HW_CONFIG == 7   
-#define FLASHPARAM_MAX_VOLTAGE vreg_voltage::VREG_VOLTAGE_2_35
+// 1_90 2_00 : Unstable image during gameplay
+// 2_35 : Stable image during gameplay, but random reboots.
+#define FLASHPARAM_MAX_VOLTAGE vreg_voltage::VREG_VOLTAGE_2_50
 #else
 #define FLASHPARAM_MAX_VOLTAGE vreg_voltage::VREG_VOLTAGE_1_30
 #endif
