@@ -1,11 +1,9 @@
 #include "hardware/pio.h"
 
 #define nespad_wrap_target 0
-#ifndef USE_OLD_PIO_NESPAD_PROGRAM
-#define USE_OLD_PIO_NESPAD_PROGRAM 0
-#endif
-#if !USE_OLD_PIO_NESPAD_PROGRAM
-  static const uint16_t nespad_program_instructions[] = {
+
+#if HW_CONFIG == 12 || HW_CONFIG == 13 // Murmulator M1/M2 bothe controllers ahare latch and clock
+static const uint16_t nespad_program_instructions[] = {
     //     .wrap_target
     // @javavi pull request
     // from https://github.com/fhoedemakers/pico-infonesPlus/pull/167
@@ -18,20 +16,7 @@
     0x1043, //  6: jmp    x--, 3          side 1
     //     .wrap
   };
-#else
-#if HW_CONFIG == 12 || HW_CONFIG == 13 // Murmulator M1/M2 will need the older version of the PIO program.
-static const uint16_t nespad_program_instructions[] = {
-    //     .wrap_target
-    0xc020, //  0: irq    wait 0          side 0
-    0xea01, //  1: set    pins, 1         side 0 [10]
-    0xe027, //  2: set    x, 7            side 0
-    0xe000, //  3: set    pins, 0         side 0
-    0x4401, //  4: in     pins, 1         side 0 [4]
-    0xf500, //  5: set    pins, 0         side 1 [5]
-    0x0044, //  6: jmp    x--, 4          side 0
-            //     .wrap
-};
-#else // Most recent version of the NES pad PIO program, needed for all the other boards
+#else // Original nespad code, used as long as the above code is not tested on WaveShare boards.
 static const uint16_t nespad_program_instructions[] = {
     //     .wrap_target
     0xd020, //  0: irq    wait 0          side 1
@@ -44,7 +29,6 @@ static const uint16_t nespad_program_instructions[] = {
     0x1044, //  7: jmp    x--, 4          side 1
             //     .wrap
 };
-#endif
 #endif
 // Derive program length from instruction array (works for both variants)
 #define NESPAD_PROG_LEN (sizeof(nespad_program_instructions) / sizeof(nespad_program_instructions[0]))
