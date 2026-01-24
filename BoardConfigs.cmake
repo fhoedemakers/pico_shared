@@ -106,6 +106,13 @@ elseif ( HW_CONFIG EQUAL 2 )
     set(PIO_USB_USE_PIO 2 CACHE BOOL "Select the PIO used for PIO-USB")
     # connect the DP+ pin to GPIO 20, DP- will be GPIO 21
     set(PIO_DP_PLUS_PIN 20 CACHE STRING "PIO USB DP pin.")
+#     if ( USE_HSTX EQUAL 1 AND NOT DEFINED GPIOHSTXD0 AND FORCE_DVI EQUAL 0)
+#         set(GPIOHSTXD0 12 CACHE STRING "HSTX D0+ pin")
+#         set(GPIOHSTXD1 18 CACHE STRING "HSTX D1+ pin")  
+#         set(GPIOHSTXD2 16 CACHE STRING "HSTX D2+ pin")
+#         set(GPIOHSTXCK 14 CACHE STRING "HSTX CK+ pin")
+#         set(GPIOHSTXINVERTED 0 CACHE STRING "Set to 1 if HSTX pins are inverted: D- = D+ - 1, not inverted (default): D- = D+ + 1")
+#    endif()
 elseif ( HW_CONFIG EQUAL 3 )
 	# --------------------------------------------------------------------
 	# Alternate config for use with Adafruit Feather RP2040 DVI + SD Wing
