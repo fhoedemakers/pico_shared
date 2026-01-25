@@ -29,7 +29,7 @@ namespace Frens
             return true;
         }
 
-        return true;
+        return false;
     }
 
     /// @brief Get a pointer to the FlashParams stored in flash memory.
@@ -67,7 +67,7 @@ namespace Frens
         printf("Resetting core 1...\n");
         multicore_reset_core1();
         printf("Setting watchdog timer to reboot in 100 ms\n");
-        watchdog_enable(100, 1);
+        watchdog_enable(100, 0);
 
         uint32_t ints = save_and_disable_interrupts();
         flash_range_erase(ofs, 4096);

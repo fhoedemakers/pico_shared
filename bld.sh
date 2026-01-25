@@ -13,7 +13,7 @@ APP=${PROJECT}
 function usage() {
 	echo "Build script for the ${PROJECT} project"
 	echo  ""
-	echo "Usage: $0 [-d] [-2 | -r] [-w] [-u] [-m] [-t path to toolchain] [ -p nprocessors] [-c <hwconfig>]"
+	echo "Usage: $0 [-d] [-2 | -r] [-w] [-u] [-m] [-D] [-t path to toolchain] [ -p nprocessors] [-c <hwconfig>]"
 	echo "Options:"
 	echo "  -d: build in DEBUG configuration"
 	echo "  -2: build for Pico 2 board (RP2350)"
@@ -23,6 +23,7 @@ function usage() {
 	echo "  -t <path to riscv toolchain>: only needed for riscv, specify the path to the riscv toolchain bin folder"
 	echo "     Default is \$PICO_SDK_PATH/toolchain/RISCV_RPI_2_0_0_2/bin"
 	echo "  -p <nprocessors>: specify the number of processors to use for the build"
+	echo "  -D Force DVI over HSTX."
 	echo "  -c <hwconfig>: specify the hardware configuration"
 	echo "     1: Pimoroni Pico DV Demo Base (Default)"
 	echo "     2: Breadboard with Adafruit AdaFruit DVI Breakout Board and AdaFruit MicroSD card breakout board"
@@ -38,6 +39,7 @@ function usage() {
 	echo "     11: RP2350-USB-A - OLD config with different SD pins. Deprecated, do not use."
 	echo "     12: Murmulator M1"
 	echo "     13: Murmulator M2 (rp2350 only)"
+	echo "     14: Adafruit Feather RP2350 with TLV320DAC3100 I2S DAC and sdcard breakout board and PIO USB."
 	echo "  -m: Run cmake only, do not build the project"
 	echo "  -h: display this help"
 	echo ""
@@ -84,7 +86,8 @@ USEPICOW=0
 USEPIOUSB=0
 CMAKEONLY=0
 USESIMPLEFILENAMES=0
-while getopts "muwhd2rc:t:p:" opt; do
+FORCEDVI=0
+while getopts "muwhd2rc:t:p:iD" opt; do
   case $opt in
     p)
 	  BUILDPROC=$OPTARG
@@ -99,16 +102,16 @@ while getopts "muwhd2rc:t:p:" opt; do
       ;;
     c)
       HWCONFIG=$OPTARG
-	  # imply pico2 for HWCONFIG 5, 7, 8, 9 and 13
-	  if [[ $HWCONFIG -eq 5 || $HWCONFIG -eq 7 || $HWCONFIG -eq 8 || $HWCONFIG -eq 9 || $HWCONFIG -eq 13 ]] ; then
+	  # imply pico2 for HWCONFIG 5, 7, 8, 9, 13 and 14
+	  if [[ $HWCONFIG -eq 5 || $HWCONFIG -eq 7 || $HWCONFIG -eq 8 || $HWCONFIG -eq 9 || $HWCONFIG -eq 13 || $HWCONFIG -eq 14 ]] ; then
 		  PICO_BOARD=pico2
 		  PICO_PLATFORM=rp2350-arm-s
 		  picoarmIsSet=0    # not set via command line argument
 		  echo "Using Pico 2 for HWCONFIG $HWCONFIG"
 		  USESIMPLEFILENAMES=1
 	  fi
-	  # imply PIO USB for 7, 8 and 9
-	  if [[ $HWCONFIG -eq 7 || $HWCONFIG -eq 8 || $HWCONFIG -eq 9 ]] ; then
+	  # imply PIO USB for 7, 8, 9 and 14
+	  if [[ $HWCONFIG -eq 7 || $HWCONFIG -eq 8 || $HWCONFIG -eq 9 || $HWCONFIG -eq 14 ]] ; then
 		  USEPIOUSB=1
 		  echo "Using PIO USB for HWCONFIG $HWCONFIG"
 	  fi
@@ -134,6 +137,8 @@ while getopts "muwhd2rc:t:p:" opt; do
 	  exit 0
 	  ;;
 	w) USEPICOW=1 
+	  ;;
+	D) FORCEDVI=1
 	  ;;
     \?)
       #echo "Invalid option: -$OPTARG" >&2
@@ -304,6 +309,10 @@ case $HWCONFIG in
 		UF2="MurmulatorM2"
 		USESIMPLEFILENAMES=1
 		;;
+	14)
+		UF2="AdafruitFeatherRP2350_TLV320DAC3100"
+		USESIMPLEFILENAMES=1
+		;;
 	*)
 		echo "Invalid value: $HWCONFIG specified for option -c, must be 1 to 13"
 		exit 1
@@ -348,10 +357,15 @@ if [ -d build ] ; then
 fi
 mkdir build || exit 1
 cd build || exit 1
+FORCEDVIOPT=""
+if [ $FORCEDVI -eq 1 ] ; then
+	echo "Forcing DVI over HSTX configuration"
+	FORCEDVIOPT="-DFORCE_DVI=1"
+fi
 if [ -z "$TOOLCHAIN_PATH" ] ; then
-	cmake -DCMAKE_BUILD_TYPE=$BUILD -DPICO_BOARD=$PICO_BOARD -DHW_CONFIG=$HWCONFIG -DPICO_PLATFORM=$PICO_PLATFORM -DENABLE_PIO_USB=$USEPIOUSB .. || exit 1
+	cmake -DCMAKE_BUILD_TYPE=$BUILD -DPICO_BOARD=$PICO_BOARD -DHW_CONFIG=$HWCONFIG -DPICO_PLATFORM=$PICO_PLATFORM -DENABLE_PIO_USB=$USEPIOUSB $FORCEDVIOPT .. || exit 1
 else
-	cmake -DCMAKE_BUILD_TYPE=$BUILD -DPICO_BOARD=$PICO_BOARD -DHW_CONFIG=$HWCONFIG -DPICO_PLATFORM=$PICO_PLATFORM -DENABLE_PIO_USB=$USEPIOUSB -DPICO_TOOLCHAIN_PATH=$TOOLCHAIN_PATH  .. ||  exit 1
+	cmake -DCMAKE_BUILD_TYPE=$BUILD -DPICO_BOARD=$PICO_BOARD -DHW_CONFIG=$HWCONFIG -DPICO_PLATFORM=$PICO_PLATFORM -DENABLE_PIO_USB=$USEPIOUSB -DPICO_TOOLCHAIN_PATH=$TOOLCHAIN_PATH $FORCEDVIOPT .. ||  exit 1
 fi
 if [ $CMAKEONLY -eq 1 ] ; then
 	echo "CMake configuration done, exiting as requested."

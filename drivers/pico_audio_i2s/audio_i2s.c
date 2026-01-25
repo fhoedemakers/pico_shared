@@ -50,7 +50,9 @@ static audio_i2s_hw_t audio_i2s = {
 static int samplefreq = PICO_AUDIO_I2S_FREQ;
 #define TLV320_ADDR 0x18 // I2C address for the TLV320AIC3204 codec
 
-#define I2C_PORT i2c0 // hardcoded I2C port for the TLV320 codec, must be configurable in the future
+#define I2C_PORT WIIPAD_I2C // I2C port for the TLV320 codec is tied to WIIPAD_I2C, must be configurable in the future
+#define PIN_SDA WII_PIN_SDA // SDA pin tied to WII_PIN_SDA, must be configurable in the future
+#define PIN_SCL WII_PIN_SCL // SCL pin tied to WII_PIN_SCL, must be configurable in the future
 #define I2C_ADDR 0x18
 #define DAC_I2C_ADDR I2C_ADDR
 #if 0
@@ -81,7 +83,7 @@ static void write_tlv320(uint8_t *data, size_t len)
 bool read_tlv320(uint8_t reg, uint8_t *data, size_t len)
 {
 	// Write register address first
-	int result = i2c_write_blocking(i2c0, I2C_ADDR, &reg, 1, true); // true = no stop
+	int result = i2c_write_blocking(I2C_PORT, I2C_ADDR, &reg, 1, true); // true = no stop
 	if (result < 0)
 	{
 		printf("I2C write failed during read (reg=0x%02X)\n", reg);
@@ -89,7 +91,7 @@ bool read_tlv320(uint8_t reg, uint8_t *data, size_t len)
 	}
 
 	// Read data from device
-	result = i2c_read_blocking(i2c0, I2C_ADDR, data, len, false); // false = stop
+	result = i2c_read_blocking(I2C_PORT, I2C_ADDR, data, len, false); // false = stop
 	if (result < 0)
 	{
 		printf("I2C read failed (reg=0x%02X)\n", reg);
@@ -129,7 +131,7 @@ static void writeRegister(uint8_t reg, uint8_t value)
 	uint8_t buf[2];
 	buf[0] = reg;
 	buf[1] = value;
-	int res = i2c_write_timeout_us(i2c0, DAC_I2C_ADDR, buf, sizeof(buf), /* nostop */ false, 1000);
+	int res = i2c_write_timeout_us(I2C_PORT, DAC_I2C_ADDR, buf, sizeof(buf), /* nostop */ false, 1000);
 	if (res != 2)
 	{
 		printf("!!!WARNING!!!: i2s_audio i2c_write_timeout failed: res=%d\n", res);
@@ -144,7 +146,7 @@ static uint8_t readRegister(uint8_t reg)
 {
 	uint8_t buf[1];
 	buf[0] = reg;
-	int res = i2c_write_timeout_us(i2c0, DAC_I2C_ADDR, buf, sizeof(buf), /* nostop */ true, 1000);
+	int res = i2c_write_timeout_us(I2C_PORT, DAC_I2C_ADDR, buf, sizeof(buf), /* nostop */ true, 1000);
 	if (res != 1)
 	{
 
@@ -152,7 +154,7 @@ static uint8_t readRegister(uint8_t reg)
 		printf("!!!WARNING!!!: i2s_audio i2c_write_timeout failed: res=%d\n", res);
 		dacError = true;
 	}
-	res = i2c_read_timeout_us(i2c0, DAC_I2C_ADDR, buf, sizeof(buf), /* nostop */ false, 1000);
+	res = i2c_read_timeout_us(I2C_PORT, DAC_I2C_ADDR, buf, sizeof(buf), /* nostop */ false, 1000);
 	if (res != 1)
 	{
 
@@ -287,10 +289,11 @@ static void tlv320_init()
 	printf("Initializing TLV320AIC3204 audio DAC...\n");
 	i2c_init(I2C_PORT, 400 * 1000); // Initialize I2C at 400kHz
 	sleep_ms(10);					// Wait for I2C to stabilize
-	gpio_set_function(20, GPIO_FUNC_I2C);
-    gpio_set_function(21, GPIO_FUNC_I2C);
-    gpio_pull_up(20);
-    gpio_pull_up(21);
+	// Set up I2C pins
+	gpio_set_function(PIN_SDA, GPIO_FUNC_I2C);
+    gpio_set_function(PIN_SCL, GPIO_FUNC_I2C);
+    gpio_pull_up(PIN_SDA);
+    gpio_pull_up(PIN_SCL);
 #if 0
     // Old setup, from DataSheet
 	// 1. Define starting point:
