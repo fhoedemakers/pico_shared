@@ -97,23 +97,26 @@ elseif ( HW_CONFIG EQUAL 2 )
 	set(WII_SCL "-1" CACHE STRING "Select the SCL GPIO pin for Wii Classic controller")
     set(WIIPAD_I2C "i2c1" CACHE STRING "Select the I2C bus for Wii Classic controller")
 	set(UART_ENABLED 1 CACHE STRING "Enable UART output") 
-     set(USE_I2S_AUDIO "PICO_AUDIO_I2S_DRIVER_PCM5000A" CACHE STRING "Enable I2S audio output")
-    #set(USE_I2S_AUDIO 0 CACHE STRING "Enable I2S audio output") # Enable I2S audio output for Pimoroni Pico DV Demo Base
+    # Disable I2S audio output for this board configuration for now.
+    #set(USE_I2S_AUDIO "PICO_AUDIO_I2S_DRIVER_PCM5000A" CACHE STRING "Enable I2S audio output")
+    set(USE_I2S_AUDIO 0 CACHE STRING "Enable I2S audio output") # Enable I2S audio output for Pimoroni Pico DV Demo Base
     set(PICO_AUDIO_I2S_DATA_PIN 26 CACHE STRING "Select the GPIO pin for I2S data")
     set(PICO_AUDIO_I2S_CLOCK_PIN_BASE 27 CACHE STRING "Select the GPIO pin for I2S clock")
     set(PICO_AUDIO_I2S_PIO 1 CACHE STRING "Select the PIO for I2S audio output")
     set(PICO_AUDIO_I2S_CLOCK_PINS_SWAPPED 0 CACHE STRING "Set to 1 if the I2S clock pins are swapped")
     set(PICO_AUDIO_I2S_RESET_PIN -1 CACHE STRING "Select the GPIO pin for I2S reset")
+    # PIO USB settings
     set(PIO_USB_USE_PIO 2 CACHE BOOL "Select the PIO used for PIO-USB")
     # connect the DP+ pin to GPIO 20, DP- will be GPIO 21
     set(PIO_DP_PLUS_PIN 20 CACHE STRING "PIO USB DP pin.")
-#     if ( USE_HSTX EQUAL 1 AND NOT DEFINED GPIOHSTXD0 AND FORCE_DVI EQUAL 0)
-#         set(GPIOHSTXD0 12 CACHE STRING "HSTX D0+ pin")
-#         set(GPIOHSTXD1 18 CACHE STRING "HSTX D1+ pin")  
-#         set(GPIOHSTXD2 16 CACHE STRING "HSTX D2+ pin")
-#         set(GPIOHSTXCK 14 CACHE STRING "HSTX CK+ pin")
-#         set(GPIOHSTXINVERTED 0 CACHE STRING "Set to 1 if HSTX pins are inverted: D- = D+ - 1, not inverted (default): D- = D+ + 1")
-#    endif()
+    # HSTX for this board configuration is possible. 
+    # if ( USE_HSTX EQUAL 1 AND NOT DEFINED GPIOHSTXD0 AND FORCE_DVI EQUAL 0)
+    #   set(GPIOHSTXD0 12 CACHE STRING "HSTX D0+ pin")
+    #   set(GPIOHSTXD1 18 CACHE STRING "HSTX D1+ pin")  
+    #   set(GPIOHSTXD2 16 CACHE STRING "HSTX D2+ pin")
+    #   set(GPIOHSTXCK 14 CACHE STRING "HSTX CK+ pin")
+    #   set(GPIOHSTXINVERTED 0 CACHE STRING "Set to 1 if HSTX pins are inverted: D- = D+ - 1, not inverted (default): D- = D+ + 1")
+    # endif()
 elseif ( HW_CONFIG EQUAL 3 )
 	# --------------------------------------------------------------------
 	# Alternate config for use with Adafruit Feather RP2040 DVI + SD Wing
