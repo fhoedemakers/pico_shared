@@ -98,6 +98,7 @@ elseif ( HW_CONFIG EQUAL 2 )
     set(WIIPAD_I2C "i2c1" CACHE STRING "Select the I2C bus for Wii Classic controller")
 	set(UART_ENABLED 1 CACHE STRING "Enable UART output") 
     # Disable I2S audio output for this board configuration for now.
+    # Enable by uncommenting the line below and commenting the next line.
     #set(USE_I2S_AUDIO "PICO_AUDIO_I2S_DRIVER_PCM5000A" CACHE STRING "Enable I2S audio output")
     set(USE_I2S_AUDIO 0 CACHE STRING "Enable I2S audio output") # Enable I2S audio output for Pimoroni Pico DV Demo Base
     set(PICO_AUDIO_I2S_DATA_PIN 26 CACHE STRING "Select the GPIO pin for I2S data")
