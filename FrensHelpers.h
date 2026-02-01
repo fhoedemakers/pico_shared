@@ -18,13 +18,36 @@
 #include "tf_card.h"
 #include "crc32.h"
 #include "FlashParams.h"
+#ifndef USEPICOHDMI
+#define USEPICOHDMI 0
+#endif
 #if !HSTX
 #include "dvi/dvi.h"
 #include "dvi_configs.h"
 #include "util/exclusive_proc.h"
 #else
+#if USEPICOHDMI
+#include "hstx_data_island_queue.h"
+#include "hstx_packet.h"
+#include "hstx_pins.h"
+#include "video_output.h"
+#define HSTX_GETFRAMECOUNTER pico_hdmi_getframecounter
+#define HSTX_WAITFORVSYNC    pico_hdmi_waitForVSync
+#define HSTX_GETFRAMEBUFFER pico_hdmi_getframebuffer
+#define HSTX_SETSCANLINES(scanlineOnOff) pico_hdmi_setScanLines((scanlineOnOff))
+#define HSTX_GETLINEFROMFRAMEBUFFER(scanline) pico_hdmi_getlineFromFramebuffer((scanline))
+#define HSTX_INIT pico_hdmi_init
+#else
 #include "hstx.h"
+#define HSTX_GETFRAMECOUNTER hstx_getframecounter
+#define HSTX_WAITFORVSYNC    hstx_waitForVSync
+#define HSTX_GETFRAMEBUFFER hstx_getframebuffer
+#define HSTX_SETSCANLINES(scanlineOnOff) hstx_setScanLines((scanlineOnOff))
+#define HSTX_GETLINEFROMFRAMEBUFFER(scanline) hstx_getlineFromFramebuffer((scanline))
+#define HSTX_INIT hstx_init
+
 // #include "mcp4822.h"     // SPI Audio using MCP4822 DAC. Works but not used
+#endif
 #endif
 #include "external_audio.h"
 

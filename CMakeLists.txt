@@ -27,6 +27,7 @@ add_subdirectory(drivers/lwmem)
 add_subdirectory(drivers/pico_hstx)
 # add_subdirectory(drivers/pico_audio_mcp4822) # SPI Audio using MCP4822 DAC. Works but not used
 add_subdirectory(drivers/pico_psram)
+add_subdirectory(drivers/pico_hdmi)
 
 target_include_directories(pico_shared INTERFACE
         .
@@ -40,5 +41,6 @@ target_link_libraries(pico_shared
                       lwmem 
                       pico_hstx 
                       #pico_audio_mcp4822 
-                      pico_psram)
+                      pico_psram
+                      pico_hdmi)
 

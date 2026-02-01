@@ -212,7 +212,7 @@ int Menu_LoadFrame()
 #if !HSTX
         dvi_->getFrameCounter();
 #else
-        hstx_getframecounter();
+        HSTX_GETFRAMECOUNTER();
 #endif
     auto onOff = hw_divider_s32_quotient_inlined(count, 60) & 1;
     Frens::blinkLed(onOff);
@@ -431,7 +431,7 @@ void drawline(int scanline, int selectedRow, int w = 0, int h = 0, uint16_t *ima
     }
 #endif
 #else
-    WorkLineRom = hstx_getlineFromFramebuffer(scanline);
+    WorkLineRom = HSTX_GETLINEFROMFRAMEBUFFER(scanline);
 #endif // !HSTX
 
     auto offset = 0;
@@ -1330,7 +1330,7 @@ static void showLoadingScreen(const char *message = nullptr, int framesToWait = 
         if (f_size(&fil) == 153600)
         {
             size_t r;
-            fr = f_read(&fil, hstx_getframebuffer(), 153600, &r);
+            fr = f_read(&fil, HSTX_GETFRAMEBUFFER(), 153600, &r);
             f_close(&fil);
             printf("Read %d bytes from %s\n", r, ARTFILE);
             // sleep_ms(1000);
@@ -1553,7 +1553,7 @@ bool showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
     dvi_->getBlankSettings().top = 0;
     dvi_->getBlankSettings().bottom = 0;
 #else
-    hstx_setScanLines(false);
+    HSTX_SETSCANLINES(false);
 #endif
     getAutoSaveStatePath(tmppath, sizeof(tmppath));
     bool autosaveFileExists = Frens::fileExists(tmppath);
@@ -2042,7 +2042,7 @@ bool showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
         dvi_->getBlankSettings().bottom = marginbottom;
     }
 #else
-    hstx_setScanLines(settings.flags.scanlineOn);
+    HSTX_SETSCANLINES(settings.flags.scanlineOn);
 #endif
     Frens::PaceFrames60fps(true);
     printf("Exiting save state menu.\n");
@@ -2103,7 +2103,7 @@ int showSettingsMenu(bool calledFromGame)
         dvi_->getBlankSettings().top = 0;
         dvi_->getBlankSettings().bottom = 0;
 #else
-        hstx_setScanLines(false);
+        HSTX_SETSCANLINES(false);
 #endif
     }
 
@@ -2879,7 +2879,7 @@ int showSettingsMenu(bool calledFromGame)
         }
 #else
         // Restore scanline setting
-        hstx_setScanLines(settings.flags.scanlineOn);
+        HSTX_SETSCANLINES(settings.flags.scanlineOn);
 #endif
         // Speaker can be muted/unmuted from settings menu
         EXT_AUDIO_MUTE_INTERNAL_SPEAKER(settings.flags.fruitJamEnableInternalSpeaker == 0);
@@ -2926,7 +2926,7 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
     dvi_->getBlankSettings().top = 0;
     dvi_->getBlankSettings().bottom = 0;
 #else
-    hstx_setScanLines(false);
+    HSTX_SETSCANLINES(false);
 #endif
     abSwapped = 1; // Swap A and B buttons, so menu is consistent accrross different emilators
     Frens::PaceFrames60fps(true);
