@@ -688,6 +688,7 @@ void __not_in_flash_func(scanline_callbackfunc)(uint32_t v_scanline, uint32_t ac
 }
 void pico_hdmi_init(void)
 {
+        hstx_di_queue_init();
     //video_output_set_dvi_mode(true);
     video_output_init(640, 480);
 
