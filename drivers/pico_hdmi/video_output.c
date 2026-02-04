@@ -494,6 +494,7 @@ void video_output_set_vsync_callback(video_output_vsync_cb_t cb)
 void video_output_core1_run(void)
 {
     // HSTX Hardware Setup
+#if 0
     hstx_ctrl_hw->expand_tmds = 4 << HSTX_CTRL_EXPAND_TMDS_L2_NBITS_LSB | 8 << HSTX_CTRL_EXPAND_TMDS_L2_ROT_LSB |
                                 5 << HSTX_CTRL_EXPAND_TMDS_L1_NBITS_LSB | 3 << HSTX_CTRL_EXPAND_TMDS_L1_ROT_LSB |
                                 4 << HSTX_CTRL_EXPAND_TMDS_L0_NBITS_LSB | 13 << HSTX_CTRL_EXPAND_TMDS_L0_ROT_LSB;
@@ -501,7 +502,24 @@ void video_output_core1_run(void)
     hstx_ctrl_hw->expand_shift =
         2 << HSTX_CTRL_EXPAND_SHIFT_ENC_N_SHIFTS_LSB | 16 << HSTX_CTRL_EXPAND_SHIFT_ENC_SHIFT_LSB |
         1 << HSTX_CTRL_EXPAND_SHIFT_RAW_N_SHIFTS_LSB | 0 << HSTX_CTRL_EXPAND_SHIFT_RAW_SHIFT_LSB;
+#else
+     // Configure HSTX's TMDS encoder for RGB555
+    hstx_ctrl_hw->expand_tmds =
+        29 << HSTX_CTRL_EXPAND_TMDS_L0_ROT_LSB |
+        4 << HSTX_CTRL_EXPAND_TMDS_L0_NBITS_LSB |
+        2 << HSTX_CTRL_EXPAND_TMDS_L1_ROT_LSB |
+        4 << HSTX_CTRL_EXPAND_TMDS_L1_NBITS_LSB |
+        7 << HSTX_CTRL_EXPAND_TMDS_L2_ROT_LSB |
+        4 << HSTX_CTRL_EXPAND_TMDS_L2_NBITS_LSB;
+    // Pixels (TMDS) come in 4 8-bit chunks. Control symbols (RAW) are an
+    // entire 32-bit word.
+    hstx_ctrl_hw->expand_shift =
+        2 << HSTX_CTRL_EXPAND_SHIFT_ENC_N_SHIFTS_LSB |
+        16 << HSTX_CTRL_EXPAND_SHIFT_ENC_SHIFT_LSB |
+        1 << HSTX_CTRL_EXPAND_SHIFT_RAW_N_SHIFTS_LSB |
+        0 << HSTX_CTRL_EXPAND_SHIFT_RAW_SHIFT_LSB;
 
+#endif
     hstx_ctrl_hw->csr = 0;
     hstx_ctrl_hw->csr = HSTX_CTRL_CSR_EXPAND_EN_BITS | 5U << HSTX_CTRL_CSR_CLKDIV_LSB |
                         5U << HSTX_CTRL_CSR_N_SHIFTS_LSB | 2U << HSTX_CTRL_CSR_SHIFT_LSB | HSTX_CTRL_CSR_EN_BITS;
@@ -670,7 +688,7 @@ void __not_in_flash_func(scanline_callbackfunc)(uint32_t v_scanline, uint32_t ac
 }
 void pico_hdmi_init(void)
 {
-    video_output_set_dvi_mode(true);
+    //video_output_set_dvi_mode(true);
     video_output_init(640, 480);
 
     video_output_set_scanline_callback(scanline_callbackfunc);
