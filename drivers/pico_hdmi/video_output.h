@@ -7,6 +7,8 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+
 // ============================================================================
 // Video Output Configuration
 // ============================================================================
@@ -58,8 +60,7 @@ typedef void (*video_output_scanline_cb_t)(uint32_t v_scanline, uint32_t active_
  * @param width Framebuffer width in pixels (e.g., 320)
  * @param height Framebuffer height in pixels (e.g., 240)
  */
-//void video_output_init(uint16_t width, uint16_t height);
-void video_output_init();
+void video_output_init(uint16_t width, uint16_t height);
 
 /**
  * Register the scanline callback.

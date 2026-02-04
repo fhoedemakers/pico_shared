@@ -12,19 +12,12 @@
 #include "hardware/structs/bus_ctrl.h"
 #include "hardware/structs/hstx_ctrl.h"
 #include "hardware/structs/hstx_fifo.h"
-#include "hardware/structs/xip_ctrl.h"
-#include "hardware/structs/sio.h"
-#include "hardware/vreg.h"
-#include "pico/multicore.h"
-#include "pico/sem.h"
-#include <stdio.h>
-#include <stdlib.h>
-#include "pico/stdlib.h"
-#include "hardware/clocks.h"
 
+#include "pico/multicore.h"
+#include "stdio.h"
 #include <math.h>
 #include <string.h>
-#define ALIGNED __attribute__((aligned(4)))
+volatile bool HSTX_vblank = false;
 // ============================================================================
 // DVI/HSTX Constants
 // ============================================================================
@@ -69,15 +62,14 @@
 // ============================================================================
 // Audio/Video State
 // ============================================================================
-#define HRes (MODE_H_ACTIVE_PIXELS / 2) // 320
-#define VRes (MODE_V_ACTIVE_LINES / 2)  // 240
-uint16_t frame_width = MODE_H_ACTIVE_PIXELS;
-uint16_t frame_height = MODE_V_ACTIVE_LINES;
+
+uint16_t frame_width = 0;
+uint16_t frame_height = 0;
 volatile uint32_t video_frame_count = 0;
-static volatile uint HSTX_vblank = 0;
+
 // DVI mode: when true, disables all HDMI Data Islands (pure DVI output, no audio)
 // Some monitors have trouble syncing with HDMI Data Islands
-static bool dvi_mode = true; // Default to HDMI mode (full features with audio)
+static bool dvi_mode = false; // Default to HDMI mode (full features with audio)
 
 static uint16_t line_buffer[MODE_H_ACTIVE_PIXELS] __attribute__((aligned(4)));
 static uint32_t v_scanline = 2;
@@ -90,11 +82,6 @@ static video_output_vsync_cb_t vsync_callback = NULL;
 
 #define DMACH_PING 0
 #define DMACH_PONG 1
-static uint8_t FRAMEBUFFER[(MODE_H_ACTIVE_PIXELS / 2) * (MODE_V_ACTIVE_LINES / 2) * 2];
-static uint16_t ALIGNED HDMIlines[2][MODE_H_ACTIVE_PIXELS] = {0};
-static uint8_t *WriteBuf = FRAMEBUFFER;
-static volatile int enableScanLines = 0; // Enable scanlines
-static volatile int scanlineMode = 0;
 
 // ============================================================================
 // Command Lists
@@ -124,8 +111,8 @@ static uint32_t vblank_line_vsync_on[] = {HSTX_CMD_RAW_REPEAT | MODE_H_FRONT_POR
 // Active video line for DVI mode (no Data Island, just sync + pixels)
 static uint32_t vactive_line_dvi[] = {
     HSTX_CMD_RAW_REPEAT | MODE_H_FRONT_PORCH, SYNC_V1_H1, HSTX_CMD_NOP,
-    HSTX_CMD_RAW_REPEAT | MODE_H_SYNC_WIDTH,  SYNC_V1_H0, HSTX_CMD_NOP,
-    HSTX_CMD_RAW_REPEAT | MODE_H_BACK_PORCH,  SYNC_V1_H1, HSTX_CMD_TMDS | MODE_H_ACTIVE_PIXELS};
+    HSTX_CMD_RAW_REPEAT | MODE_H_SYNC_WIDTH, SYNC_V1_H0, HSTX_CMD_NOP,
+    HSTX_CMD_RAW_REPEAT | MODE_H_BACK_PORCH, SYNC_V1_H1, HSTX_CMD_TMDS | MODE_H_ACTIVE_PIXELS};
 
 static uint32_t vactive_di_ping[128], vactive_di_pong[128], vactive_di_null[128];
 static uint32_t vactive_di_len, vactive_di_null_len;
@@ -207,7 +194,8 @@ static uint32_t build_line_with_di(uint32_t *buf, const uint32_t *di_words, bool
     *p++ = sync_h0;
     *p++ = HSTX_CMD_NOP;
 
-    if (active) {
+    if (active)
+    {
         // HDMI 1.3a Section 5.2.2: Video Data Period requires preamble and guard band
         uint32_t video_preamble = vsync ? VIDEO_PREAMBLE_V0_H1 : VIDEO_PREAMBLE_V1_H1;
 
@@ -227,7 +215,9 @@ static uint32_t build_line_with_di(uint32_t *buf, const uint32_t *di_words, bool
 
         // Active video pixels
         *p++ = HSTX_CMD_TMDS | MODE_H_ACTIVE_PIXELS;
-    } else {
+    }
+    else
+    {
         *p++ = HSTX_CMD_RAW_REPEAT | (MODE_H_BACK_PORCH + MODE_H_ACTIVE_PIXELS);
         *p++ = sync_h1;
         *p++ = HSTX_CMD_NOP;
@@ -235,7 +225,8 @@ static uint32_t build_line_with_di(uint32_t *buf, const uint32_t *di_words, bool
     return (uint32_t)(p - buf);
 }
 
-typedef struct {
+typedef struct
+{
     bool vsync_active;
     bool front_porch;
     bool back_porch;
@@ -246,7 +237,7 @@ typedef struct {
 
 static inline void __scratch_x("") get_scanline_state(uint32_t v_scanline, scanline_state_t *state)
 {
-    state->vsync_active = HSTX_vblank = (v_scanline >= MODE_V_FRONT_PORCH && v_scanline < (MODE_V_FRONT_PORCH + MODE_V_SYNC_WIDTH));
+    state->vsync_active = (v_scanline >= MODE_V_FRONT_PORCH && v_scanline < (MODE_V_FRONT_PORCH + MODE_V_SYNC_WIDTH));
     state->front_porch = (v_scanline < MODE_V_FRONT_PORCH);
     state->back_porch = (v_scanline >= MODE_V_FRONT_PORCH + MODE_V_SYNC_WIDTH &&
                          v_scanline < MODE_V_FRONT_PORCH + MODE_V_SYNC_WIDTH + MODE_V_BACK_PORCH);
@@ -255,32 +246,47 @@ static inline void __scratch_x("") get_scanline_state(uint32_t v_scanline, scanl
     state->send_acr = (v_scanline >= (MODE_V_FRONT_PORCH + MODE_V_SYNC_WIDTH) &&
                        v_scanline < (MODE_V_TOTAL_LINES - MODE_V_ACTIVE_LINES) && (v_scanline % 4 == 0));
 
-    if (state->active_video) {
+    if (state->active_video)
+    {
         state->active_line = v_scanline - (MODE_V_TOTAL_LINES - MODE_V_ACTIVE_LINES);
-    } else {
+    }
+    else
+    {
         state->active_line = 0;
     }
 }
 
 static inline void __scratch_x("") video_output_handle_vsync(dma_channel_hw_t *ch, uint32_t v_scanline)
 {
-    if (dvi_mode) {
+    if (dvi_mode)
+    {
         // Pure DVI: simple vsync line without Data Islands
         ch->read_addr = (uintptr_t)vblank_line_vsync_on;
         ch->transfer_count = count_of(vblank_line_vsync_on);
-        if (v_scanline == MODE_V_FRONT_PORCH) {
+        if (v_scanline == MODE_V_FRONT_PORCH)
+        {
             video_frame_count++;
-            if (vsync_callback)
-                vsync_callback();
-        }
-    } else {
-        if (v_scanline == MODE_V_FRONT_PORCH) {
-            ch->read_addr = (uintptr_t)vblank_acr_vsync_on;
-            ch->transfer_count = vblank_acr_vsync_on_len;
-            video_frame_count++;
+            HSTX_vblank = true;
             if (vsync_callback)
                 vsync_callback();
         } else {
+            HSTX_vblank = false;
+        }
+    }
+    else
+    {
+        if (v_scanline == MODE_V_FRONT_PORCH)
+        {
+            ch->read_addr = (uintptr_t)vblank_acr_vsync_on;
+            ch->transfer_count = vblank_acr_vsync_on_len;
+            video_frame_count++;
+            HSTX_vblank = true;
+            if (vsync_callback)
+                vsync_callback();
+        }
+        else
+        {
+            HSTX_vblank = false;
             ch->read_addr = (uintptr_t)vblank_infoframe_vsync_on;
             ch->transfer_count = vblank_infoframe_vsync_on_len;
         }
@@ -292,27 +298,37 @@ static inline void __scratch_x("")
 {
     uint32_t *dst32 = (uint32_t *)line_buffer;
 
-    // if (scanline_callback) {
-    //     scanline_callback(v_scanline, active_line, dst32);
-    // } else {
-    //     // If no callback, just output black pixels
-    //     for (uint32_t i = 0; i < MODE_H_ACTIVE_PIXELS / 2; i++) {
-    //         dst32[i] = 0;
-    //     }
-    // }
+    if (scanline_callback)
+    {
+        scanline_callback(v_scanline, active_line, dst32);
+    }
+    else
+    {
+        // If no callback, just output black pixels
+        for (uint32_t i = 0; i < MODE_H_ACTIVE_PIXELS / 2; i++)
+        {
+            dst32[i] = 0;
+        }
+    }
 
-    if (dvi_mode) {
+    if (dvi_mode)
+    {
         // Pure DVI: simple active line without Data Islands
         ch->read_addr = (uintptr_t)vactive_line_dvi;
         ch->transfer_count = count_of(vactive_line_dvi);
-    } else {
+    }
+    else
+    {
         uint32_t *buf = dma_pong ? vactive_di_ping : vactive_di_pong;
         const uint32_t *di_words = hstx_di_queue_get_audio_packet();
-        if (di_words) {
+        if (di_words)
+        {
             vactive_di_len = build_line_with_di(buf, di_words, false, true);
             ch->read_addr = (uintptr_t)buf;
             ch->transfer_count = vactive_di_len;
-        } else {
+        }
+        else
+        {
             ch->read_addr = (uintptr_t)vactive_di_null;
             ch->transfer_count = vactive_di_null_len;
         }
@@ -322,28 +338,39 @@ static inline void __scratch_x("")
 static inline void __scratch_x("")
     video_output_handle_blanking(dma_channel_hw_t *ch, uint32_t v_scanline, bool send_acr, bool dma_pong)
 {
-    if (dvi_mode) {
+    if (dvi_mode)
+    {
         // Pure DVI: simple blanking line without Data Islands
         (void)send_acr;
         (void)dma_pong;
         (void)v_scanline;
         ch->read_addr = (uintptr_t)vblank_line_vsync_off;
         ch->transfer_count = count_of(vblank_line_vsync_off);
-    } else {
-        if (send_acr) {
+    }
+    else
+    {
+        if (send_acr)
+        {
             ch->read_addr = (uintptr_t)vblank_acr_vsync_off;
             ch->transfer_count = vblank_acr_vsync_off_len;
-        } else if (v_scanline == 0) {
+        }
+        else if (v_scanline == 0)
+        {
             ch->read_addr = (uintptr_t)vblank_avi_infoframe;
             ch->transfer_count = vblank_avi_infoframe_len;
-        } else {
+        }
+        else
+        {
             const uint32_t *di_words = hstx_di_queue_get_audio_packet();
-            if (di_words) {
+            if (di_words)
+            {
                 uint32_t *buf = dma_pong ? vblank_di_ping : vblank_di_pong;
                 vblank_di_len = build_line_with_di(buf, di_words, false, false);
                 ch->read_addr = (uintptr_t)buf;
                 ch->transfer_count = vblank_di_len;
-            } else {
+            }
+            else
+            {
                 ch->read_addr = (uintptr_t)vblank_di_null;
                 ch->transfer_count = vblank_di_null_len;
             }
@@ -353,7 +380,7 @@ static inline void __scratch_x("")
 
 static inline void __scratch_x("") video_output_handle_active_data(dma_channel_hw_t *ch)
 {
-    ch->read_addr = (uintptr_t)HDMIlines[v_scanline & 1]; // (uintptr_t)line_buffer;
+    ch->read_addr = (uintptr_t)line_buffer;
     ch->transfer_count = (MODE_H_ACTIVE_PIXELS * sizeof(uint16_t)) / sizeof(uint32_t);
 }
 
@@ -361,7 +388,7 @@ static inline void __scratch_x("") video_output_handle_active_data(dma_channel_h
 // DMA IRQ Handler
 // ============================================================================
 
-static void __scratch_x("") dma_irq_handler()
+void __scratch_x("") dma_irq_handler()
 {
     uint32_t ch_num = dma_pong ? DMACH_PONG : DMACH_PING;
     dma_channel_hw_t *ch = &dma_hw->ch[ch_num];
@@ -369,22 +396,30 @@ static void __scratch_x("") dma_irq_handler()
     dma_pong = !dma_pong;
 
     // Advance audio/data-island scheduler exactly once per scanline (HDMI mode only)
-    if (!dvi_mode && !vactive_cmdlist_posted) {
+    if (!dvi_mode && !vactive_cmdlist_posted)
+    {
         hstx_di_queue_tick();
     }
 
     scanline_state_t state;
     get_scanline_state(v_scanline, &state);
 
-    if (state.vsync_active) {
+    if (state.vsync_active)
+    {
         video_output_handle_vsync(ch, v_scanline);
-    } else if (state.active_video && !vactive_cmdlist_posted) {
+    }
+    else if (state.active_video && !vactive_cmdlist_posted)
+    {
         video_output_handle_active_start(ch, v_scanline, state.active_line, dma_pong);
         vactive_cmdlist_posted = true;
-    } else if (state.active_video && vactive_cmdlist_posted) {
+    }
+    else if (state.active_video && vactive_cmdlist_posted)
+    {
         video_output_handle_active_data(ch);
         vactive_cmdlist_posted = false;
-    } else {
+    }
+    else
+    {
         video_output_handle_blanking(ch, v_scanline, state.send_acr, dma_pong);
     }
     if (!vactive_cmdlist_posted)
@@ -395,12 +430,11 @@ static void __scratch_x("") dma_irq_handler()
 // Public Interface
 // ============================================================================
 
-// void video_output_init(uint16_t width, uint16_t height)
-// {
-//     frame_width = width;
-//     frame_height = height;
-void video_output_init()
+void video_output_init(uint16_t width, uint16_t height)
 {
+    frame_width = width;
+    frame_height = height;
+
     // Claim DMA channels for HSTX (channels 0 and 1)
     dma_channel_claim(DMACH_PING);
     dma_channel_claim(DMACH_PONG);
@@ -464,14 +498,6 @@ void video_output_core1_run(void)
                                 5 << HSTX_CTRL_EXPAND_TMDS_L1_NBITS_LSB | 3 << HSTX_CTRL_EXPAND_TMDS_L1_ROT_LSB |
                                 4 << HSTX_CTRL_EXPAND_TMDS_L0_NBITS_LSB | 13 << HSTX_CTRL_EXPAND_TMDS_L0_ROT_LSB;
 
-    //   // Configure HSTX's TMDS encoder for RGB555
-    // hstx_ctrl_hw->expand_tmds =
-    //     29 << HSTX_CTRL_EXPAND_TMDS_L0_ROT_LSB |
-    //     4 << HSTX_CTRL_EXPAND_TMDS_L0_NBITS_LSB |
-    //     2 << HSTX_CTRL_EXPAND_TMDS_L1_ROT_LSB |
-    //     4 << HSTX_CTRL_EXPAND_TMDS_L1_NBITS_LSB |
-    //     7 << HSTX_CTRL_EXPAND_TMDS_L2_ROT_LSB |
-    //     4 << HSTX_CTRL_EXPAND_TMDS_L2_NBITS_LSB;
     hstx_ctrl_hw->expand_shift =
         2 << HSTX_CTRL_EXPAND_SHIFT_ENC_N_SHIFTS_LSB | 16 << HSTX_CTRL_EXPAND_SHIFT_ENC_SHIFT_LSB |
         1 << HSTX_CTRL_EXPAND_SHIFT_RAW_N_SHIFTS_LSB | 0 << HSTX_CTRL_EXPAND_SHIFT_RAW_SHIFT_LSB;
@@ -482,7 +508,8 @@ void video_output_core1_run(void)
 
     hstx_ctrl_hw->bit[0] = HSTX_CTRL_BIT0_CLK_BITS | HSTX_CTRL_BIT0_INV_BITS;
     hstx_ctrl_hw->bit[1] = HSTX_CTRL_BIT0_CLK_BITS;
-    for (uint lane = 0; lane < 3; ++lane) {
+    for (uint lane = 0; lane < 3; ++lane)
+    {
         int bit = 2 + (lane * 2);
         uint32_t lane_data_sel_bits = (lane * 10) << HSTX_CTRL_BIT0_SEL_P_LSB | (lane * 10 + 1)
                                                                                     << HSTX_CTRL_BIT0_SEL_N_LSB;
@@ -516,88 +543,16 @@ void video_output_core1_run(void)
     bus_ctrl_hw->priority = BUSCTRL_BUS_PRIORITY_DMA_W_BITS | BUSCTRL_BUS_PRIORITY_DMA_R_BITS;
     dma_channel_start(DMACH_PING);
 
-    // while (1) {
-    //     if (background_task) {
-    //         background_task();
-    //     }
-    //     tight_loop_contents();
-    // }
-    int last_line = 2, load_line, line_to_load, Line_dup;
-     while (1)
+    while (1)
     {
-        if (v_scanline != last_line)
+        if (background_task)
         {
-            last_line = v_scanline;
-            load_line = v_scanline - (MODE_V_TOTAL_LINES - MODE_V_ACTIVE_LINES);
-            Line_dup = load_line >> 1;
-            line_to_load = last_line & 1;
-            uint16_t *p = HDMIlines[line_to_load];
-            if (load_line >= 0 && load_line < MODE_V_ACTIVE_LINES)
-            {
-                __dmb();
-
-                for (int i = 0; i < MODE_H_ACTIVE_PIXELS / 2; i++)
-                {
-                    uint8_t *d = &WriteBuf[(Line_dup)*MODE_H_ACTIVE_PIXELS + i * 2];
-                    int c = *d++;
-                    c |= ((*d++) << 8);
-#if 1
-                    // Apply CRT scanline effect for RGB555: darken every other line
-                    if (load_line & 1 && enableScanLines)
-                    { // Odd lines = scanlines
-                        int r = (c >> 10) & 0x1F;
-                        int g = (c >> 5) & 0x1F;
-                        int b = c & 0x1F;
-                        r = r >> 1;
-                        g = g >> 1;
-                        b = b >> 1;
-                        c = (r << 10) | (g << 5) | b;
-                    }
-                    // tried vertical and pixel-grid scanlines
-                    // but this is probably too much for the RP2350:
-#else
-                    // Horizontal scanlines: darken every other line
-                    if (scanlineMode == 1 && (load_line & 1))
-                    {
-                        int r = (c >> 10) & 0x1F;
-                        int g = (c >> 5) & 0x1F;
-                        int b = c & 0x1F;
-                        r = r >> 1;
-                        g = g >> 1;
-                        b = b >> 1;
-                        c = (r << 10) | (g << 5) | b;
-                    }
-                    // Vertical scanlines: darken every other pixel column
-                    else if (scanlineMode == 2 && (i & 1))
-                    {
-                        int r = (c >> 10) & 0x1F;
-                        int g = (c >> 5) & 0x1F;
-                        int b = c & 0x1F;
-                        r = r >> 1;
-                        g = g >> 1;
-                        b = b >> 1;
-                        c = (r << 10) | (g << 5) | b;
-                    }
-                    // Pixel-grid: darken every other line and every other pixel column
-                    else if (scanlineMode == 3 && ((load_line & 1) || (i & 1)))
-                    {
-                        int r = (c >> 10) & 0x1F;
-                        int g = (c >> 5) & 0x1F;
-                        int b = c & 0x1F;
-                        r = r >> 1;
-                        g = g >> 1;
-                        b = b >> 1;
-                        c = (r << 10) | (g << 5) | b;
-                    }
-
-#endif
-                    *p++ = c;
-                    *p++ = c;
-                }
-            }
+            background_task();
         }
+        tight_loop_contents();
     }
 }
+
 uint32_t pico_hdmi_getframecounter(void)
 {
     return video_frame_count;
@@ -605,6 +560,7 @@ uint32_t pico_hdmi_getframecounter(void)
 
 void pico_hdmi_waitForVSync(void)
 {
+#if 1
     while (HSTX_vblank)
     {
         tight_loop_contents();
@@ -613,8 +569,19 @@ void pico_hdmi_waitForVSync(void)
     {
         tight_loop_contents();
     }
+#endif
 }
-
+static uint8_t FRAMEBUFFER[(MODE_H_ACTIVE_PIXELS / 2) * (MODE_V_ACTIVE_LINES / 2) * 2];
+// uint16_t ALIGNED HDMIlines[2][MODE_H_ACTIVE_PIXELS] = {0};
+static uint8_t *WriteBuf = FRAMEBUFFER;
+static uint8_t *DisplayBuf = FRAMEBUFFER;
+static uint8_t *LayerBuf = FRAMEBUFFER;
+static uint16_t *tilefcols;
+static uint16_t *tilebcols;
+static volatile int enableScanLines = 0; // Enable scanlines
+static volatile int scanlineMode = 0;
+#define HRes (MODE_H_ACTIVE_PIXELS / 2) // 320
+#define VRes (MODE_V_ACTIVE_LINES / 2)  // 240
 uint8_t *pico_hdmi_getframebuffer(void)
 {
     // Return the pointer to the framebuffer
@@ -631,10 +598,82 @@ uint16_t *__not_in_flash_func(pico_hdmi_getlineFromFramebuffer)(int scanline)
 {
     return (uint16_t *)(WriteBuf + (scanline * HRes * 2));
 }
+void __not_in_flash_func(scanline_callbackfunc)(uint32_t v_scanline, uint32_t active_line, uint32_t *buff)
+{
+    uint16_t *p = (uint16_t *)buff;
+    int last_line = 2, load_line, line_to_load, Line_dup;
+    load_line = v_scanline - (MODE_V_TOTAL_LINES - MODE_V_ACTIVE_LINES);
+    Line_dup = load_line >> 1;
+    if (load_line >= 0 && load_line < MODE_V_ACTIVE_LINES)
+    {
+        __dmb();
 
-void pico_hdmi_init(void) { 
-    video_output_init();
+        for (int i = 0; i < MODE_H_ACTIVE_PIXELS / 2; i++)
+        {
+            uint8_t *d = &DisplayBuf[(Line_dup)*MODE_H_ACTIVE_PIXELS + i * 2];
+            int c = *d++;
+            c |= ((*d++) << 8);
+#if 1
+            // Apply CRT scanline effect for RGB555: darken every other line
+            if (load_line & 1 && enableScanLines)
+            { // Odd lines = scanlines
+                int r = (c >> 10) & 0x1F;
+                int g = (c >> 5) & 0x1F;
+                int b = c & 0x1F;
+                r = r >> 1;
+                g = g >> 1;
+                b = b >> 1;
+                c = (r << 10) | (g << 5) | b;
+            }
+            // tried vertical and pixel-grid scanlines
+            // but this is probably too much for the RP2350:
+#else
+            // Horizontal scanlines: darken every other line
+            if (scanlineMode == 1 && (load_line & 1))
+            {
+                int r = (c >> 10) & 0x1F;
+                int g = (c >> 5) & 0x1F;
+                int b = c & 0x1F;
+                r = r >> 1;
+                g = g >> 1;
+                b = b >> 1;
+                c = (r << 10) | (g << 5) | b;
+            }
+            // Vertical scanlines: darken every other pixel column
+            else if (scanlineMode == 2 && (i & 1))
+            {
+                int r = (c >> 10) & 0x1F;
+                int g = (c >> 5) & 0x1F;
+                int b = c & 0x1F;
+                r = r >> 1;
+                g = g >> 1;
+                b = b >> 1;
+                c = (r << 10) | (g << 5) | b;
+            }
+            // Pixel-grid: darken every other line and every other pixel column
+            else if (scanlineMode == 3 && ((load_line & 1) || (i & 1)))
+            {
+                int r = (c >> 10) & 0x1F;
+                int g = (c >> 5) & 0x1F;
+                int b = c & 0x1F;
+                r = r >> 1;
+                g = g >> 1;
+                b = b >> 1;
+                c = (r << 10) | (g << 5) | b;
+            }
+
+#endif
+            *p++ = c;
+            *p++ = c;
+        }
+    }
+}
+void pico_hdmi_init(void)
+{
+    video_output_set_dvi_mode(true);
+    video_output_init(640, 480);
+
+    video_output_set_scanline_callback(scanline_callbackfunc);
     multicore_launch_core1(video_output_core1_run);
     printf("Pico HDMI initialized.\n");
 }
-
