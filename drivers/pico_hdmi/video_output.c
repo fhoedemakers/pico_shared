@@ -130,7 +130,7 @@ static uint32_t vblank_avi_infoframe[64], vblank_avi_infoframe_len;
 // HSTX Resync - Reset output to sync with input VSYNC
 // ============================================================================
 
-static void __scratch_x("") hstx_resync(void)
+static void __not_in_flash_func(hstx_resync)(void)
 {
     // 1. Abort DMA chains
     dma_channel_abort(DMACH_PING);
@@ -235,7 +235,7 @@ typedef struct
     uint32_t active_line;
 } scanline_state_t;
 
-static inline void __scratch_x("") get_scanline_state(uint32_t v_scanline, scanline_state_t *state)
+static inline void __not_in_flash_func(get_scanline_state)(uint32_t v_scanline, scanline_state_t *state)
 {
     state->vsync_active = (v_scanline >= MODE_V_FRONT_PORCH && v_scanline < (MODE_V_FRONT_PORCH + MODE_V_SYNC_WIDTH));
     state->front_porch = (v_scanline < MODE_V_FRONT_PORCH);
@@ -256,7 +256,7 @@ static inline void __scratch_x("") get_scanline_state(uint32_t v_scanline, scanl
     }
 }
 
-static inline void __scratch_x("") video_output_handle_vsync(dma_channel_hw_t *ch, uint32_t v_scanline)
+static inline void __not_in_flash_func(video_output_handle_vsync)(dma_channel_hw_t *ch, uint32_t v_scanline)
 {
     if (dvi_mode)
     {
@@ -293,8 +293,7 @@ static inline void __scratch_x("") video_output_handle_vsync(dma_channel_hw_t *c
     }
 }
 
-static inline void __scratch_x("")
-    video_output_handle_active_start(dma_channel_hw_t *ch, uint32_t v_scanline, uint32_t active_line, bool dma_pong)
+static inline void __not_in_flash_func(video_output_handle_active_start)(dma_channel_hw_t *ch, uint32_t v_scanline, uint32_t active_line, bool dma_pong)
 {
     uint32_t *dst32 = (uint32_t *)line_buffer;
 
@@ -335,8 +334,7 @@ static inline void __scratch_x("")
     }
 }
 
-static inline void __scratch_x("")
-    video_output_handle_blanking(dma_channel_hw_t *ch, uint32_t v_scanline, bool send_acr, bool dma_pong)
+static inline void __not_in_flash_func(video_output_handle_blanking)(dma_channel_hw_t *ch, uint32_t v_scanline, bool send_acr, bool dma_pong)
 {
     if (dvi_mode)
     {
@@ -378,7 +376,7 @@ static inline void __scratch_x("")
     }
 }
 
-static inline void __scratch_x("") video_output_handle_active_data(dma_channel_hw_t *ch)
+static inline void __not_in_flash_func(video_output_handle_active_data)(dma_channel_hw_t *ch)
 {
     ch->read_addr = (uintptr_t)line_buffer;
     ch->transfer_count = (MODE_H_ACTIVE_PIXELS * sizeof(uint16_t)) / sizeof(uint32_t);
@@ -388,7 +386,7 @@ static inline void __scratch_x("") video_output_handle_active_data(dma_channel_h
 // DMA IRQ Handler
 // ============================================================================
 
-void __scratch_x("") dma_irq_handler()
+void __not_in_flash_func(dma_irq_handler)()
 {
     uint32_t ch_num = dma_pong ? DMACH_PONG : DMACH_PING;
     dma_channel_hw_t *ch = &dma_hw->ch[ch_num];
