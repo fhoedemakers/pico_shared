@@ -13,7 +13,7 @@ static volatile uint32_t di_ring_tail = 0;
 
 // Audio timing state (48kHz target)
 static uint32_t audio_sample_accum = 0; // Fixed-point accumulator
-#define SAMPLES_PER_FRAME (48000 / 60)
+#define SAMPLES_PER_FRAME  (48000 / 60)  // (44100 / 60) //
 #define SAMPLES_PER_LINE_FP ((SAMPLES_PER_FRAME << 16) / MODE_V_TOTAL_LINES)
 
 // Limit accumulator to avoid overflow if we run dry.
@@ -29,6 +29,7 @@ void hstx_di_queue_init(void)
 
 bool hstx_di_queue_push(const hstx_data_island_t *island)
 {
+
     uint32_t next_head = (di_ring_head + 1) % DI_RING_BUFFER_SIZE;
     if (next_head == di_ring_tail)
         return false;
@@ -47,12 +48,12 @@ uint32_t hstx_di_queue_get_level(void)
     return DI_RING_BUFFER_SIZE + head - tail;
 }
 
-void __scratch_x("") hstx_di_queue_tick(void)
+void __not_in_flash_func(hstx_di_queue_tick)(void)
 {
     audio_sample_accum += SAMPLES_PER_LINE_FP;
 }
 
-const uint32_t *__scratch_x("") hstx_di_queue_get_audio_packet(void)
+const uint32_t *__not_in_flash_func(hstx_di_queue_get_audio_packet)(void)
 {
     // Check if it's time to send a 4-sample audio packet (every ~2.6 lines)
     if (audio_sample_accum >= (4 << 16)) {
