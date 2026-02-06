@@ -8,7 +8,9 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-
+#ifndef HSTX_AUDIO_DI_HIGH_WATERMARK
+#define HSTX_AUDIO_DI_HIGH_WATERMARK 200  // ~16–18 ms at 4 samples/packet
+#endif
 /**
  * Initialize the Data Island queue and scheduler.
  */
