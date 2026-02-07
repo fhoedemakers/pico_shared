@@ -17,7 +17,8 @@
 #include <math.h>
 #include <string.h>
 volatile bool HSTX_vblank = false;
-
+// Calculate HSTX output bit from GPIO number (GPIO12-19 => bit 0-7)
+#define HSTX_BIT_FROM_GPIO(gpio) ((gpio) - 12)
 // ============================================================================
 // DVI/HSTX Constants
 // ============================================================================
@@ -545,18 +546,46 @@ void video_output_core1_run(void)
     hstx_ctrl_hw->csr = HSTX_CTRL_CSR_EXPAND_EN_BITS | (uint32_t)MODE_HSTX_CSR_CLKDIV << HSTX_CTRL_CSR_CLKDIV_LSB |
                         5U << HSTX_CTRL_CSR_N_SHIFTS_LSB | 2U << HSTX_CTRL_CSR_SHIFT_LSB | HSTX_CTRL_CSR_EN_BITS;
 
-    hstx_ctrl_hw->bit[0] = HSTX_CTRL_BIT0_CLK_BITS | HSTX_CTRL_BIT0_INV_BITS;
-    hstx_ctrl_hw->bit[1] = HSTX_CTRL_BIT0_CLK_BITS;
+    int clk_bit_p = HSTX_BIT_FROM_GPIO(GPIOHSTXCK);
+    int clk_bit_n = GPIOHSTXINVERTED ? (clk_bit_p - 1) : (clk_bit_p + 1);
+    hstx_ctrl_hw->bit[clk_bit_p] = HSTX_CTRL_BIT0_CLK_BITS;
+    hstx_ctrl_hw->bit[clk_bit_n] = HSTX_CTRL_BIT0_CLK_BITS | HSTX_CTRL_BIT0_INV_BITS;
+    // hstx_ctrl_hw->bit[0] = HSTX_CTRL_BIT0_CLK_BITS | HSTX_CTRL_BIT0_INV_BITS;
+    // hstx_ctrl_hw->bit[1] = HSTX_CTRL_BIT0_CLK_BITS;
     for (uint lane = 0; lane < 3; ++lane) {
-        int bit = 2 + (lane * 2);
-        uint32_t lane_data_sel_bits = (lane * 10) << HSTX_CTRL_BIT0_SEL_P_LSB | (lane * 10 + 1)
-                                                                                    << HSTX_CTRL_BIT0_SEL_N_LSB;
-        hstx_ctrl_hw->bit[bit] = lane_data_sel_bits | HSTX_CTRL_BIT0_INV_BITS;
-        hstx_ctrl_hw->bit[bit + 1] = lane_data_sel_bits;
+          // For each TMDS lane, assign it to the correct GPIO pair based on the desired pinout:
+
+        // lane_to_output_bit Array:
+        // The lane_to_output_bit array specifies which HSTX output bits are used for each TMDS lane, based on the GPIOHSTXDx defines:
+
+        // Index 0: TMDS lane D0 (data lane 0) → GPIOHSTXD0 (D0+), (GPIOHSTXD0 + GPIOHSTXINVERTED ? -1 : +1) (D0-)
+        // Index 1: TMDS lane D1 (data lane 1) → GPIOHSTXD1 (D1+), (GPIOHSTXD1 + GPIOHSTXINVERTED ? -1 : +1) (D1-)
+        // Index 2: TMDS lane D2 (data lane 2) → GPIOHSTXD2 (D2+), (GPIOHSTXD2 + GPIOHSTXINVERTED ? -1 : +1) (D2-)
+
+        // Example default mapping for Adafruit Metro RP2350:
+        // D0+ = GPIOHSTXD0 (default: GPIO18), D0- = GPIOHSTXD0 + 1 (default: GPIO19)
+        // D1+ = GPIOHSTXD1 (default: GPIO16), D1- = GPIOHSTXD1 + 1 (default: GPIO17)
+        // D2+ = GPIOHSTXD2 (default: GPIO12), D2- = GPIOHSTXD2 + 1 (default: GPIO13)
+        // If GPIOHSTXINVERTED is set, D- is D+ - 1 instead of D+ + 1
+        // See https://learn.adafruit.com/adafruit-metro-rp2350/pinouts#hstx-connector-3193107
+        static const int lane_to_output_bit[3] = {
+            HSTX_BIT_FROM_GPIO(GPIOHSTXD0),
+            HSTX_BIT_FROM_GPIO(GPIOHSTXD1),
+            HSTX_BIT_FROM_GPIO(GPIOHSTXD2)};
+        int bit = lane_to_output_bit[lane];
+        int bit_dn = GPIOHSTXINVERTED ? (bit - 1) : (bit + 1);
+        // Output even bits during first half of each HSTX cycle, and odd bits
+        // during second half. The shifter advances by two bits each cycle.
+        uint32_t lane_data_sel_bits =
+            (lane * 10) << HSTX_CTRL_BIT0_SEL_P_LSB |
+            (lane * 10 + 1) << HSTX_CTRL_BIT0_SEL_N_LSB;
+        // The two halves of each pair get identical data, but one pin is inverted.
+        hstx_ctrl_hw->bit[bit] = lane_data_sel_bits;
+        hstx_ctrl_hw->bit[bit_dn] = lane_data_sel_bits | HSTX_CTRL_BIT0_INV_BITS;
     }
 
     // Set GPIO 12-19 to HSTX function (function 0 on RP2350)
-    for (int i = PIN_HSTX_CLK; i <= PIN_HSTX_D2 + 1; ++i)
+    for (int i = 12; i <= 19; ++i)
         gpio_set_function(i, 0);
 
     // DMA Setup
@@ -612,6 +641,8 @@ void pico_hdmi_waitForVSync(void)
     }
 #endif
 }
+
+// Custom changes
 #include "pico/multicore.h" 
 #include "stdio.h"
 static uint8_t FRAMEBUFFER[(MODE_H_ACTIVE_PIXELS / 2) * (MODE_V_ACTIVE_LINES / 2) * 2];
