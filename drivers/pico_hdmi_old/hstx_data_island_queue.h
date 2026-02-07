@@ -8,16 +8,13 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+#ifndef HSTX_AUDIO_DI_HIGH_WATERMARK
+#define HSTX_AUDIO_DI_HIGH_WATERMARK 200  // ~16–18 ms at 4 samples/packet
+#endif
 /**
  * Initialize the Data Island queue and scheduler.
  */
 void hstx_di_queue_init(void);
-
-/**
- * Set the audio sample rate for packet timing.
- * @param sample_rate Audio sample rate in Hz (e.g. 44100, 48000)
- */
-void hstx_di_queue_set_sample_rate(uint32_t sample_rate);
 
 /**
  * Push a pre-encoded Data Island into the queue.
