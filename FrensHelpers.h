@@ -24,12 +24,6 @@
 #include "util/exclusive_proc.h"
 #else
 #include "hstx.h"
-#define HSTX_GETFRAMECOUNTER hstx_getframecounter
-#define HSTX_WAITFORVSYNC    hstx_waitForVSync
-#define HSTX_GETFRAMEBUFFER hstx_getframebuffer
-#define HSTX_SETSCANLINES(scanlineOnOff) hstx_setScanLines((scanlineOnOff))
-#define HSTX_GETLINEFROMFRAMEBUFFER(scanline) hstx_getlineFromFramebuffer((scanline))
-#define HSTX_INIT hstx_init
 // #include "mcp4822.h"     // SPI Audio using MCP4822 DAC. Works but not used
 #endif
 

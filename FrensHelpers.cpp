@@ -189,7 +189,7 @@ namespace Frens
             }
         }
 #else
-        HSTX_WAITFORVSYNC();
+        hstx_waitForVSync();
 #endif
     }
     /// @brief Poor way to pace frames to 60fps
@@ -648,7 +648,7 @@ namespace Frens
 #else
         settings.flags.scanlineOn = settings.flags.scanlineOn ? 0 : 1; // toggle
         FrensSettings::savesettings();
-        HSTX_SETSCANLINES(settings.flags.scanlineOn);
+        hstx_setScanLines(settings.flags.scanlineOn);
         printf("Scanlines %s\n", settings.flags.scanlineOn ? "enabled" : "disabled");
 #endif
     }
@@ -656,7 +656,7 @@ namespace Frens
     {
 #if !HSTX
 #else
-        HSTX_SETSCANLINES(settings.flags.scanlineOn);
+        hstx_setScanLines(settings.flags.scanlineOn);
 #endif
     }
 
@@ -1265,7 +1265,7 @@ namespace Frens
         // 空サンプル詰めとく
         dvi_->getAudioRingBuffer().advanceWritePointer(255);
 #else
-        HSTX_INIT();
+        hstx_init();
 #if 0
         // For now use an MCP4822 DAC for audio output
         // https://ww1.microchip.com/downloads/aemDocuments/documents/OTH/ProductDocuments/DataSheets/20002249B.pdf
@@ -1678,7 +1678,7 @@ namespace Frens
 #if !HSTX
                 fr = f_read(&fil, framebuffer, filesize - 4, &br);
 #else
-                fr = f_read(&fil, HSTX_GETFRAMEBUFFER(), filesize - 4, &br);
+                fr = f_read(&fil, hstx_getframebuffer(), filesize - 4, &br);
 #endif
 
                 if (fr != FR_OK || br != filesize - 4)
@@ -1714,7 +1714,7 @@ namespace Frens
 #if !HSTX
         memcpy(framebuffer, overlay + 4, width * height * sizeof(WORD));
 #else
-        memcpy(HSTX_GETFRAMEBUFFER(), overlay + 4, width * height * sizeof(WORD));
+        memcpy(hstx_getframebuffer(), overlay + 4, width * height * sizeof(WORD));
 #endif
 #endif
     }
