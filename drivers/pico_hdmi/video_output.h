@@ -3,9 +3,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
-#ifdef __cplusplus
-extern "C" {
-#endif
+
 // ============================================================================
 // Video Output Configuration
 // ============================================================================
@@ -137,16 +135,5 @@ void video_output_core1_run(void);
  */
 void pico_hdmi_set_audio_sample_rate(uint32_t sample_rate);
 
-#ifndef HSTX_AUDIO_DI_HIGH_WATERMARK
-#define HSTX_AUDIO_DI_HIGH_WATERMARK 200  // ~16–18 ms at 4 samples/packet
-#endif
-uint32_t pico_hdmi_getframecounter(void);
-void pico_hdmi_waitForVSync(void);
-uint8_t *pico_hdmi_getframebuffer(void);
-void pico_hdmi_setScanLines(int enable);
-uint16_t *pico_hdmi_getlineFromFramebuffer(int scanline);
-void pico_hdmi_init(void);
-#ifdef __cplusplus
-}
-#endif
+
 #endif // VIDEO_OUTPUT_H

@@ -3,9 +3,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
-#ifdef __cplusplus
-extern "C" {
-#endif
+
 // Data Island timing constants
 #define W_GUARDBAND 2                                             // Guard band: 2 pixel clocks
 #define W_PREAMBLE 8                                              // Preamble: 8 pixel clocks
@@ -51,7 +49,5 @@ void hstx_packet_set_null(hstx_packet_t *packet);
 
 void hstx_encode_data_island(hstx_data_island_t *out, const hstx_packet_t *packet, bool vsync, bool hsync);
 const uint32_t *hstx_get_null_data_island(bool vsync, bool hsync);
-#ifdef __cplusplus
-}
-#endif
+
 #endif // HSTX_PACKET_H
