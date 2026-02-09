@@ -1,6 +1,7 @@
 #include "hstx_data_island_queue.h"
 
 #include "video_output.h"
+#include "hstx_packet.h"
 
 #include <string.h>
 
@@ -10,6 +11,10 @@
 static hstx_data_island_t di_ring_buffer[DI_RING_BUFFER_SIZE];
 static volatile uint32_t di_ring_head = 0;
 static volatile uint32_t di_ring_tail = 0;
+
+#define SILENCE_PACKET_COUNT 48
+static hstx_data_island_t silence_packets[SILENCE_PACKET_COUNT];
+static uint8_t silence_packet_index = 0;
 
 // Audio timing state (default 48kHz)
 static uint32_t audio_sample_accum = 0; // Fixed-point accumulator
@@ -25,6 +30,15 @@ void hstx_di_queue_init(void)
     di_ring_head = 0;
     di_ring_tail = 0;
     audio_sample_accum = 0;
+     // Build a rotating set of silent audio packets with correct B-frame flags.
+    hstx_packet_t packet;
+    audio_sample_t samples[4] = {0};
+    int frame_counter = 0;
+    for (int i = 0; i < SILENCE_PACKET_COUNT; ++i) {
+        frame_counter = hstx_packet_set_audio_samples(&packet, samples, 4, frame_counter);
+        hstx_encode_data_island(&silence_packets[i], &packet, false, true);
+    }
+    silence_packet_index = 0;
 }
 
 void hstx_di_queue_set_sample_rate(uint32_t sample_rate)
@@ -62,17 +76,16 @@ const uint32_t *__not_in_flash_func(hstx_di_queue_get_audio_packet)(void)
 {
     // Check if it's time to send a 4-sample audio packet (every ~2.6 lines)
     if (audio_sample_accum >= (4 << 16)) {
+        audio_sample_accum -= (4 << 16);
         if (di_ring_tail != di_ring_head) {
-            audio_sample_accum -= (4 << 16);
             const uint32_t *words = di_ring_buffer[di_ring_tail].words;
             di_ring_tail = (di_ring_tail + 1) % DI_RING_BUFFER_SIZE;
             return words;
-        } // Queue is empty but we owe samples.
-        // Clamp accumulator to prevent 32-bit overflow during long silence.
-        // Also prevents bursting when data returns.
-        if (audio_sample_accum > MAX_AUDIO_ACCUM) {
-            audio_sample_accum = MAX_AUDIO_ACCUM;
         }
+        // Queue is empty: return a pre-encoded silent packet to keep HDMI audio active.
+        const uint32_t *words = silence_packets[silence_packet_index].words;
+        silence_packet_index = (silence_packet_index + 1) % SILENCE_PACKET_COUNT;
+        return words;
     }
     return NULL;
 }
