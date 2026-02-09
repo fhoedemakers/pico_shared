@@ -186,9 +186,10 @@ void hstx_mute_audio(void)
 void hstx_init(void)
 {
     hstx_di_queue_init();
-    hstx_mute_audio();
+    // hstx_mute_audio();
     video_output_set_vsync_callback(hstx_vsync_callbackfunc);
-    video_output_set_background_task(generate_silence);
+    // Try to generate silence when no audio is playing to prevent delay in audio startup for Game Boy. Not working.
+    // video_output_set_background_task(generate_silence);
     //video_output_set_dvi_mode(true);
     video_output_init(640, 480);
     pico_hdmi_set_audio_sample_rate(44100);
