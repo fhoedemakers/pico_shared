@@ -5,7 +5,6 @@
 // Custom changes
 volatile bool HSTX_vblank = false;
 static uint8_t FRAMEBUFFER[(MODE_H_ACTIVE_PIXELS / 2) * (MODE_V_ACTIVE_LINES / 2) * 2];
-volatile bool audioPlaying = false;
 // uint16_t ALIGNED HDMIlines[2][MODE_H_ACTIVE_PIXELS] = {0};
 static uint8_t *WriteBuf = FRAMEBUFFER;
 static uint8_t *DisplayBuf = FRAMEBUFFER;
@@ -127,40 +126,15 @@ uint32_t hstx_getframecounter(void)
     return video_frame_count;
 }
 
-static int g_hdmi_audio_frame_counter = 0;
-static void generate_silence(void)
-{
-    while (!audioPlaying)
-    {
-
-        // Keep the audio queue fed
-        while (hstx_di_queue_get_level() < 200)
-        {
-            audio_sample_t samples[4];
-            for (int i = 0; i < 4; i++)
-            {
-                samples[i].left = 0;
-                samples[i].right = 0;
-            }
-
-            hstx_packet_t packet;
-            g_hdmi_audio_frame_counter = hstx_packet_set_audio_samples(&packet, samples, 4, g_hdmi_audio_frame_counter);
-
-            hstx_data_island_t island;
-            hstx_encode_data_island(&island, &packet, false, true);
-            hstx_di_queue_push(&island);
-        }
-    }
-}
 void __not_in_flash_func(hstx_push_audio_sample)(const int left, const int right)
 {
+    static int g_hdmi_audio_frame_counter = 0;
     static audio_sample_t acc_buf[4];
     static int acc_count = 0;
-  
+    static  uint32_t video_frame_count = 0;
     acc_buf[acc_count].left = left;
     acc_buf[acc_count].right = right;
     acc_count++;
-    audioPlaying = true;
     if (acc_count == 4)
     {
         if (hstx_di_queue_get_level() >= HSTX_AUDIO_DI_HIGH_WATERMARK)
@@ -177,19 +151,11 @@ void __not_in_flash_func(hstx_push_audio_sample)(const int left, const int right
         acc_count = 0;
     }
 }
-void hstx_mute_audio(void)
-{
-    audioPlaying = false;
-    printf("HSTX audio muted.\n");
-}
 
 void hstx_init(void)
 {
     hstx_di_queue_init();
-    // hstx_mute_audio();
     video_output_set_vsync_callback(hstx_vsync_callbackfunc);
-    // Try to generate silence when no audio is playing to prevent delay in audio startup for Game Boy. Not working.
-    // video_output_set_background_task(generate_silence);
     //video_output_set_dvi_mode(true);
     video_output_init(640, 480);
     pico_hdmi_set_audio_sample_rate(44100);
