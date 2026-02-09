@@ -4,11 +4,12 @@
 #include "hstx_packet.h"
 
 #include <string.h>
+#include <stdlib.h>
 
 #include "pico.h"
 
 #define DI_RING_BUFFER_SIZE 256
-static hstx_data_island_t di_ring_buffer[DI_RING_BUFFER_SIZE];
+static hstx_data_island_t *di_ring_buffer = NULL; // [DI_RING_BUFFER_SIZE];
 static volatile uint32_t di_ring_head = 0;
 static volatile uint32_t di_ring_tail = 0;
 
@@ -23,12 +24,19 @@ static uint32_t samples_per_line_fp = (DEFAULT_SAMPLES_PER_FRAME << 16) / MODE_V
 // Limit accumulator to avoid overflow if we run dry.
 // Clamping to 1 packet (plus a tiny margin is implicit) ensures we don't burst.
 #define MAX_AUDIO_ACCUM (4 << 16)
-
+extern void * frens_f_malloc(size_t size);
 void hstx_di_queue_init(void)
 {
     di_ring_head = 0;
     di_ring_tail = 0;
     audio_sample_accum = 0;
+    // Allocate memory for the ring buffer
+    if (di_ring_buffer == NULL) {
+        printf("Allocating memory for HSTX DI ring buffer: %d bytes\n", DI_RING_BUFFER_SIZE * sizeof(hstx_data_island_t));  
+        di_ring_buffer = (hstx_data_island_t *)frens_f_malloc(DI_RING_BUFFER_SIZE * sizeof(hstx_data_island_t));
+    }
+    // Build a single silent audio packet with fixed B-frame flags.
+    di_ring_buffer = (hstx_data_island_t *)malloc(DI_RING_BUFFER_SIZE * sizeof(hstx_data_island_t));
     // Build a single silent audio packet with fixed B-frame flags.
     hstx_packet_t packet;
     audio_sample_t samples[4] = {0};
