@@ -23,6 +23,7 @@ uint16_t *hstx_getlineFromFramebuffer(int scanline);
 void hstx_init(void);
 void video_output_core1_run(void);
 void hstx_push_audio_sample(const int left, const int right);
+void hstx_mute_audio(void);
 #ifdef __cplusplus
 }
 #endif
