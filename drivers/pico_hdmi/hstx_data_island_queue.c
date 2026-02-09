@@ -5,7 +5,7 @@
 
 #include <string.h>
 #include <stdlib.h>
-
+#include <stdio.h>
 #include "pico.h"
 
 #define DI_RING_BUFFER_SIZE 256
