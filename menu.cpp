@@ -7,6 +7,7 @@
 #include "hardware/flash.h"
 #include "hardware/watchdog.h"
 #include "hardware/divider.h"
+#include "pico/bootrom.h"
 #include "tusb.h"
 #include "FrensHelpers.h"
 #include "FrensFonts.h"
@@ -2214,6 +2215,14 @@ int showSettingsMenu(bool calledFromGame)
                 value = "";
                 break;
             }
+             case MenuSettingsIndex::MOPT_ENTER_BOOTSEL_MODE:
+            {
+                
+                
+                label = "Enter BOOTSEL Mode";
+                value = "";
+                break;
+            }
             case MenuSettingsIndex::MOPT_SAVE_RESTORE_STATE:
             {
                 label = "Save/Load State";
@@ -2388,7 +2397,7 @@ int showSettingsMenu(bool calledFromGame)
                 value = "";
                 break;
             }
-            snprintf(line, sizeof(line), "%s%s%s", label, (optIndex == MOPT_EXIT_GAME || optIndex == MOPT_SAVE_RESTORE_STATE) ? "" : ": ", value);
+            snprintf(line, sizeof(line), "%s%s%s", label, (optIndex == MOPT_EXIT_GAME || optIndex == MOPT_SAVE_RESTORE_STATE || optIndex == MOPT_ENTER_BOOTSEL_MODE) ? "" : ": ", value);
             putText(0, row++, line, CBLACK, CWHITE);
         }
         // Blank spacer after last option
@@ -2439,7 +2448,8 @@ int showSettingsMenu(bool calledFromGame)
         if (selectedRowLocal < saveRowScreen)
         {
             if (visibleIndices[selectedRowLocal - rowStartOptions] == MOPT_EXIT_GAME ||
-                visibleIndices[selectedRowLocal - rowStartOptions] == MOPT_SAVE_RESTORE_STATE)
+                visibleIndices[selectedRowLocal - rowStartOptions] == MOPT_SAVE_RESTORE_STATE ||
+                visibleIndices[selectedRowLocal - rowStartOptions] == MOPT_ENTER_BOOTSEL_MODE)
             {
                 snprintf(line, sizeof(line), "UP/DOWN: Move, %s: select", buttonLabel1);
             }
@@ -2614,10 +2624,14 @@ int showSettingsMenu(bool calledFromGame)
                     selectedRowLocal = rowStartOptions; // wrap
                 }
             }
-            else if (pad & LEFT || pad & RIGHT || ((pad & A) && (optIndex == MOPT_EXIT_GAME || optIndex == MOPT_SAVE_RESTORE_STATE)))
+            else if (pad & LEFT || pad & RIGHT || ((pad & A) && (optIndex == MOPT_EXIT_GAME || optIndex == MOPT_SAVE_RESTORE_STATE || optIndex == MOPT_ENTER_BOOTSEL_MODE)))
             {
                 if (optIndex != -1)
                 {
+                     if (optIndex == MOPT_ENTER_BOOTSEL_MODE && pad & A) 
+                    {
+                       reset_usb_boot(0, 0);
+                    }
                     // int optIndex = visibleIndices[selectedRowLocal - rowStartOptions]; // map screen row to option index
                     bool right = pad & RIGHT;
                     switch (optIndex)
@@ -2793,6 +2807,7 @@ int showSettingsMenu(bool calledFromGame)
             }
             else if (pad & A)
             {
+               
                 if (selectedRowLocal == saveRowScreen)
                 {
                     applySettings = true;
