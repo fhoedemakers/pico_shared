@@ -407,7 +407,6 @@ namespace wavplayer
         apply_offset();
         printf("WAV format %u, %u ch, %u bits, %u Hz, %u bytes, duration %f sec\n", audio_format, channels, bits_per, sample_rate, data_size, g_wav.duration_sec);
         printf("WAV player, playing from file: %s\n", path);
-#if !HSTX
 #if EXT_AUDIO_IS_ENABLED
         if (settings.flags.useExtAudio)
         {
@@ -416,17 +415,14 @@ namespace wavplayer
         }
         else
         {
-            printf("WAV player using DVI audio\n");
-            set_volume_linear(0.3f); 
+            printf("WAV player using DVI/HSTX audio\n");
+            set_volume_linear(0.5f); 
         }
-#else
-        printf("WAV player using DVI audio\n");
-         set_volume_linear(0.3f); 
+#else 
+        printf("WAV player using DVI/HSTX audio\n");
+        set_volume_linear(0.5f); 
+
 #endif // EXT_AUDIO_IS_ENABLED
-#else
-        printf("WAV player using EXT_AUDIO (HSTX build)\n");
-        set_volume_linear(0.1f); // default to low volume
-#endif // !HSTX
 
         // free header buffer now that parsing is done
         Frens::f_free(hdr);
@@ -534,7 +530,11 @@ namespace wavplayer
                 const int16_t *p = g_wav.pcm_mem + (g_wav.frame_pos * 2);
                 int16_t l = p[0], r = p[1];
                 l = apply_gain(l); r = apply_gain(r);
-                EXT_AUDIO_ENQUEUE_SAMPLE(l, r);
+                if (settings.flags.useExtAudio) {
+                    EXT_AUDIO_ENQUEUE_SAMPLE(l, r);
+                } else {
+                    hstx_push_audio_sample(l, r);
+                }
                 g_wav.frame_pos++;
                 if (g_wav.frame_pos >= g_wav.frames_total)
                 {
@@ -689,7 +689,11 @@ namespace wavplayer
                         int16_t l = *src16++;
                         int16_t r = *src16++;
                         l = apply_gain(l); r = apply_gain(r);
-                        EXT_AUDIO_ENQUEUE_SAMPLE(l, r);
+                        if (settings.flags.useExtAudio) {
+                            EXT_AUDIO_ENQUEUE_SAMPLE(l, r);
+                        } else {
+                            hstx_push_audio_sample(l, r);
+                        }
                     }
                 }
                 else

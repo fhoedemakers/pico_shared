@@ -44,18 +44,15 @@
 #define MODE_V_SYNC_WIDTH 3
 #define MODE_V_BACK_PORCH 16
 // #define clockspeed 252000 // 315000
-int clockspeed;
-#define clockdivisor 2
-int X_TILE = 80, Y_TILE = 40;
-uint8_t FRAMEBUFFER[(MODE_H_ACTIVE_PIXELS / 2) * (MODE_V_ACTIVE_LINES / 2) * 2];
-uint16_t ALIGNED HDMIlines[2][MODE_H_ACTIVE_PIXELS] = {0};
-uint8_t *WriteBuf = FRAMEBUFFER;
+// int clockspeed;
+// #define clockdivisor 2
+static uint8_t FRAMEBUFFER[(MODE_H_ACTIVE_PIXELS / 2) * (MODE_V_ACTIVE_LINES / 2) * 2];
+static uint16_t ALIGNED HDMIlines[2][MODE_H_ACTIVE_PIXELS] = {0};
+static uint8_t *WriteBuf = FRAMEBUFFER;
 uint8_t *DisplayBuf = FRAMEBUFFER;
-uint8_t *LayerBuf = FRAMEBUFFER;
-uint16_t *tilefcols;
-uint16_t *tilebcols;
-volatile int enableScanLines = 0; // Enable scanlines
-volatile int scanlineMode = 0;
+
+static volatile int enableScanLines = 0; // Enable scanlines
+static volatile int scanlineMode = 0;
 // volatile int HRes;      // 320
 // volatile int VRes;       // 240
 //  Fix to 320x240
@@ -153,7 +150,7 @@ volatile uint v_scanline = 2;
 // During the vertical active period, we take two IRQs per scanline: one to
 // post the command list, and another to post the pixels.
 static bool vactive_cmdlist_posted = false;
-volatile uint HSTX_vblank = 0;
+static volatile uint HSTX_vblank = 0;
 
 /// @brief DMA IRQ handler for HSTX
 /// This function is called when a DMA transfer completes.
@@ -165,7 +162,7 @@ volatile uint HSTX_vblank = 0;
 /// It is called from the DMA IRQ handler.
 /// @param
 /// @return
-void __not_in_flash_func(dma_irq_handler)()
+static void __not_in_flash_func(dma_irq_handler)()
 {
     // dma_pong indicates the channel that just finished, which is the one
     // we're about to reload.

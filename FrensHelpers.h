@@ -1,7 +1,7 @@
 
 #ifndef FRENSHELPERS
 #define FRENSHELPERS
-#if GPIOHSTXD0 && GPIOHSTXD1 && GPIOHSTXD2 && GPIOHSTXCK
+#if GPIOHSTXD0 && GPIOHSTXD1 && GPIOHSTXD2 && GPIOHSTXCK && PICO_RP2350
 #define HSTX 1
 #else
 #define HSTX 0
@@ -26,6 +26,7 @@
 #include "hstx.h"
 // #include "mcp4822.h"     // SPI Audio using MCP4822 DAC. Works but not used
 #endif
+
 #include "external_audio.h"
 
 #ifndef PSRAM_CS_PIN
