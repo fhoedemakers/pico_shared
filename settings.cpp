@@ -142,6 +142,11 @@ namespace FrensSettings
             printf("Error opening %s: %d\n", getSettingsFileName(), fr);
         }
         printsettings();
+#if HSTX
+        printf("Setting HDMI DVI mode to %d\n", settings.flags.useExtAudio);
+        video_output_set_dvi_mode(settings.flags.useExtAudio);
+        printf("done\n");
+#endif
     }
 
     void loadsettings()

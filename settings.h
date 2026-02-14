@@ -6,7 +6,7 @@
 
 
 extern struct settings settings;
-#define SETTINGS_VERSION 104
+#define SETTINGS_VERSION 105
 
 struct settings
 {
