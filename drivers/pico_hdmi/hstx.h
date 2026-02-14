@@ -20,7 +20,7 @@ void hstx_waitForVSync(void);
 uint8_t *hstx_getframebuffer(void);
 void hstx_setScanLines(int enable);
 uint16_t *hstx_getlineFromFramebuffer(int scanline);
-void hstx_init(void);
+void hstx_init(bool dviOnly);
 void video_output_core1_run(void);
 void hstx_push_audio_sample(const int left, const int right);
 #ifdef __cplusplus
