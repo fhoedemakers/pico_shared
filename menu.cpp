@@ -72,7 +72,6 @@ const __UINT16_TYPE__ NesMenuPalette[64] = {
 
 int NesMenuPaletteItems = sizeof(NesMenuPalette) / sizeof(NesMenuPalette[0]);
 static char connectedGamePadName[sizeof(io::GamePadState::GamePadName)];
-static bool useFrameBuffer = false;
 #define SCREENBUFCELLS SCREEN_ROWS *SCREEN_COLS
 charCell *screenBuffer;
 
@@ -90,6 +89,7 @@ static char buttonLabel2[2]; // e.g., "A", "B", "
 static char line[41];
 static char valueBuf[16]; // separate buffer for numeric values
 static bool exitMenu = false;
+static bool settingsActive = false;
 static WORD *WorkLineRom = nullptr;
 
 #if PICO_RP2350
@@ -355,29 +355,15 @@ void RomSelect_DrawLine(int line, int selectedRow, int pixelsToSkip = 0)
         uint c = screenBuffer[charIndex].charvalue;
         if (row == selectedRow)
         {
-            if (useFrameBuffer)
-            {
-                fgcolor = screenBuffer[charIndex].bgcolor;
-                bgcolor = screenBuffer[charIndex].fgcolor;
-            }
-            else
-            {
-                fgcolor = NesMenuPalette[screenBuffer[charIndex].bgcolor];
-                bgcolor = NesMenuPalette[screenBuffer[charIndex].fgcolor];
-            }
+
+            fgcolor = settingsActive ? NesMenuPalette[CWHITE] : NesMenuPalette[settings.bgcolor];
+            bgcolor = settingsActive ? NesMenuPalette[CBLACK] : NesMenuPalette[settings.fgcolor];
         }
         else
         {
-            if (useFrameBuffer)
-            {
-                fgcolor = screenBuffer[charIndex].fgcolor;
-                bgcolor = screenBuffer[charIndex].bgcolor;
-            }
-            else
-            {
-                fgcolor = NesMenuPalette[screenBuffer[charIndex].fgcolor];
-                bgcolor = NesMenuPalette[screenBuffer[charIndex].bgcolor];
-            }
+
+            fgcolor = NesMenuPalette[screenBuffer[charIndex].fgcolor];
+            bgcolor = NesMenuPalette[screenBuffer[charIndex].bgcolor];
         }
 
         int rowInChar = line % FONT_CHAR_HEIGHT;
@@ -667,6 +653,24 @@ void ClearScreen(int color)
     }
 }
 
+inline void showhdmilabel()
+{
+    short fgcolor = settingsActive ? CBLACK : settings.fgcolor;
+    short bgcolor = settingsActive ? CWHITE : settings.bgcolor;
+#if HSTX
+    if (video_output_get_dvi_mode())
+    {
+        putText(SCREEN_COLS - 4, 0, "DVI", fgcolor, bgcolor);
+    }
+    else
+    {
+        putText(SCREEN_COLS - 5, 0, "HDMI", fgcolor, bgcolor);
+    }
+#else
+    putText(SCREEN_COLS - 5, 0, "HDMI", fgcolor, bgcolor);
+#endif
+}
+
 char *menutitle = nullptr;
 
 void displayRoms(Frens::RomLister &romlister, int startIndex)
@@ -679,6 +683,7 @@ void displayRoms(Frens::RomLister &romlister, int startIndex)
     snprintf(s, sizeof(s), "- %s -", menutitle);
     putText(SCREEN_COLS / 2 - strlen(s) / 2, 0, s, settings.fgcolor, settings.bgcolor);
     snprintf(buffer, sizeof(buffer), "%uMHZ", clock_get_hz(clk_sys) / 1000000);
+    showhdmilabel();
     putText(1, 0, buffer, settings.fgcolor, settings.bgcolor);
     strcpy(s, "Choose a rom to play:");
     putText(SCREEN_COLS / 2 - strlen(s) / 2, 1, s, settings.fgcolor, settings.bgcolor);
@@ -2078,7 +2083,7 @@ int showSettingsMenu(bool calledFromGame)
     int rval = 0;
     int margintop = 0;
     int marginbottom = 0;
-
+    settingsActive = true;
     // Allocate screen buffer if called from game
     if (calledFromGame)
     {
@@ -2202,7 +2207,7 @@ int showSettingsMenu(bool calledFromGame)
         ClearScreen(CWHITE); // Always white background
 
         int row = 0;
-
+        showhdmilabel();
         // Centered Title
         constexpr int titleLen = 13; // "-- Settings --"
         int titleCol = (SCREEN_COLS - titleLen) / 2;
@@ -2921,6 +2926,7 @@ int showSettingsMenu(bool calledFromGame)
 #if USE_I2S_AUDIO == PICO_AUDIO_I2S_DRIVER_TLV320
     wavplayer::reset(); // stop menu music
 #endif
+    settingsActive = false; 
     return rval;
 }
 void setclockInFlashAndReboot(uint32_t freq, vreg_voltage voltage)
