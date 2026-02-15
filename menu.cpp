@@ -89,7 +89,7 @@ static char buttonLabel1[2]; // e.g., "A", "B", "X", "O"
 static char buttonLabel2[2]; // e.g., "A", "B", "
 static char line[41];
 static char valueBuf[16]; // separate buffer for numeric values
-
+static bool exitMenu = false;
 static WORD *WorkLineRom = nullptr;
 
 #if PICO_RP2350
@@ -300,7 +300,24 @@ void RomSelect_PadState(DWORD *pdwPad1, bool ignorepushed = false)
         pushed = v;
     }
     // SELECT no longer changes colors directly; it opens the options menu in the main loop.
-
+    if ( p1 & SELECT )
+    {
+#if HSTX
+       //printf("SELECT pressed, opening options menu\n");
+       if (pushed & A){
+           
+            v = p1 =pushed = 0; // Clear all inputs to prevent accidental menu navigation after resetting to DVI mode           
+            if (!settings.flags.useExtAudio) {
+                 printf("SELECT + A long press detected, defaulting to DVI\n");
+                settings.flags.useExtAudio = 1; // Force DVI 
+                FrensSettings::savesettings();
+                exitMenu = true; // Signal to exit menu after saving settings
+            }
+        
+           
+       }
+#endif
+    }
     if (pushed || longpressTreshold > LONG_PRESS_TRESHOLD)
     {
         if (!pushed)
@@ -1685,7 +1702,7 @@ bool showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
         bool autosaveEnabled = (Frens::fileExists(tmppath));
         printf("Auto save configured: %s\n", autosaveEnabled ? "Yes" : "No");
         int selected = 0;
-        bool exitMenu = false;
+        exitMenu = false;
         bool saved = false;
         DWORD pad = 0;
         int idleStart = -1;
@@ -2176,7 +2193,7 @@ int showSettingsMenu(bool calledFromGame)
     const int defaultRowScreen = cancelRowScreen + 1;
     const int helpRowScreen = defaultRowScreen + 2; // extra spacer before help line
     int selectedRowLocal = rowStartOptions;         // first selectable option row
-    bool exitMenu = false;
+    exitMenu = false;
     bool applySettings = false; // true when SAVE, false when CANCEL
     // lambda to redraw the entire menu
     auto redraw = [&]()
