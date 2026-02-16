@@ -99,7 +99,7 @@ namespace FrensSettings
         settings.horzontalScrollIndex = 0;
         settings.fgcolor = DEFAULT_FGCOLOR;
         settings.bgcolor = DEFAULT_BGCOLOR;
-        settings.flags.useExtAudio = 0; // default to use DVIAudio
+        settings.flags.useExtAudio = (HW_CONFIG == 13); // external audio switches to DVI mode, default on Murmulator M2.
         settings.flags.enableVUMeter = ENABLE_VU_METER ? 1 : 0; // default to ENABLE_VU_METER
         settings.flags.borderMode = THEMEDBORDER;
         settings.flags.dmgLCDPalette = 0; // default DMG LCD Palette, DMG Green
