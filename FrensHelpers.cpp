@@ -192,6 +192,7 @@ namespace Frens
         hstx_waitForVSync();
 #endif
     }
+#if 0
     /// @brief Poor way to pace frames to 60fps
     /// @param init
     void PaceFrames60fps(bool init)
@@ -221,7 +222,7 @@ namespace Frens
         next_frame_time = delayed_by_us(next_frame_time, 16666); // 1/60s = 16666us
 #endif
     }
-
+#endif
     //
     //
     // test if string ends with suffix
