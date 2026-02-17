@@ -308,7 +308,7 @@ void RomSelect_PadState(DWORD *pdwPad1, bool ignorepushed = false)
            
             v = p1 =pushed = 0; // Clear all inputs to prevent accidental menu navigation after resetting to DVI mode           
             if (!settings.flags.useExtAudio) {
-                 printf("SELECT + A long press detected, defaulting to DVI\n");
+                 printf("SELECT + A detected, defaulting to DVI\n");
                 settings.flags.useExtAudio = 1; // Force DVI 
                 FrensSettings::savesettings();
                 exitMenu = true; // Signal to exit menu after saving settings
