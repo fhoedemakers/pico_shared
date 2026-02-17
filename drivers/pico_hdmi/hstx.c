@@ -152,11 +152,11 @@ void __not_in_flash_func(hstx_push_audio_sample)(const int left, const int right
     }
 }
 
-void hstx_init(void)
+void hstx_init(bool dviOnly)
 {
+    video_output_set_dvi_mode(dviOnly);
     hstx_di_queue_init();
-    video_output_set_vsync_callback(hstx_vsync_callbackfunc);
-    //video_output_set_dvi_mode(true);
+    video_output_set_vsync_callback(hstx_vsync_callbackfunc);   
     video_output_init(640, 480);
     pico_hdmi_set_audio_sample_rate(44100);
     video_output_set_scanline_callback(scanline_callbackfunc);

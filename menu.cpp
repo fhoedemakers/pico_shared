@@ -72,7 +72,6 @@ const __UINT16_TYPE__ NesMenuPalette[64] = {
 
 int NesMenuPaletteItems = sizeof(NesMenuPalette) / sizeof(NesMenuPalette[0]);
 static char connectedGamePadName[sizeof(io::GamePadState::GamePadName)];
-static bool useFrameBuffer = false;
 #define SCREENBUFCELLS SCREEN_ROWS *SCREEN_COLS
 charCell *screenBuffer;
 
@@ -89,7 +88,8 @@ static char buttonLabel1[2]; // e.g., "A", "B", "X", "O"
 static char buttonLabel2[2]; // e.g., "A", "B", "
 static char line[41];
 static char valueBuf[16]; // separate buffer for numeric values
-
+static bool exitMenu = false;
+static bool settingsActive = false;
 static WORD *WorkLineRom = nullptr;
 
 #if PICO_RP2350
@@ -300,7 +300,24 @@ void RomSelect_PadState(DWORD *pdwPad1, bool ignorepushed = false)
         pushed = v;
     }
     // SELECT no longer changes colors directly; it opens the options menu in the main loop.
-
+    if ( p1 & SELECT )
+    {
+#if HSTX
+       //printf("SELECT pressed, opening options menu\n");
+       if (pushed & A){
+           
+            v = p1 =pushed = 0; // Clear all inputs to prevent accidental menu navigation after resetting to DVI mode           
+            if (!settings.flags.useExtAudio) {
+                 printf("SELECT + A detected, defaulting to DVI\n");
+                settings.flags.useExtAudio = 1; // Force DVI 
+                FrensSettings::savesettings();
+                exitMenu = true; // Signal to exit menu after saving settings
+            }
+        
+           
+       }
+#endif
+    }
     if (pushed || longpressTreshold > LONG_PRESS_TRESHOLD)
     {
         if (!pushed)
@@ -338,29 +355,15 @@ void RomSelect_DrawLine(int line, int selectedRow, int pixelsToSkip = 0)
         uint c = screenBuffer[charIndex].charvalue;
         if (row == selectedRow)
         {
-            if (useFrameBuffer)
-            {
-                fgcolor = screenBuffer[charIndex].bgcolor;
-                bgcolor = screenBuffer[charIndex].fgcolor;
-            }
-            else
-            {
-                fgcolor = NesMenuPalette[screenBuffer[charIndex].bgcolor];
-                bgcolor = NesMenuPalette[screenBuffer[charIndex].fgcolor];
-            }
+
+            fgcolor = settingsActive ? NesMenuPalette[CWHITE] : NesMenuPalette[settings.bgcolor];
+            bgcolor = settingsActive ? NesMenuPalette[CBLACK] : NesMenuPalette[settings.fgcolor];
         }
         else
         {
-            if (useFrameBuffer)
-            {
-                fgcolor = screenBuffer[charIndex].fgcolor;
-                bgcolor = screenBuffer[charIndex].bgcolor;
-            }
-            else
-            {
-                fgcolor = NesMenuPalette[screenBuffer[charIndex].fgcolor];
-                bgcolor = NesMenuPalette[screenBuffer[charIndex].bgcolor];
-            }
+
+            fgcolor = NesMenuPalette[screenBuffer[charIndex].fgcolor];
+            bgcolor = NesMenuPalette[screenBuffer[charIndex].bgcolor];
         }
 
         int rowInChar = line % FONT_CHAR_HEIGHT;
@@ -650,6 +653,24 @@ void ClearScreen(int color)
     }
 }
 
+inline void showhdmilabel()
+{
+    short fgcolor = settingsActive ? CBLACK : settings.fgcolor;
+    short bgcolor = settingsActive ? CWHITE : settings.bgcolor;
+#if HSTX
+    if (video_output_get_dvi_mode())
+    {
+        putText(SCREEN_COLS - 4, 0, "DVI", fgcolor, bgcolor);
+    }
+    else
+    {
+        putText(SCREEN_COLS - 5, 0, "HDMI", fgcolor, bgcolor);
+    }
+#else
+    putText(SCREEN_COLS - 5, 0, "HDMI", fgcolor, bgcolor);
+#endif
+}
+
 char *menutitle = nullptr;
 
 void displayRoms(Frens::RomLister &romlister, int startIndex)
@@ -662,6 +683,7 @@ void displayRoms(Frens::RomLister &romlister, int startIndex)
     snprintf(s, sizeof(s), "- %s -", menutitle);
     putText(SCREEN_COLS / 2 - strlen(s) / 2, 0, s, settings.fgcolor, settings.bgcolor);
     snprintf(buffer, sizeof(buffer), "%uMHZ", clock_get_hz(clk_sys) / 1000000);
+    showhdmilabel();
     putText(1, 0, buffer, settings.fgcolor, settings.bgcolor);
     strcpy(s, "Choose a rom to play:");
     putText(SCREEN_COLS / 2 - strlen(s) / 2, 1, s, settings.fgcolor, settings.bgcolor);
@@ -1685,7 +1707,7 @@ bool showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
         bool autosaveEnabled = (Frens::fileExists(tmppath));
         printf("Auto save configured: %s\n", autosaveEnabled ? "Yes" : "No");
         int selected = 0;
-        bool exitMenu = false;
+        exitMenu = false;
         bool saved = false;
         DWORD pad = 0;
         int idleStart = -1;
@@ -2045,7 +2067,8 @@ bool showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
 #else
     hstx_setScanLines(settings.flags.scanlineOn);
 #endif
-    Frens::PaceFrames60fps(true);
+    //Frens::PaceFrames60fps(true);
+    Frens::waitForVSync();
     printf("Exiting save state menu.\n");
     Frens::f_free(screenBuffer);
     return saveStateLoadedOK;
@@ -2061,7 +2084,7 @@ int showSettingsMenu(bool calledFromGame)
     int rval = 0;
     int margintop = 0;
     int marginbottom = 0;
-
+    settingsActive = true;
     // Allocate screen buffer if called from game
     if (calledFromGame)
     {
@@ -2176,7 +2199,7 @@ int showSettingsMenu(bool calledFromGame)
     const int defaultRowScreen = cancelRowScreen + 1;
     const int helpRowScreen = defaultRowScreen + 2; // extra spacer before help line
     int selectedRowLocal = rowStartOptions;         // first selectable option row
-    bool exitMenu = false;
+    exitMenu = false;
     bool applySettings = false; // true when SAVE, false when CANCEL
     // lambda to redraw the entire menu
     auto redraw = [&]()
@@ -2185,7 +2208,7 @@ int showSettingsMenu(bool calledFromGame)
         ClearScreen(CWHITE); // Always white background
 
         int row = 0;
-
+        showhdmilabel();
         // Centered Title
         constexpr int titleLen = 13; // "-- Settings --"
         int titleCol = (SCREEN_COLS - titleLen) / 2;
@@ -2899,11 +2922,13 @@ int showSettingsMenu(bool calledFromGame)
         // Speaker can be muted/unmuted from settings menu
         EXT_AUDIO_MUTE_INTERNAL_SPEAKER(settings.flags.fruitJamEnableInternalSpeaker == 0);
         EXT_AUDIO_SETVOLUME(settings.fruitjamVolumeLevel);
-        Frens::PaceFrames60fps(true);
+        //Frens::PaceFrames60fps(true);
+         Frens::waitForVSync();
     }
 #if USE_I2S_AUDIO == PICO_AUDIO_I2S_DRIVER_TLV320
     wavplayer::reset(); // stop menu music
 #endif
+    settingsActive = false; 
     return rval;
 }
 void setclockInFlashAndReboot(uint32_t freq, vreg_voltage voltage)
@@ -2943,8 +2968,9 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
 #else
     hstx_setScanLines(false);
 #endif
-    abSwapped = 1; // Swap A and B buttons, so menu is consistent accrross different emilators
-    Frens::PaceFrames60fps(true);
+    abSwapped = 1; // Swap A and B buttons, so menu is consistent across different emulators
+   // Frens::PaceFrames60fps(true);
+    Frens::waitForVSync();
     //
     menutitle = (char *)title;
     int totalFrames = -1;
@@ -3510,5 +3536,6 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
         // Never return
     }
     Frens::restoreScanlines();
-    Frens::PaceFrames60fps(true); // reset frame pacing
+    //Frens::PaceFrames60fps(true); // reset frame pacing
+    Frens::waitForVSync();
 }

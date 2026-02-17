@@ -99,7 +99,7 @@ namespace FrensSettings
         settings.horzontalScrollIndex = 0;
         settings.fgcolor = DEFAULT_FGCOLOR;
         settings.bgcolor = DEFAULT_BGCOLOR;
-        settings.flags.useExtAudio = 0; // default to use DVIAudio
+        settings.flags.useExtAudio = (HW_CONFIG == 13); // when 1: enable DVI mode (disables HDMI audio/data islands, assumes external audio hardware); default on Murmulator M2 (HW_CONFIG == 13).
         settings.flags.enableVUMeter = ENABLE_VU_METER ? 1 : 0; // default to ENABLE_VU_METER
         settings.flags.borderMode = THEMEDBORDER;
         settings.flags.dmgLCDPalette = 0; // default DMG LCD Palette, DMG Green
@@ -142,6 +142,11 @@ namespace FrensSettings
             printf("Error opening %s: %d\n", getSettingsFileName(), fr);
         }
         printsettings();
+#if HSTX
+        printf("Setting HDMI DVI mode to %d\n", settings.flags.useExtAudio);
+        video_output_set_dvi_mode(settings.flags.useExtAudio);
+        printf("done\n");
+#endif
     }
 
     void loadsettings()
