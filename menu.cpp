@@ -2968,7 +2968,7 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
 #else
     hstx_setScanLines(false);
 #endif
-    abSwapped = 1; // Swap A and B buttons, so menu is consistent accrross different emilators
+    abSwapped = 1; // Swap A and B buttons, so menu is consistent across different emulators
    // Frens::PaceFrames60fps(true);
     Frens::waitForVSync();
     //
