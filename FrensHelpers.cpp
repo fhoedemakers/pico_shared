@@ -192,7 +192,7 @@ namespace Frens
         hstx_waitForVSync();
 #endif
     }
-#if 0
+#if 1
     /// @brief Poor way to pace frames to 60fps
     /// @param init
     void PaceFrames60fps(bool init)
