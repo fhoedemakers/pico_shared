@@ -2304,6 +2304,12 @@ int showSettingsMenu(bool calledFromGame)
                 value = working.flags.audioEnabled ? "ON" : "OFF";
                 break;
             }
+              case MenuSettingsIndex::MOPT_DISPLAY_MODE:
+            {
+                label = "Display Mode";
+                value = working.flags.useDVIModeForHDMI ? "DVI" : "HDMI";
+                break;
+            }
             case MenuSettingsIndex::MOPT_EXTERNAL_AUDIO:
             {
                 label = "External Audio";
@@ -2724,6 +2730,10 @@ int showSettingsMenu(bool calledFromGame)
                     case MOPT_AUDIO_ENABLE:
                         working.flags.audioEnabled = !working.flags.audioEnabled;
                         working.flags.frameSkip = working.flags.audioEnabled;
+                        break;
+                    case MOPT_DISPLAY_MODE:
+                        working.flags.useDVIModeForHDMI = !working.flags.useDVIModeForHDMI;
+                        working.flags.useExtAudio = working.flags.useDVIModeForHDMI;
                         break;
                     case MOPT_EXTERNAL_AUDIO:
                         working.flags.useExtAudio = !working.flags.useExtAudio;

@@ -6,7 +6,7 @@
 
 
 extern struct settings settings;
-#define SETTINGS_VERSION 107
+#define SETTINGS_VERSION 108
 
 struct settings
 {
@@ -34,7 +34,8 @@ struct settings
         unsigned short fruitJamEnableInternalSpeaker : 1; // 1 = enable Fruit Jam internal speaker, 0 = disable
         unsigned short rapidFireOnA : 1;      // 1 = rapid fire on A button, 0 = off
         unsigned short rapidFireOnB : 1;      // 1 = rapid fire on B button, 0 = off
-        unsigned short reserved : 3;         // keep struct size the same
+        unsigned short useDVIModeForHDMI : 1;      // 1 = use DVI mode for HDMI output (lower latency, but no audio), 0 = use HDMI mode (required for audio, but slightly higher latency)
+        unsigned short reserved : 2;         // keep struct size the same
     } flags; // Total 16 bits
    
 };
