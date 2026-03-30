@@ -215,6 +215,7 @@ int Menu_LoadFrame()
 #else
         hstx_getframecounter();
 #endif
+    EXT_AUDIO_POLL_HEADPHONE();
     auto onOff = hw_divider_s32_quotient_inlined(count, 60) & 1;
     Frens::blinkLed(onOff);
 #if NES_PIN_CLK != -1
