@@ -82,7 +82,7 @@ namespace FrensSettings
         printf("displayFrameRate: %d\n", settings.flags.displayFrameRate);
         printf("frameSkip: %d\n", settings.flags.frameSkip);
         printf("scanlineOn: %d\n", settings.flags.scanlineOn);
-        printf("fruitJamEnableInternalSpeaker: %d\n", settings.flags.fruitJamEnableInternalSpeaker);
+        //printf("fruitJamEnableInternalSpeaker: %d\n", settings.flags.fruitJamEnableInternalSpeaker);
         printf("fruitjamVolumeLevel: %d\n", settings.fruitjamVolumeLevel);
         printf("rapidFireOnA: %d\n", settings.flags.rapidFireOnA);
         printf("rapidFireOnB: %d\n", settings.flags.rapidFireOnB);
@@ -106,7 +106,7 @@ namespace FrensSettings
         settings.flags.audioEnabled = 1; // audio on by default
         settings.flags.displayFrameRate = 0; // default: do not show FPS overlay
         settings.flags.frameSkip = 1; // default: frame skipping enabled (Genesis needs it)
-        settings.flags.fruitJamEnableInternalSpeaker = 1; // default: enable Fruit Jam internal speaker
+        //settings.flags.fruitJamEnableInternalSpeaker = 1; // default: enable Fruit Jam internal speaker
         settings.flags.rapidFireOnA = 0; // default: rapid fire off
         settings.flags.rapidFireOnB = 0; // default: rapid fire off
         settings.fruitjamVolumeLevel = 16; // default volume level in db to mid (0-24)

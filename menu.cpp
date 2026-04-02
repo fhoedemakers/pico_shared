@@ -2337,12 +2337,12 @@ int showSettingsMenu(bool calledFromGame)
                 value = working.flags.enableVUMeter ? "ON" : "OFF";
                 break;
             }
-            case MenuSettingsIndex::MOPT_FRUITJAM_INTERNAL_SPEAKER:
-            {
-                label = "Fruit Jam Internal Speaker";
-                value = working.flags.fruitJamEnableInternalSpeaker ? "ON" : "OFF";
-                break;
-            }
+            // case MenuSettingsIndex::MOPT_FRUITJAM_INTERNAL_SPEAKER:
+            // {
+            //     label = "Fruit Jam Internal Speaker";
+            //     value = working.flags.fruitJamEnableInternalSpeaker ? "ON" : "OFF";
+            //     break;
+            // }
             case MenuSettingsIndex::MOPT_FRUITJAM_VOLUME_CONTROL:
             {
                 label = "Fruit Jam Volume Control";
@@ -2795,11 +2795,11 @@ int showSettingsMenu(bool calledFromGame)
                         working.flags.frameSkip = !working.flags.frameSkip;
                         break;
                     }
-                    case MOPT_FRUITJAM_INTERNAL_SPEAKER:
-                    {
-                        working.flags.fruitJamEnableInternalSpeaker = !working.flags.fruitJamEnableInternalSpeaker;
-                        break;
-                    }
+                    // case MOPT_FRUITJAM_INTERNAL_SPEAKER:
+                    // {
+                    //     working.flags.fruitJamEnableInternalSpeaker = !working.flags.fruitJamEnableInternalSpeaker;
+                    //     break;
+                    // }
                     case MOPT_FRUITJAM_VOLUME_CONTROL:
                     {
                         if (right)
@@ -2931,7 +2931,7 @@ int showSettingsMenu(bool calledFromGame)
         hstx_setScanLines(settings.flags.scanlineOn);
 #endif
         // Speaker can be muted/unmuted from settings menu
-        EXT_AUDIO_MUTE_INTERNAL_SPEAKER(settings.flags.fruitJamEnableInternalSpeaker == 0);
+        //EXT_AUDIO_MUTE_INTERNAL_SPEAKER(settings.flags.fruitJamEnableInternalSpeaker == 0);
         EXT_AUDIO_SETVOLUME(settings.fruitjamVolumeLevel);
         //Frens::PaceFrames60fps(true);
         Frens::waitForVSync();
