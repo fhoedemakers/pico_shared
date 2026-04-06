@@ -17,16 +17,15 @@ static volatile int scanlineMode = 0;
 #define VRes (MODE_V_ACTIVE_LINES / 2)  // 240
 void hstx_waitForVSync(void)
 {
-#if 1
-    while (HSTX_vblank)
+    // Wait until the frame counter advances, indicating a new vsync edge.
+    // video_frame_count is incremented exactly once per frame in the DMA ISR
+    // on core1 (video_output.c), so this guarantees one-frame synchronization
+    // without the race conditions of a bool flag approach.
+    uint32_t current = video_frame_count;
+    while (video_frame_count == current)
     {
         tight_loop_contents();
     }
-    while (!HSTX_vblank)
-    {
-        tight_loop_contents();
-    }
-#endif
 }
 uint8_t *hstx_getframebuffer(void)
 {

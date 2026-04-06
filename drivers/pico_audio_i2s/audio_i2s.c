@@ -38,6 +38,7 @@ static volatile size_t write_index = 0;
 static volatile size_t read_index = 0;
 static int _driver = 0;
 static volatile bool speakerIsMuted = false;
+static volatile bool hp_irq_pending = false;
 bool dacError = false;
 // Audio I2S hardware structure that holds the state machine, PIO instance, and DMA channel.
 static audio_i2s_hw_t audio_i2s = {
@@ -214,11 +215,10 @@ void speakerUnmute(void)
 	modifyRegister(0x2A, MASK_SPK_UNMUTE, MASK_SPK_UNMUTE);
 }
 static volatile uint32_t last_irq_time;
-// Handle the GPIO callback for mute/unmute
+// Handle the GPIO callback for mute/unmute (button toggle mode)
 static void gpio_callback(uint gpio, uint32_t events)
 {
 	// No printfs in IRQs
-	// printf("GPIO callback on GPIO %d, events: %u\n", gpio, events);
 	uint32_t now = to_ms_since_boot(get_absolute_time());
 	if (now - last_irq_time < 50)
 	{
@@ -227,7 +227,6 @@ static void gpio_callback(uint gpio, uint32_t events)
 	last_irq_time = now;
 	if (events & GPIO_IRQ_EDGE_RISE)
 	{
-		// printf("GPIO %d went HIGH\n", gpio);
 		speakerIsMuted = !speakerIsMuted; // Toggle mute state
 		if (speakerIsMuted)
 		{
@@ -238,20 +237,65 @@ static void gpio_callback(uint gpio, uint32_t events)
 			speakerUnmute();
 		}
 	}
-	if (events & GPIO_IRQ_EDGE_FALL)
+}
+
+// Handle the GPIO callback for DAC INT1 headphone detection
+static void hp_int1_callback(uint gpio, uint32_t events)
+{
+	// No printfs in IRQs
+	uint32_t now = to_ms_since_boot(get_absolute_time());
+	if (now - last_irq_time < 200)
 	{
-		// printf("GPIO %d went LOW\n", gpio);
+		return;
+	}
+	last_irq_time = now;
+	if (events & GPIO_IRQ_EDGE_RISE)
+	{
+		hp_irq_pending = true;
 	}
 }
 
-// Set up the IRQ handler to mute/unmute the speaker on Fruit Jam
+/// @brief Read headphone state from DAC and mute/unmute speaker accordingly.
+/// Reads the sticky flag register (Page 0 / Reg 0x2C) to clear the interrupt,
+/// and the non-sticky flag register (Page 0 / Reg 0x2E) D4 to determine
+/// whether a headset is currently inserted.
+/// Also reads the headset type from Page 0 / Reg 0x43 D6-D5.
+static void tlv320_handle_headphone_event()
+{
+	setPage(0);
+	// Read sticky flags to acknowledge/clear the interrupt
+	uint8_t sticky = readRegister(0x2C);
+	// Read non-sticky flags for current headphone state
+	uint8_t flags = readRegister(0x2E);
+	bool hp_inserted = (flags & 0x10) != 0; // D4: 1 = headset inserted, 0 = removed
+
+	// Read headset type from register 0x43 D6-D5
+	uint8_t hsdet = readRegister(0x43);
+	uint8_t hstype = (hsdet >> 5) & 0x03;
+	// 00 = no headset, 01 = without mic, 11 = with mic
+
+	printf("Headphone event: %s (type=%d, sticky=0x%02X, flags=0x%02X)\n",
+		   hp_inserted ? "inserted" : "removed", hstype, sticky, flags);
+
+	if (hp_inserted)
+	{
+		speakerMute();
+	}
+	else
+	{
+		speakerUnmute();
+	}
+	speakerIsMuted = hp_inserted;
+}
+
+// Set up the IRQ handler to mute/unmute the speaker
 void setupHeadphoneDetectionInterrupt(int gpio, bool gpioisbutton)
 {
 	speakerIsMuted = false; // Reset mute state on headphone detection setup
 	printf("Setting up headphone detection on GPIO %d, is_button=%d\n", gpio, gpioisbutton);
-	// Initialize the GPIO pin for headphone detection
 	if (gpioisbutton)
 	{
+		// Button toggle mode: each press toggles speaker mute state
 		gpio_init(gpio);
 		gpio_set_dir(gpio, GPIO_IN);
 		gpio_pull_down(gpio);
@@ -259,7 +303,20 @@ void setupHeadphoneDetectionInterrupt(int gpio, bool gpioisbutton)
 	}
 	else
 	{
-		printf("TODO: Implement headphone via INT1/GPIO1 on DAC\n");
+		// DAC INT1/GPIO1 mode: the DAC's internal headphone detection block
+		// drives GPIO1 with INT1 pulses on headset insertion/removal events.
+		// The DAC registers are configured in tlv320_init():
+		//   Reg 0x43: Headset detection enabled with debounce
+		//   Reg 0x30: INT1 triggered by headset-insertion detect, multiple pulses
+		//   Reg 0x33: GPIO1 outputs INT1
+		printf("Setting up DAC INT1 headphone detection on GPIO %d\n", gpio);
+		gpio_init(gpio);
+		gpio_set_dir(gpio, GPIO_IN);
+		gpio_pull_down(gpio);
+		gpio_set_irq_enabled_with_callback(gpio, GPIO_IRQ_EDGE_RISE, true, &hp_int1_callback);
+
+		// Check initial headphone state (outside ISR context)
+		tlv320_handle_headphone_event();
 	}
 }
 void audio_i2s_setVolume(int8_t level) {
@@ -459,9 +516,21 @@ static void tlv320_init()
 	modifyRegister(0x2e, 0xFF, 0x0b);
 	setPage(0);
 
-	modifyRegister(0x43, 0x80, 0x80); // Headset Detect
-	modifyRegister(0x30, 0x80, 0x80); // INT1 Control
-	modifyRegister(0x33, 0x3C, 0x14); // GPIO1
+	// Configure timer clock to use internal oscillator for headset detection debounce.
+	// Default is external MCLK (D7=1), but MCLK is not connected on this board
+	// (PLL_CLKIN = BCLK). Without this, the debounce clock has no source and
+	// headset detection will not function.
+	// Page 3 / Register 16: D7=0 → internal oscillator
+	setPage(3);
+	modifyRegister(0x10, 0x80, 0x00);
+	setPage(0);
+
+	// Headset detection: enable (D7=1), 64ms debounce for insertion (D4-D2=010)
+	modifyRegister(0x43, 0x9C, 0x88);
+	// INT1: headset-insertion detect (D7=1), multiple pulses until flags read (D0=1)
+	modifyRegister(0x30, 0x81, 0x81);
+	// GPIO1: output = INT1 (D5-D2=0101)
+	modifyRegister(0x33, 0x3C, 0x14);
 
 	// DAC Setup
 	modifyRegister(0x3F, 0xC0, 0xC0);
@@ -597,60 +666,18 @@ static void tlv320_init()
 	sleep_ms(100);
 }
 
-// Headphone status check, not working for now
-#if 0
-uint8_t last_status = -1;
-void tlv320_poll_headphone_status()
-{
-
-	setPage(0);
-	// read_tlv320(0x2E, &data, 1); // Read the headphone detection register
-	uint8_t data = readRegister(0x43); // Read the headphone detection register
-	// printf("Headphone status: %02X\n", data);
-	data &= 0b00110000; // Mask to get headphone status bits
-	data >>= 4;			// Shift to get the status bits in the lower bits
-	// printf("Headphone after shift: %02X\n", data);
-	//  read_tlv320(0x2C, &data, 1); // Read the headphone detection register
-	data = readRegister(0x2c);
-	// printf("Headphone status: %02X\n", data);
-	data &= 0b00110000; // Mask to get headphone status bits
-	data >>= 4;			// Shift to get the status bits in the lower bits
-						// printf("Headphone after shift: %02X\n", data);
-
-
-
-	if (last_status != data)
-	{
-		last_status = data;
-		switch (data)
-		{
-		case TLV320_HEADPHONE_NOTCONNECTED:
-			printf("Headphone not connected");
-			break;
-		case TLV320_HEADPHONE_CONNECTED:
-			printf("Headphone connected");
-		case TLV320_HEADPHONE_CONNECTED_WITH_MIC:
-			printf(" with microphone");
-			break;
-		default:
-			printf("Unknown headphone status: %02X", data);
-			break;
-		}
-		last_status = data;
-		printf("\n");
-	}
-
-	return;
-}
-
+/// @brief Poll for pending headphone detection events.
+/// Call this periodically from the main loop to process headphone
+/// insertion/removal events detected via DAC INT1.
+/// When no INT1 interrupt is pending, this function returns immediately.
 void audio_i2s_poll_headphone_status()
 {
-	if (_driver == PICO_AUDIO_I2S_DRIVER_TLV320)
+	if (_driver == PICO_AUDIO_I2S_DRIVER_TLV320 && hp_irq_pending)
 	{
-		 tlv320_poll_headphone_status();
+		hp_irq_pending = false;
+		tlv320_handle_headphone_event();
 	}
 }
-#endif
 
 /**
  * @brief Updates the PIO frequency for the audio I2S interface.

@@ -215,6 +215,7 @@ int Menu_LoadFrame()
 #else
         hstx_getframecounter();
 #endif
+    EXT_AUDIO_POLL_HEADPHONE();
     auto onOff = hw_divider_s32_quotient_inlined(count, 60) & 1;
     Frens::blinkLed(onOff);
 #if NES_PIN_CLK != -1
@@ -307,9 +308,9 @@ void RomSelect_PadState(DWORD *pdwPad1, bool ignorepushed = false)
        if (pushed & A){
            
             v = p1 =pushed = 0; // Clear all inputs to prevent accidental menu navigation after resetting to DVI mode           
-            if (!settings.flags.useExtAudio) {
+            if (!settings.flags.useDVIModeForHDMI) {
                  printf("SELECT + A detected, defaulting to DVI\n");
-                settings.flags.useExtAudio = 1; // Force DVI 
+                settings.flags.useDVIModeForHDMI = 1; // Force DVI 
                 FrensSettings::savesettings();
                 exitMenu = true; // Signal to exit menu after saving settings
             }
@@ -2304,6 +2305,12 @@ int showSettingsMenu(bool calledFromGame)
                 value = working.flags.audioEnabled ? "ON" : "OFF";
                 break;
             }
+              case MenuSettingsIndex::MOPT_DISPLAY_MODE:
+            {
+                label = "Display Mode";
+                value = working.flags.useDVIModeForHDMI ? "DVI" : "HDMI";
+                break;
+            }
             case MenuSettingsIndex::MOPT_EXTERNAL_AUDIO:
             {
                 label = "External Audio";
@@ -2330,12 +2337,12 @@ int showSettingsMenu(bool calledFromGame)
                 value = working.flags.enableVUMeter ? "ON" : "OFF";
                 break;
             }
-            case MenuSettingsIndex::MOPT_FRUITJAM_INTERNAL_SPEAKER:
-            {
-                label = "Fruit Jam Internal Speaker";
-                value = working.flags.fruitJamEnableInternalSpeaker ? "ON" : "OFF";
-                break;
-            }
+            // case MenuSettingsIndex::MOPT_FRUITJAM_INTERNAL_SPEAKER:
+            // {
+            //     label = "Fruit Jam Internal Speaker";
+            //     value = working.flags.fruitJamEnableInternalSpeaker ? "ON" : "OFF";
+            //     break;
+            // }
             case MenuSettingsIndex::MOPT_FRUITJAM_VOLUME_CONTROL:
             {
                 label = "Fruit Jam Volume Control";
@@ -2725,6 +2732,10 @@ int showSettingsMenu(bool calledFromGame)
                         working.flags.audioEnabled = !working.flags.audioEnabled;
                         working.flags.frameSkip = working.flags.audioEnabled;
                         break;
+                    case MOPT_DISPLAY_MODE:
+                        working.flags.useDVIModeForHDMI = !working.flags.useDVIModeForHDMI;
+                        working.flags.useExtAudio = working.flags.useDVIModeForHDMI;
+                        break;
                     case MOPT_EXTERNAL_AUDIO:
                         working.flags.useExtAudio = !working.flags.useExtAudio;
                         break;
@@ -2784,11 +2795,11 @@ int showSettingsMenu(bool calledFromGame)
                         working.flags.frameSkip = !working.flags.frameSkip;
                         break;
                     }
-                    case MOPT_FRUITJAM_INTERNAL_SPEAKER:
-                    {
-                        working.flags.fruitJamEnableInternalSpeaker = !working.flags.fruitJamEnableInternalSpeaker;
-                        break;
-                    }
+                    // case MOPT_FRUITJAM_INTERNAL_SPEAKER:
+                    // {
+                    //     working.flags.fruitJamEnableInternalSpeaker = !working.flags.fruitJamEnableInternalSpeaker;
+                    //     break;
+                    // }
                     case MOPT_FRUITJAM_VOLUME_CONTROL:
                     {
                         if (right)
@@ -2920,10 +2931,10 @@ int showSettingsMenu(bool calledFromGame)
         hstx_setScanLines(settings.flags.scanlineOn);
 #endif
         // Speaker can be muted/unmuted from settings menu
-        EXT_AUDIO_MUTE_INTERNAL_SPEAKER(settings.flags.fruitJamEnableInternalSpeaker == 0);
+        //EXT_AUDIO_MUTE_INTERNAL_SPEAKER(settings.flags.fruitJamEnableInternalSpeaker == 0);
         EXT_AUDIO_SETVOLUME(settings.fruitjamVolumeLevel);
         //Frens::PaceFrames60fps(true);
-         Frens::waitForVSync();
+        Frens::waitForVSync();
     }
 #if USE_I2S_AUDIO == PICO_AUDIO_I2S_DRIVER_TLV320
     wavplayer::reset(); // stop menu music
@@ -2969,7 +2980,7 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
     hstx_setScanLines(false);
 #endif
     abSwapped = 1; // Swap A and B buttons, so menu is consistent across different emulators
-   // Frens::PaceFrames60fps(true);
+    //Frens::PaceFrames60fps(true);
     Frens::waitForVSync();
     //
     menutitle = (char *)title;

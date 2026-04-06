@@ -6,7 +6,7 @@
 
 
 extern struct settings settings;
-#define SETTINGS_VERSION 107
+#define SETTINGS_VERSION 109
 
 struct settings
 {
@@ -31,9 +31,10 @@ struct settings
         unsigned short displayFrameRate : 1; // 1 = show FPS overlay, 0 = do not show
         unsigned short frameSkip : 1;        // 1 = enable frame skipping, 0 = disable frame skipping
         unsigned short scanlineOn : 1;        // 1 = scanlines on, 0 = scanlines off
-        unsigned short fruitJamEnableInternalSpeaker : 1; // 1 = enable Fruit Jam internal speaker, 0 = disable
+       // unsigned short fruitJamEnableInternalSpeaker : 1; // 1 = enable Fruit Jam internal speaker, 0 = disable
         unsigned short rapidFireOnA : 1;      // 1 = rapid fire on A button, 0 = off
         unsigned short rapidFireOnB : 1;      // 1 = rapid fire on B button, 0 = off
+        unsigned short useDVIModeForHDMI : 1;      // 1 = use DVI mode for HDMI output (lower latency, but no audio), 0 = use HDMI mode (required for audio, but slightly higher latency)
         unsigned short reserved : 3;         // keep struct size the same
     } flags; // Total 16 bits
    

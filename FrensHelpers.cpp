@@ -192,7 +192,7 @@ namespace Frens
         hstx_waitForVSync();
 #endif
     }
-#if 0
+#if 1
     /// @brief Poor way to pace frames to 60fps
     /// @param init
     void PaceFrames60fps(bool init)
@@ -1266,7 +1266,7 @@ namespace Frens
         // 空サンプル詰めとく
         dvi_->getAudioRingBuffer().advanceWritePointer(255);
 #else
-        hstx_init(settings.flags.useExtAudio);
+        hstx_init(settings.flags.useDVIModeForHDMI);
 #if 0
         // For now use an MCP4822 DAC for audio output
         // https://ww1.microchip.com/downloads/aemDocuments/documents/OTH/ProductDocuments/DataSheets/20002249B.pdf

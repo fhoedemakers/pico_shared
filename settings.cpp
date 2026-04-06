@@ -82,7 +82,7 @@ namespace FrensSettings
         printf("displayFrameRate: %d\n", settings.flags.displayFrameRate);
         printf("frameSkip: %d\n", settings.flags.frameSkip);
         printf("scanlineOn: %d\n", settings.flags.scanlineOn);
-        printf("fruitJamEnableInternalSpeaker: %d\n", settings.flags.fruitJamEnableInternalSpeaker);
+        //printf("fruitJamEnableInternalSpeaker: %d\n", settings.flags.fruitJamEnableInternalSpeaker);
         printf("fruitjamVolumeLevel: %d\n", settings.fruitjamVolumeLevel);
         printf("rapidFireOnA: %d\n", settings.flags.rapidFireOnA);
         printf("rapidFireOnB: %d\n", settings.flags.rapidFireOnB);
@@ -99,20 +99,21 @@ namespace FrensSettings
         settings.horzontalScrollIndex = 0;
         settings.fgcolor = DEFAULT_FGCOLOR;
         settings.bgcolor = DEFAULT_BGCOLOR;
-        settings.flags.useExtAudio = (HW_CONFIG == 13); // when 1: enable DVI mode (disables HDMI audio/data islands, assumes external audio hardware); default on Murmulator M2 (HW_CONFIG == 13).
+        settings.flags.useExtAudio = (HW_CONFIG == 13); // default on Murmulator M2 (HW_CONFIG == 13) to use external audio output, otherwise default to HDMI audio 
         settings.flags.enableVUMeter = ENABLE_VU_METER ? 1 : 0; // default to ENABLE_VU_METER
         settings.flags.borderMode = THEMEDBORDER;
         settings.flags.dmgLCDPalette = 0; // default DMG LCD Palette, DMG Green
         settings.flags.audioEnabled = 1; // audio on by default
         settings.flags.displayFrameRate = 0; // default: do not show FPS overlay
         settings.flags.frameSkip = 1; // default: frame skipping enabled (Genesis needs it)
-        settings.flags.fruitJamEnableInternalSpeaker = 1; // default: enable Fruit Jam internal speaker
+        //settings.flags.fruitJamEnableInternalSpeaker = 1; // default: enable Fruit Jam internal speaker
         settings.flags.rapidFireOnA = 0; // default: rapid fire off
         settings.flags.rapidFireOnB = 0; // default: rapid fire off
+        settings.fruitjamVolumeLevel = 16; // default volume level in db to mid (0-24)
+        settings.flags.useDVIModeForHDMI = (HW_CONFIG == 13);; // default on Murmulator M2 (HW_CONFIG == 13) to use DVI mode for HDMI output
         settings.version = SETTINGS_VERSION;
         // clear all the reserved settings
         settings.flags.reserved = 0;
-        settings.fruitjamVolumeLevel = 16; // default volume level in db to mid (0-24)
         strcpy(settings.currentDir, "/");
     }
 
@@ -143,8 +144,8 @@ namespace FrensSettings
         }
         printsettings();
 #if HSTX
-        printf("Setting HDMI DVI mode to %d\n", settings.flags.useExtAudio);
-        video_output_set_dvi_mode(settings.flags.useExtAudio);
+        printf("Setting HDMI DVI mode to %d\n", settings.flags.useDVIModeForHDMI);
+        video_output_set_dvi_mode(settings.flags.useDVIModeForHDMI);
         printf("done\n");
 #endif
     }
