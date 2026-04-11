@@ -189,7 +189,7 @@ elseif ( HW_CONFIG EQUAL 5 )
 	# --------------------------------------------------------------------
 	set(DVICONFIG "dviConfig_AdafruitMetroRP2350" CACHE STRING
     "Select a default pin configuration from common_dvi_pin_configs.h")
-    set(LED_GPIO_PIN "0 " CACHE STRING "Select the GPIO pin for LED")   # Adafruit fruitjam onboard LED
+    set(LED_GPIO_PIN "0" CACHE STRING "Select the GPIO pin for LED")   # Adafruit fruitjam onboard LED
     set(SD_CS "39" CACHE STRING "Specify the Chip Select GPIO pin for the SD card")
     set(SD_SCK "34" CACHE STRING "Specify de Clock GPIO pin for the SD card")
     set(SD_MOSI "35" CACHE STRING "Select the Master Out Slave In GPIO pin for the SD card")
