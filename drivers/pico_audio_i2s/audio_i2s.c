@@ -260,7 +260,7 @@ static void hp_int1_callback(uint gpio, uint32_t events)
 /// and the non-sticky flag register (Page 0 / Reg 0x2E) D4 to determine
 /// whether a headset is currently inserted.
 /// Also reads the headset type from Page 0 / Reg 0x43 D6-D5.
-static void tlv320_handle_headphone_event()
+static enum headphone_toggle_t tlv320_handle_headphone_event()
 {
 	setPage(0);
 	// Read sticky flags to acknowledge/clear the interrupt
@@ -279,13 +279,14 @@ static void tlv320_handle_headphone_event()
 
 	if (hp_inserted)
 	{
-		speakerMute();
+		speakerMute();		
 	}
 	else
 	{
 		speakerUnmute();
 	}
 	speakerIsMuted = hp_inserted;
+	return hp_inserted ? HP_TOGGLE_CONNECT : HP_TOGGLE_DISCONNECT;
 }
 
 // Set up the IRQ handler to mute/unmute the speaker
@@ -670,13 +671,16 @@ static void tlv320_init()
 /// Call this periodically from the main loop to process headphone
 /// insertion/removal events detected via DAC INT1.
 /// When no INT1 interrupt is pending, this function returns immediately.
-void audio_i2s_poll_headphone_status()
+enum headphone_toggle_t audio_i2s_poll_headphone_status()
 {
 	if (_driver == PICO_AUDIO_I2S_DRIVER_TLV320 && hp_irq_pending)
 	{
 		hp_irq_pending = false;
-		tlv320_handle_headphone_event();
+		return tlv320_handle_headphone_event();
+	} else {
+		return HP_TOGGLE_NONE;
 	}
+	
 }
 
 /**
