@@ -58,6 +58,7 @@ namespace Frens
     static bool fatfsUsesPioSpi = false;
     static DWORD totalSpace = 0;
     static DWORD freeSpace = 0;
+    static bool extSpeakerEnabled = false;
 #if !HSTX && FRAMEBUFFERISPOSSIBLE
     // uint8_t *framebuffer1; // [320 * 240];
     // uint8_t *framebuffer2; // [320 * 240];
@@ -1733,6 +1734,20 @@ namespace Frens
         return (f_stat(filepath, &fno) == FR_OK);
     }
 
+    void pollHeadPhoneJack()
+    {
+        auto hpToggle = EXT_AUDIO_POLL_HEADPHONE();
+        if (hpToggle != HP_TOGGLE_NONE)
+        {
+            extSpeakerEnabled = (hpToggle == HP_TOGGLE_CONNECT) ? true : false;
+            // printf("Headphone toggle detected. Headphones %s\n", extSpeakerEnabled ? "unplugged, using speakers" : "plugged in, using headphones");
+        }
+    }
+
+    bool isHeadPhoneJackConnected()
+    {
+        return extSpeakerEnabled;
+    }
 }
 // C-compatible wrappers
 extern "C"

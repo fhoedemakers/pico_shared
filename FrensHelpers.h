@@ -152,6 +152,9 @@ namespace Frens
     uint32_t getCrcOfLoadedRom();
     bool fileExists(const char *filename);
     float read_onboard_temperature(const char unit);
+
+     void pollHeadPhoneJack();
+     bool isHeadPhoneJackConnected();
    
 } // namespace Frens
 
