@@ -1736,12 +1736,14 @@ namespace Frens
 
     void pollHeadPhoneJack()
     {
+#if EXT_AUDIO_IS_ENABLED
         auto hpToggle = EXT_AUDIO_POLL_HEADPHONE();
         if (hpToggle != HP_TOGGLE_NONE)
         {
             extSpeakerEnabled = (hpToggle == HP_TOGGLE_CONNECT) ? true : false;
             // printf("Headphone toggle detected. Headphones %s\n", extSpeakerEnabled ? "unplugged, using speakers" : "plugged in, using headphones");
         }
+#endif
     }
 
     bool isHeadPhoneJackConnected()
