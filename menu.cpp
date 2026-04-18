@@ -2947,6 +2947,7 @@ int showSettingsMenu(bool calledFromGame)
     wavplayer::reset(); // stop menu music
 #endif
     settingsActive = false; 
+    Frens::PaceFrames60fps(true); // ensure normal timing after menu
     return rval;
 }
 void setclockInFlashAndReboot(uint32_t freq, vreg_voltage voltage)
