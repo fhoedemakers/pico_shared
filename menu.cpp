@@ -2988,8 +2988,8 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
     hstx_setScanLines(false);
 #endif
     abSwapped = 1; // Swap A and B buttons, so menu is consistent across different emulators
-    //Frens::PaceFrames60fps(true);
-    Frens::waitForVSync();
+    Frens::PaceFrames60fps(true);
+    //Frens::waitForVSync();
     //
     menutitle = (char *)title;
     int totalFrames = -1;
@@ -3555,6 +3555,6 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
         // Never return
     }
     Frens::restoreScanlines();
-    //Frens::PaceFrames60fps(true); // reset frame pacing
-    Frens::waitForVSync();
+    Frens::PaceFrames60fps(true); // reset frame pacing
+    //Frens::waitForVSync();
 }
