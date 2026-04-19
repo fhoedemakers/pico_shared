@@ -17,6 +17,7 @@ extern volatile bool HSTX_vblank;
 #endif
 uint32_t hstx_getframecounter(void);
 void hstx_waitForVSync(void);
+void hstx_paceFrame(bool init);
 uint8_t *hstx_getframebuffer(void);
 void hstx_setScanLines(int enable);
 uint16_t *hstx_getlineFromFramebuffer(int scanline);

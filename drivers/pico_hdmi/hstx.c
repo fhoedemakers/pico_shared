@@ -27,6 +27,32 @@ void hstx_waitForVSync(void)
         tight_loop_contents();
     }
 }
+
+void hstx_paceFrame(bool init)
+{
+    // Slack-aware 60fps pacing. Waits for the next vsync only if we haven't
+    // already passed our target frame. If the caller overran a frame, resync
+    // to the current counter instead of stalling another ~16.6ms, which would
+    // otherwise harmonic-lock the loop to 30fps.
+    static uint32_t target_frame = 0;
+    if (init)
+    {
+        target_frame = video_frame_count;
+    }
+    target_frame++;
+    uint32_t current = video_frame_count;
+    if ((int32_t)(current - target_frame) < 0)
+    {
+        while (video_frame_count != target_frame)
+        {
+            tight_loop_contents();
+        }
+    }
+    else
+    {
+        target_frame = current;
+    }
+}
 uint8_t *hstx_getframebuffer(void)
 {
     // Return the pointer to the framebuffer
