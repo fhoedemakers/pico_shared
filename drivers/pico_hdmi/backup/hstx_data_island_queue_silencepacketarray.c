@@ -1,0 +1,91 @@
+#include "hstx_data_island_queue.h"
+
+#include "video_output.h"
+#include "hstx_packet.h"
+
+#include <string.h>
+
+#include "pico.h"
+
+#define DI_RING_BUFFER_SIZE 256
+static hstx_data_island_t di_ring_buffer[DI_RING_BUFFER_SIZE];
+static volatile uint32_t di_ring_head = 0;
+static volatile uint32_t di_ring_tail = 0;
+
+#define SILENCE_PACKET_COUNT 48
+static hstx_data_island_t silence_packets[SILENCE_PACKET_COUNT];
+static uint8_t silence_packet_index = 0;
+
+// Audio timing state (default 48kHz)
+static uint32_t audio_sample_accum = 0; // Fixed-point accumulator
+#define DEFAULT_SAMPLES_PER_FRAME (48000 / 60)
+static uint32_t samples_per_line_fp = (DEFAULT_SAMPLES_PER_FRAME << 16) / MODE_V_TOTAL_LINES;
+
+// Limit accumulator to avoid overflow if we run dry.
+// Clamping to 1 packet (plus a tiny margin is implicit) ensures we don't burst.
+#define MAX_AUDIO_ACCUM (4 << 16)
+
+void hstx_di_queue_init(void)
+{
+    di_ring_head = 0;
+    di_ring_tail = 0;
+    audio_sample_accum = 0;
+     // Build a rotating set of silent audio packets with correct B-frame flags.
+    hstx_packet_t packet;
+    audio_sample_t samples[4] = {0};
+    int frame_counter = 0;
+    for (int i = 0; i < SILENCE_PACKET_COUNT; ++i) {
+        frame_counter = hstx_packet_set_audio_samples(&packet, samples, 4, frame_counter);
+        hstx_encode_data_island(&silence_packets[i], &packet, false, true);
+    }
+    silence_packet_index = 0;
+}
+
+void hstx_di_queue_set_sample_rate(uint32_t sample_rate)
+{
+    uint32_t samples_per_frame = sample_rate / 60;
+    samples_per_line_fp = (samples_per_frame << 16) / MODE_V_TOTAL_LINES;
+}
+
+bool hstx_di_queue_push(const hstx_data_island_t *island)
+{
+    uint32_t next_head = (di_ring_head + 1) % DI_RING_BUFFER_SIZE;
+    if (next_head == di_ring_tail)
+        return false;
+
+    di_ring_buffer[di_ring_head] = *island;
+    di_ring_head = next_head;
+    return true;
+}
+
+uint32_t hstx_di_queue_get_level(void)
+{
+    uint32_t head = di_ring_head;
+    uint32_t tail = di_ring_tail;
+    if (head >= tail)
+        return head - tail;
+    return DI_RING_BUFFER_SIZE + head - tail;
+}
+
+void __not_in_flash_func(hstx_di_queue_tick)(void)
+{
+    audio_sample_accum += samples_per_line_fp;
+}
+
+const uint32_t *__not_in_flash_func(hstx_di_queue_get_audio_packet)(void)
+{
+    // Check if it's time to send a 4-sample audio packet (every ~2.6 lines)
+    if (audio_sample_accum >= (4 << 16)) {
+        audio_sample_accum -= (4 << 16);
+        if (di_ring_tail != di_ring_head) {
+            const uint32_t *words = di_ring_buffer[di_ring_tail].words;
+            di_ring_tail = (di_ring_tail + 1) % DI_RING_BUFFER_SIZE;
+            return words;
+        }
+        // Queue is empty: return a pre-encoded silent packet to keep HDMI audio active.
+        const uint32_t *words = silence_packets[silence_packet_index].words;
+        silence_packet_index = (silence_packet_index + 1) % SILENCE_PACKET_COUNT;
+        return words;
+    }
+    return NULL;
+}
