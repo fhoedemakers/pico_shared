@@ -208,6 +208,8 @@ namespace Frens
             }
         }
 #else
+        hstx_paceFrame(init);
+#if 0
         static absolute_time_t next_frame_time = {0};
         if (init)
         {
@@ -221,6 +223,8 @@ namespace Frens
         // Pace to 60fps
         sleep_until(next_frame_time);
         next_frame_time = delayed_by_us(next_frame_time, 16666); // 1/60s = 16666us
+
+#endif
 #endif
     }
 #endif
