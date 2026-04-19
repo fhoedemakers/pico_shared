@@ -204,7 +204,8 @@ static bool isArtWorkEnabled()
 
 int Menu_LoadFrame()
 {
-    Frens::waitForVSync();
+    //Frens::waitForVSync();
+    Frens::PaceFrames60fps(false);
 #if NES_PIN_CLK != -1
     nespad_read_start();
 #endif
@@ -2068,8 +2069,8 @@ bool showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
 #else
     hstx_setScanLines(settings.flags.scanlineOn);
 #endif
-    //Frens::PaceFrames60fps(true);
-    Frens::waitForVSync();
+    Frens::PaceFrames60fps(true);
+    //Frens::waitForVSync();
     printf("Exiting save state menu.\n");
     Frens::f_free(screenBuffer);
     return saveStateLoadedOK;
@@ -2940,8 +2941,8 @@ int showSettingsMenu(bool calledFromGame)
         // Speaker can be muted/unmuted from settings menu
         //EXT_AUDIO_MUTE_INTERNAL_SPEAKER(settings.flags.fruitJamEnableInternalSpeaker == 0);
         EXT_AUDIO_SETVOLUME(settings.fruitjamVolumeLevel);
-        //Frens::PaceFrames60fps(true);
-        Frens::waitForVSync();
+        Frens::PaceFrames60fps(true);
+        //Frens::waitForVSync();
     }
 #if USE_I2S_AUDIO == PICO_AUDIO_I2S_DRIVER_TLV320
     wavplayer::reset(); // stop menu music
