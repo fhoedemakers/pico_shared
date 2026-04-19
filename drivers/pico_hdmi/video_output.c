@@ -71,7 +71,13 @@ volatile uint32_t video_frame_count = 0;
 // Some monitors have trouble syncing with HDMI Data Islands
 static bool dvi_mode = false; // Default to HDMI mode (full features with audio)
 
-static uint16_t line_buffer[MODE_H_ACTIVE_PIXELS] __attribute__((aligned(4)));
+// Double-buffered line buffer. While DMA reads line_buffer[dma_idx] for the
+// current active line, the scanline callback fills line_buffer[fill_idx] with
+// the next line's pixels. This removes the write/read race and lets us
+// reconfigure the DMA *before* calling the (slow) scanline callback.
+static uint16_t line_buffer[2][MODE_H_ACTIVE_PIXELS] __attribute__((aligned(4)));
+static uint8_t line_buf_fill_idx = 0;  // buffer the callback writes into
+static uint8_t line_buf_dma_idx = 0;   // buffer the next pixel-data DMA reads
 static uint32_t v_scanline = 2;
 static bool vactive_cmdlist_posted = false;
 static bool dma_pong = false;
@@ -80,6 +86,10 @@ static video_output_task_fn background_task = NULL;
 static video_output_scanline_cb_t scanline_callback = NULL;
 static video_output_vsync_cb_t vsync_callback = NULL;
 
+// Auto-resync watchdog: set by core 0 (or by the core-1 main-loop watchdog)
+// to request a full HSTX+DMA reset. Consumed in video_output_core1_run().
+static volatile bool resync_requested = false;
+static volatile int resync_count = 0;
 #define DMACH_PING 0
 #define DMACH_PONG 1
 
@@ -146,6 +156,8 @@ static void __not_in_flash_func(hstx_resync)(void)
     v_scanline = 0;
     vactive_cmdlist_posted = false;
     dma_pong = false;
+    line_buf_fill_idx = 0;
+    line_buf_dma_idx = 0;
 
     // 4. Clear any pending DMA interrupts
     dma_hw->ints0 = (1U << DMACH_PING) | (1U << DMACH_PONG);
@@ -276,19 +288,12 @@ static inline void __not_in_flash_func(video_output_handle_vsync)(dma_channel_hw
 
 static inline void __not_in_flash_func(video_output_handle_active_start)(dma_channel_hw_t *ch, uint32_t v_scanline, uint32_t active_line, bool dma_pong)
 {
-    uint32_t *dst32 = (uint32_t *)line_buffer;
-
-    if (scanline_callback) {
-        scanline_callback(v_scanline, active_line, dst32);
-    } else {
-        // If no callback, just output black pixels
-        for (uint32_t i = 0; i < MODE_H_ACTIVE_PIXELS / 2; i++) {
-            dst32[i] = 0;
-        }
-    }
-
+    // 1. Arm the cmdlist DMA FIRST, before any slow work. This channel will be
+    //    chain-triggered when the currently-running pixel-data DMA completes,
+    //    so it must be armed well before then. Doing this first means that
+    //    even if the scanline callback below overruns, the cmdlist chain is
+    //    safe and HSTX keeps emitting valid sync.
     if (dvi_mode) {
-        // Pure DVI: simple active line without Data Islands
         ch->read_addr = (uintptr_t)vactive_line_dvi;
         ch->transfer_count = count_of(vactive_line_dvi);
     } else {
@@ -301,6 +306,27 @@ static inline void __not_in_flash_func(video_output_handle_active_start)(dma_cha
         } else {
             ch->read_addr = (uintptr_t)vactive_di_null;
             ch->transfer_count = vactive_di_null_len;
+        }
+    }
+
+    // 2. Pick the line buffer that's NOT currently being read by the pixel
+    //    data DMA, and record it for the next handle_active_data() to point
+    //    DMA at. Doing the handoff here (with IRQs serialised by NVIC) is
+    //    race-free: the next IRQ can only run after this one returns.
+    uint8_t fill_idx = line_buf_fill_idx;
+    line_buf_dma_idx = fill_idx;
+    line_buf_fill_idx = fill_idx ^ 1;
+
+    // 3. Fill the line buffer (slow: ~21 us for 640-wide 2x doubling with
+    //    optional scanline darken). DMA is already armed, so if this overruns
+    //    the active region we still chain to a valid cmdlist rather than
+    //    zero-length garbage.
+    uint32_t *dst32 = (uint32_t *)line_buffer[fill_idx];
+    if (scanline_callback) {
+        scanline_callback(v_scanline, active_line, dst32);
+    } else {
+        for (uint32_t i = 0; i < MODE_H_ACTIVE_PIXELS / 2; i++) {
+            dst32[i] = 0;
         }
     }
 }
@@ -338,7 +364,7 @@ static inline void __not_in_flash_func(video_output_handle_blanking)(dma_channel
 
 static inline void __not_in_flash_func(video_output_handle_active_data)(dma_channel_hw_t *ch)
 {
-    ch->read_addr = (uintptr_t)line_buffer;
+    ch->read_addr = (uintptr_t)line_buffer[line_buf_dma_idx];
     ch->transfer_count = (MODE_H_ACTIVE_PIXELS * sizeof(uint16_t)) / sizeof(uint32_t);
 }
 
@@ -487,6 +513,11 @@ void video_output_set_background_task(video_output_task_fn task)
     background_task = task;
 }
 
+void video_output_request_resync(void)
+{
+    resync_requested = true;
+}
+
 bool video_output_get_dvi_mode(void)
 {
     return dvi_mode;
@@ -604,7 +635,37 @@ void video_output_core1_run(void)
     bus_ctrl_hw->priority = BUSCTRL_BUS_PRIORITY_DMA_W_BITS | BUSCTRL_BUS_PRIORITY_DMA_R_BITS;
     dma_channel_start(DMACH_PING);
 
+    // Watchdog: if video_frame_count stops advancing (e.g. DMA chain wedged
+    // after an IRQ overrun, HSTX FIFO underflow), hstx_resync() brings the
+    // pipeline back up without a reboot. 500 ms is ~30 frames at 60 Hz, long
+    // enough not to false-trigger at boot but short enough to recover quickly.
+    // time_us_32 wraps every ~71 min, irrelevant for the 500 ms window and
+    // ~10x cheaper than time_us_64 in a hot loop.
+    #define VIDEO_OUTPUT_WATCHDOG_US 500000u
+    uint32_t last_frame_us = time_us_32();
+    uint32_t last_frame_count_seen = video_frame_count;
+
     while (1) {
+        uint32_t now = time_us_32();
+        uint32_t current_count = video_frame_count;
+        if (current_count != last_frame_count_seen) {
+            last_frame_count_seen = current_count;
+            last_frame_us = now;
+        }
+
+        bool do_resync = resync_requested ||
+                         (now - last_frame_us) > VIDEO_OUTPUT_WATCHDOG_US;
+
+        if (do_resync) {
+            resync_count++;
+            irq_set_enabled(DMA_IRQ_0, false);
+            hstx_resync();
+            resync_requested = false;
+            irq_set_enabled(DMA_IRQ_0, true);
+            last_frame_us = time_us_32();
+            last_frame_count_seen = video_frame_count;
+        }
+
         if (background_task) {
             background_task();
         }
@@ -617,6 +678,14 @@ void pico_hdmi_set_audio_sample_rate(uint32_t sample_rate)
     configure_audio_packets(sample_rate);
 }
 
-
+/// @brief Returns the number of times the video output has auto-resynced
+/// (via hstx_resync()) since boot. This can be used to detect if the output is having trouble
+/// keeping up and is frequently resyncing.
+/// @param  
+/// @return /
+int get_video_output_resync_count(void)
+{
+    return resync_count;
+}
 
 

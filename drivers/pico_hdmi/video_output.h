@@ -135,5 +135,14 @@ void video_output_core1_run(void);
  */
 void pico_hdmi_set_audio_sample_rate(uint32_t sample_rate);
 
+/**
+ * Request a full HSTX + DMA resync. The request is latched and serviced by
+ * the core-1 main loop, so this is safe to call from core 0 at any time.
+ * A watchdog in the core-1 loop also auto-triggers a resync if the frame
+ * counter stops advancing for ~500 ms.
+ */
+void video_output_request_resync(void);
+
+int get_video_output_resync_count(void);
 
 #endif // VIDEO_OUTPUT_H
