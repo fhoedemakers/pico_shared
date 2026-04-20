@@ -675,10 +675,13 @@ void video_output_core1_run(void)
             uint32_t d_us = now - rate_last_us;
             uint32_t d_frames = current_count - rate_last_frames;
             uint32_t d_irqs = irq_count - rate_last_irqs;
-            printf("video rate: %lu frames/s, %lu irqs/s (dvi=%d)\n",
+            printf("video rate: %lu frames/s, %lu irqs/s (dvi=%d) clk_sys=%lu clk_hstx=%lu csr=%08lx\n",
                    (unsigned long)((uint64_t)d_frames * 1000000u / d_us),
                    (unsigned long)((uint64_t)d_irqs * 1000000u / d_us),
-                   dvi_mode ? 1 : 0);
+                   dvi_mode ? 1 : 0,
+                   (unsigned long)clock_get_hz(clk_sys),
+                   (unsigned long)clock_get_hz(clk_hstx),
+                   (unsigned long)hstx_ctrl_hw->csr);
             rate_last_us = now;
             rate_last_frames = current_count;
             rate_last_irqs = irq_count;
