@@ -142,6 +142,12 @@ static uint32_t vblank_avi_infoframe[64], vblank_avi_infoframe_len;
 
 static void __not_in_flash_func(hstx_resync)(void)
 {
+    // RP2350-E5: clear EN on the aborted channel AND any channel it chains
+    // from, otherwise a chained partner can re-trigger the aborted channel
+    // while abort is in flight and leave it latched live with stale config.
+    hw_clear_bits(&dma_hw->ch[DMACH_PING].al1_ctrl, DMA_CH0_CTRL_TRIG_EN_BITS);
+    hw_clear_bits(&dma_hw->ch[DMACH_PONG].al1_ctrl, DMA_CH0_CTRL_TRIG_EN_BITS);
+
     // 1. Abort DMA chains
     dma_channel_abort(DMACH_PING);
     dma_channel_abort(DMACH_PONG);
@@ -159,21 +165,26 @@ static void __not_in_flash_func(hstx_resync)(void)
     line_buf_fill_idx = 0;
     line_buf_dma_idx = 0;
 
-    // 4. Clear any pending DMA interrupts
+    // 4. Clear any pending DMA interrupts (including spurious completion
+    //    interrupts that abort can latch per RP2350-E5 / SDK docs).
     dma_hw->ints0 = (1U << DMACH_PING) | (1U << DMACH_PONG);
 
-    // 5. Configure DMA PING to start from beginning of frame (Line 0)
+    // 5. Restore the EN bits cleared above so the channels are live again.
+    hw_set_bits(&dma_hw->ch[DMACH_PING].al1_ctrl, DMA_CH0_CTRL_TRIG_EN_BITS);
+    hw_set_bits(&dma_hw->ch[DMACH_PONG].al1_ctrl, DMA_CH0_CTRL_TRIG_EN_BITS);
+
+    // 6. Configure DMA PING to start from beginning of frame (Line 0)
     dma_channel_hw_t *ch_ping = &dma_hw->ch[DMACH_PING];
     ch_ping->read_addr = (uintptr_t)vblank_line_vsync_off;
     ch_ping->transfer_count = count_of(vblank_line_vsync_off);
 
-    // 6. Configure DMA PONG for the NEXT line (Line 1)
+    // 7. Configure DMA PONG for the NEXT line (Line 1)
     // This ensures that when PING finishes and chains to PONG, PONG is ready.
     dma_channel_hw_t *ch_pong = &dma_hw->ch[DMACH_PONG];
     ch_pong->read_addr = (uintptr_t)vblank_line_vsync_off; // Line 1 is also blank
     ch_pong->transfer_count = count_of(vblank_line_vsync_off);
 
-    // 7. Re-enable HSTX then start DMA
+    // 8. Re-enable HSTX then start DMA
     hstx_ctrl_hw->csr |= HSTX_CTRL_CSR_EN_BITS;
     dma_channel_start(DMACH_PING);
 }
