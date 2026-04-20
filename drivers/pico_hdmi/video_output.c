@@ -66,6 +66,7 @@
 uint16_t frame_width = 0;
 uint16_t frame_height = 0;
 volatile uint32_t video_frame_count = 0;
+static volatile uint32_t irq_count = 0;
 
 // DVI mode: when true, disables all HDMI Data Islands (pure DVI output, no audio)
 // Some monitors have trouble syncing with HDMI Data Islands
@@ -385,6 +386,7 @@ static inline void __not_in_flash_func(video_output_handle_active_data)(dma_chan
 
 void __not_in_flash_func(dma_irq_handler)(void)
 {
+    irq_count++;
     uint32_t ch_num = dma_pong ? DMACH_PONG : DMACH_PING;
     dma_channel_hw_t *ch = &dma_hw->ch[ch_num];
     dma_hw->intr = 1U << ch_num;
@@ -656,12 +658,30 @@ void video_output_core1_run(void)
     uint32_t last_frame_us = time_us_32();
     uint32_t last_frame_count_seen = video_frame_count;
 
+    // 1 Hz rate-diagnostic baseline
+    uint32_t rate_last_us = last_frame_us;
+    uint32_t rate_last_frames = last_frame_count_seen;
+    uint32_t rate_last_irqs = irq_count;
+
     while (1) {
         uint32_t now = time_us_32();
         uint32_t current_count = video_frame_count;
         if (current_count != last_frame_count_seen) {
             last_frame_count_seen = current_count;
             last_frame_us = now;
+        }
+
+        if ((now - rate_last_us) >= 1000000u) {
+            uint32_t d_us = now - rate_last_us;
+            uint32_t d_frames = current_count - rate_last_frames;
+            uint32_t d_irqs = irq_count - rate_last_irqs;
+            printf("video rate: %lu frames/s, %lu irqs/s (dvi=%d)\n",
+                   (unsigned long)((uint64_t)d_frames * 1000000u / d_us),
+                   (unsigned long)((uint64_t)d_irqs * 1000000u / d_us),
+                   dvi_mode ? 1 : 0);
+            rate_last_us = now;
+            rate_last_frames = current_count;
+            rate_last_irqs = irq_count;
         }
 
         bool do_resync = resync_requested ||
