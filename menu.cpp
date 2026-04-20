@@ -2088,6 +2088,13 @@ int showSettingsMenu(bool calledFromGame)
     int marginbottom = 0;
     settingsActive = true;
     // Allocate screen buffer if called from game
+    #if HSTX
+        if (settings.flags.useDVIModeForHDMI)
+        {
+            video_output_request_resync();
+        }
+
+    #endif
     if (calledFromGame)
     {
 #if 0
