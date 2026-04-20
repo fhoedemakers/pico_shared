@@ -682,6 +682,12 @@ void video_output_core1_run(void)
                    (unsigned long)clock_get_hz(clk_sys),
                    (unsigned long)clock_get_hz(clk_hstx),
                    (unsigned long)hstx_ctrl_hw->csr);
+            printf("  hstx_div=%08lx exp_sh=%08lx exp_tmds=%08lx ping_ctrl=%08lx pong_ctrl=%08lx\n",
+                   (unsigned long)clocks_hw->clk[clk_hstx].div,
+                   (unsigned long)hstx_ctrl_hw->expand_shift,
+                   (unsigned long)hstx_ctrl_hw->expand_tmds,
+                   (unsigned long)dma_hw->ch[DMACH_PING].al1_ctrl,
+                   (unsigned long)dma_hw->ch[DMACH_PONG].al1_ctrl);
             rate_last_us = now;
             rate_last_frames = current_count;
             rate_last_irqs = irq_count;
