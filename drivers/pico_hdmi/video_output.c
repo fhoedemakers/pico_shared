@@ -784,7 +784,7 @@ void video_output_core1_run(void)
                 last_frame_count_seen = video_frame_count;
                 overrate_last_us = last_frame_us;
                 overrate_last_frames = video_frame_count;
-                printf("HSTX resync performed! Total resyncs since boot: %d\n", resync_count);
+                printf("HSTX resync performed! Total resyncs since boot: (hard) %d - (soft) %d\n", resync_count, soft_recovery_count);
             }
         }
         if (background_task) {
