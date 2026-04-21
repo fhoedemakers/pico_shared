@@ -754,6 +754,7 @@ void video_output_core1_run(void)
                         irq_set_enabled(DMA_IRQ_0, true);
                         soft_recovery_attempted = true;
                         soft_recovery_count++;
+                        printf("HSTX soft recovery performed! Total soft recoveries since boot: %d\n", soft_recovery_count);
                     }
                     else
                     {
