@@ -13,10 +13,16 @@
 #include "hardware/structs/clocks.h"
 #include "hardware/structs/hstx_ctrl.h"
 #include "hardware/structs/hstx_fifo.h"
+#include "hardware/structs/pll.h"
 
 #include <math.h>
 #include <string.h>
 #include "hstx.h"
+#include "stdio.h"
+
+#ifndef HSTX_DEBUG
+#define HSTX_DEBUG 0
+#endif
 
 // ============================================================================
 // DVI/HSTX Constants
@@ -66,7 +72,10 @@
 uint16_t frame_width = 0;
 uint16_t frame_height = 0;
 volatile uint32_t video_frame_count = 0;
+
+#if HSTX_DEBUG
 static volatile uint32_t irq_count = 0;
+#endif
 
 // DVI mode: when true, disables all HDMI Data Islands (pure DVI output, no audio)
 // Some monitors have trouble syncing with HDMI Data Islands
@@ -91,6 +100,7 @@ static video_output_vsync_cb_t vsync_callback = NULL;
 // to request a full HSTX+DMA reset. Consumed in video_output_core1_run().
 static volatile bool resync_requested = false;
 static volatile int resync_count = 0;
+static volatile int soft_recovery_count = 0;
 #define DMACH_PING 0
 #define DMACH_PONG 1
 
@@ -386,7 +396,9 @@ static inline void __not_in_flash_func(video_output_handle_active_data)(dma_chan
 
 void __not_in_flash_func(dma_irq_handler)(void)
 {
+    #if HSTX_DEBUG
     irq_count++;
+    #endif
     uint32_t ch_num = dma_pong ? DMACH_PONG : DMACH_PING;
     dma_channel_hw_t *ch = &dma_hw->ch[ch_num];
     dma_hw->intr = 1U << ch_num;
@@ -655,57 +667,126 @@ void video_output_core1_run(void)
     // time_us_32 wraps every ~71 min, irrelevant for the 500 ms window and
     // ~10x cheaper than time_us_64 in a hot loop.
     #define VIDEO_OUTPUT_WATCHDOG_US 500000u
+
+    // Rate-limit watchdog: no real display exceeds ~65 Hz vertical. If
+    // video_frame_count advances above this, HSTX has fallen into the
+    // overspeed state (observed ~158 Hz). First attempt a soft recovery
+    // (toggle HSTX CSR.EN) to clear any expander shadow state without
+    // disturbing DMA. If the next 1-second window is still over-rate,
+    // fall back to a full hstx_resync().
+    #define VIDEO_OUTPUT_OVERRATE_FPS 75u
     uint32_t last_frame_us = time_us_32();
     uint32_t last_frame_count_seen = video_frame_count;
-
+    uint32_t overrate_last_us = last_frame_us;
+    uint32_t overrate_last_frames = last_frame_count_seen;
+    bool soft_recovery_attempted = false;
+#if HSTX_DEBUG
     // 1 Hz rate-diagnostic baseline
     uint32_t rate_last_us = last_frame_us;
     uint32_t rate_last_frames = last_frame_count_seen;
     uint32_t rate_last_irqs = irq_count;
-
+#endif
     while (1) {
-        uint32_t now = time_us_32();
-        uint32_t current_count = video_frame_count;
-        if (current_count != last_frame_count_seen) {
-            last_frame_count_seen = current_count;
-            last_frame_us = now;
+        if (dvi_mode)
+        {
+            uint32_t now = time_us_32();
+            uint32_t current_count = video_frame_count;
+            if (current_count != last_frame_count_seen)
+            {
+                last_frame_count_seen = current_count;
+                last_frame_us = now;
+            }
+#if HSTX_DEBUG
+            if ((now - rate_last_us) >= 1000000u)
+            {
+                uint32_t d_us = now - rate_last_us;
+                uint32_t d_frames = current_count - rate_last_frames;
+                uint32_t d_irqs = irq_count - rate_last_irqs;
+                printf("video rate: %lu frames/s, %lu irqs/s (dvi=%d) clk_sys=%lu clk_hstx=%lu csr=%08lx soft=%d hard=%d\n",
+                       (unsigned long)((uint64_t)d_frames * 1000000u / d_us),
+                       (unsigned long)((uint64_t)d_irqs * 1000000u / d_us),
+                       dvi_mode ? 1 : 0,
+                       (unsigned long)clock_get_hz(clk_sys),
+                       (unsigned long)clock_get_hz(clk_hstx),
+                       (unsigned long)hstx_ctrl_hw->csr,
+                       soft_recovery_count,
+                       resync_count);
+                printf("  hstx_div=%08lx exp_sh=%08lx exp_tmds=%08lx ping_ctrl=%08lx pong_ctrl=%08lx\n",
+                       (unsigned long)clocks_hw->clk[clk_hstx].div,
+                       (unsigned long)hstx_ctrl_hw->expand_shift,
+                       (unsigned long)hstx_ctrl_hw->expand_tmds,
+                       (unsigned long)dma_hw->ch[DMACH_PING].al1_ctrl,
+                       (unsigned long)dma_hw->ch[DMACH_PONG].al1_ctrl);
+                uint32_t fc_sys_khz = frequency_count_khz(CLOCKS_FC0_SRC_VALUE_CLK_SYS);
+                uint32_t fc_hstx_khz = frequency_count_khz(CLOCKS_FC0_SRC_VALUE_CLK_HSTX);
+                printf("  sys_ctrl=%08lx sys_div=%08lx pll_fbdiv=%lu pll_prim=%08lx fc_sys=%lu kHz fc_hstx=%lu kHz\n",
+                       (unsigned long)clocks_hw->clk[clk_sys].ctrl,
+                       (unsigned long)clocks_hw->clk[clk_sys].div,
+                       (unsigned long)pll_sys_hw->fbdiv_int,
+                       (unsigned long)pll_sys_hw->prim,
+                       (unsigned long)fc_sys_khz,
+                       (unsigned long)fc_hstx_khz);
+                rate_last_us = now;
+                rate_last_frames = current_count;
+                rate_last_irqs = irq_count;
+            }
+#endif
+            // Rate-limit watchdog: 1-second sliding window. Two-stage recovery:
+            // soft (HSTX enable toggle) on first trip, full resync on repeat.
+            if ((now - overrate_last_us) >= 1000000u)
+            {
+                uint32_t d_us = now - overrate_last_us;
+                uint32_t d_frames = current_count - overrate_last_frames;
+                uint32_t fps = (uint32_t)((uint64_t)d_frames * 1000000u / d_us);
+                if (fps > VIDEO_OUTPUT_OVERRATE_FPS)
+                {
+                    if (!soft_recovery_attempted)
+                    {
+                        // Soft recovery: clear any HSTX expander shadow state
+                        // by toggling CSR.EN. DMA stalls on DREQ while HSTX is
+                        // off, then resumes when re-enabled; chain state stays
+                        // intact. If this alone fixes the overspeed, the root
+                        // cause is HSTX-internal (not DMA config drift).
+                        irq_set_enabled(DMA_IRQ_0, false);
+                        hstx_ctrl_hw->csr &= ~HSTX_CTRL_CSR_EN_BITS;
+                        __asm volatile("nop\nnop\nnop\nnop");
+                        hstx_ctrl_hw->csr |= HSTX_CTRL_CSR_EN_BITS;
+                        irq_set_enabled(DMA_IRQ_0, true);
+                        soft_recovery_attempted = true;
+                        soft_recovery_count++;
+                    }
+                    else
+                    {
+                        // Soft didn't clear it — escalate to full resync.
+                        resync_requested = true;
+                        soft_recovery_attempted = false;
+                    }
+                }
+                else
+                {
+                    soft_recovery_attempted = false;
+                }
+                overrate_last_us = now;
+                overrate_last_frames = current_count;
+            }
+
+            bool do_resync = resync_requested ||
+                             (now - last_frame_us) > VIDEO_OUTPUT_WATCHDOG_US;
+
+            if (do_resync)
+            {
+                resync_count++;
+                irq_set_enabled(DMA_IRQ_0, false);
+                hstx_resync();
+                resync_requested = false;
+                irq_set_enabled(DMA_IRQ_0, true);
+                last_frame_us = time_us_32();
+                last_frame_count_seen = video_frame_count;
+                overrate_last_us = last_frame_us;
+                overrate_last_frames = video_frame_count;
+                printf("HSTX resync performed! Total resyncs since boot: %d\n", resync_count);
+            }
         }
-
-        if ((now - rate_last_us) >= 1000000u) {
-            uint32_t d_us = now - rate_last_us;
-            uint32_t d_frames = current_count - rate_last_frames;
-            uint32_t d_irqs = irq_count - rate_last_irqs;
-            printf("video rate: %lu frames/s, %lu irqs/s (dvi=%d) clk_sys=%lu clk_hstx=%lu csr=%08lx\n",
-                   (unsigned long)((uint64_t)d_frames * 1000000u / d_us),
-                   (unsigned long)((uint64_t)d_irqs * 1000000u / d_us),
-                   dvi_mode ? 1 : 0,
-                   (unsigned long)clock_get_hz(clk_sys),
-                   (unsigned long)clock_get_hz(clk_hstx),
-                   (unsigned long)hstx_ctrl_hw->csr);
-            printf("  hstx_div=%08lx exp_sh=%08lx exp_tmds=%08lx ping_ctrl=%08lx pong_ctrl=%08lx\n",
-                   (unsigned long)clocks_hw->clk[clk_hstx].div,
-                   (unsigned long)hstx_ctrl_hw->expand_shift,
-                   (unsigned long)hstx_ctrl_hw->expand_tmds,
-                   (unsigned long)dma_hw->ch[DMACH_PING].al1_ctrl,
-                   (unsigned long)dma_hw->ch[DMACH_PONG].al1_ctrl);
-            rate_last_us = now;
-            rate_last_frames = current_count;
-            rate_last_irqs = irq_count;
-        }
-
-        bool do_resync = resync_requested ||
-                         (now - last_frame_us) > VIDEO_OUTPUT_WATCHDOG_US;
-
-        if (do_resync) {
-            resync_count++;
-            irq_set_enabled(DMA_IRQ_0, false);
-            hstx_resync();
-            resync_requested = false;
-            irq_set_enabled(DMA_IRQ_0, true);
-            last_frame_us = time_us_32();
-            last_frame_count_seen = video_frame_count;
-        }
-
         if (background_task) {
             background_task();
         }
