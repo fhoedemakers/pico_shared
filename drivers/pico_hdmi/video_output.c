@@ -747,6 +747,7 @@ void video_output_core1_run(void)
                         // off, then resumes when re-enabled; chain state stays
                         // intact. If this alone fixes the overspeed, the root
                         // cause is HSTX-internal (not DMA config drift).
+                        // NOTE: Soft recovery does not work, always falls through to hard resync. 
                         irq_set_enabled(DMA_IRQ_0, false);
                         hstx_ctrl_hw->csr &= ~HSTX_CTRL_CSR_EN_BITS;
                         __asm volatile("nop\nnop\nnop\nnop");
