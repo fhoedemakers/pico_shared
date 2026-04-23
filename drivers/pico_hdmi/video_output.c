@@ -100,7 +100,6 @@ static video_output_vsync_cb_t vsync_callback = NULL;
 // to request a full HSTX+DMA reset. Consumed in video_output_core1_run().
 static volatile bool resync_requested = false;
 static volatile int resync_count = 0;
-static volatile int soft_recovery_count = 0;
 #define DMACH_PING 0
 #define DMACH_PONG 1
 
@@ -669,17 +668,14 @@ void video_output_core1_run(void)
     #define VIDEO_OUTPUT_WATCHDOG_US 500000u
 
     // Rate-limit watchdog: no real display exceeds ~65 Hz vertical. If
-    // video_frame_count advances above this, HSTX has fallen into the
-    // overspeed state (observed ~158 Hz). First attempt a soft recovery
-    // (toggle HSTX CSR.EN) to clear any expander shadow state without
-    // disturbing DMA. If the next 1-second window is still over-rate,
-    // fall back to a full hstx_resync().
+    // video_frame_count advances above 75 fps, DMA chain state has drifted
+    // (observed ~158 Hz in DVI mode); trigger a full hstx_resync() to
+    // recover. A soft HSTX CSR toggle was tested and does not clear it.
     #define VIDEO_OUTPUT_OVERRATE_FPS 75u
     uint32_t last_frame_us = time_us_32();
     uint32_t last_frame_count_seen = video_frame_count;
     uint32_t overrate_last_us = last_frame_us;
     uint32_t overrate_last_frames = last_frame_count_seen;
-    bool soft_recovery_attempted = false;
 #if HSTX_DEBUG
     // 1 Hz rate-diagnostic baseline
     uint32_t rate_last_us = last_frame_us;
@@ -702,14 +698,13 @@ void video_output_core1_run(void)
                 uint32_t d_us = now - rate_last_us;
                 uint32_t d_frames = current_count - rate_last_frames;
                 uint32_t d_irqs = irq_count - rate_last_irqs;
-                printf("video rate: %lu frames/s, %lu irqs/s (dvi=%d) clk_sys=%lu clk_hstx=%lu csr=%08lx soft=%d hard=%d\n",
+                printf("video rate: %lu frames/s, %lu irqs/s (dvi=%d) clk_sys=%lu clk_hstx=%lu csr=%08lx resync=%d\n",
                        (unsigned long)((uint64_t)d_frames * 1000000u / d_us),
                        (unsigned long)((uint64_t)d_irqs * 1000000u / d_us),
                        dvi_mode ? 1 : 0,
                        (unsigned long)clock_get_hz(clk_sys),
                        (unsigned long)clock_get_hz(clk_hstx),
                        (unsigned long)hstx_ctrl_hw->csr,
-                       soft_recovery_count,
                        resync_count);
                 printf("  hstx_div=%08lx exp_sh=%08lx exp_tmds=%08lx ping_ctrl=%08lx pong_ctrl=%08lx\n",
                        (unsigned long)clocks_hw->clk[clk_hstx].div,
@@ -731,8 +726,10 @@ void video_output_core1_run(void)
                 rate_last_irqs = irq_count;
             }
 #endif
-            // Rate-limit watchdog: 1-second sliding window. Two-stage recovery:
-            // soft (HSTX enable toggle) on first trip, full resync on repeat.
+            // Rate-limit watchdog: 1-second sliding window. If video_frame_count
+            // advances above ~75 fps (no display exceeds this), DMA chain state
+            // has drifted; full hstx_resync() is the only recovery that works
+            // (soft CSR toggle was tested and fails reliably).
             if ((now - overrate_last_us) >= 1000000u)
             {
                 uint32_t d_us = now - overrate_last_us;
@@ -740,33 +737,7 @@ void video_output_core1_run(void)
                 uint32_t fps = (uint32_t)((uint64_t)d_frames * 1000000u / d_us);
                 if (fps > VIDEO_OUTPUT_OVERRATE_FPS)
                 {
-                    if (!soft_recovery_attempted)
-                    {
-                        // Soft recovery: clear any HSTX expander shadow state
-                        // by toggling CSR.EN. DMA stalls on DREQ while HSTX is
-                        // off, then resumes when re-enabled; chain state stays
-                        // intact. If this alone fixes the overspeed, the root
-                        // cause is HSTX-internal (not DMA config drift).
-                        // NOTE: Soft recovery does not work, always falls through to hard resync. 
-                        irq_set_enabled(DMA_IRQ_0, false);
-                        hstx_ctrl_hw->csr &= ~HSTX_CTRL_CSR_EN_BITS;
-                        __asm volatile("nop\nnop\nnop\nnop");
-                        hstx_ctrl_hw->csr |= HSTX_CTRL_CSR_EN_BITS;
-                        irq_set_enabled(DMA_IRQ_0, true);
-                        soft_recovery_attempted = true;
-                        soft_recovery_count++;
-                        printf("HSTX soft recovery performed! Total soft recoveries since boot: %d\n", soft_recovery_count);
-                    }
-                    else
-                    {
-                        // Soft didn't clear it — escalate to full resync.
-                        resync_requested = true;
-                        soft_recovery_attempted = false;
-                    }
-                }
-                else
-                {
-                    soft_recovery_attempted = false;
+                    resync_requested = true;
                 }
                 overrate_last_us = now;
                 overrate_last_frames = current_count;
@@ -786,7 +757,7 @@ void video_output_core1_run(void)
                 last_frame_count_seen = video_frame_count;
                 overrate_last_us = last_frame_us;
                 overrate_last_frames = video_frame_count;
-                printf("HSTX resync performed! Total resyncs since boot: (hard) %d - (soft) %d\n", resync_count, soft_recovery_count);
+                printf("HSTX resync performed! Total resyncs since boot: %d\n", resync_count);
             }
         }
         if (background_task) {
