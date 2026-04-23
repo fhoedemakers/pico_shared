@@ -208,14 +208,14 @@ namespace Frens
             }
         }
 #else
-        static int resync_count = 0;
+        //static int resync_count = 0;
         hstx_paceFrame(init);
-        int current_resync_count = get_video_output_resync_count();
-        if (current_resync_count != resync_count)
-        {
-            printf("Video output resync count: %d\n", current_resync_count);
-            resync_count = current_resync_count;
-        }
+        // int current_resync_count = get_video_output_resync_count();
+        // if (current_resync_count != resync_count)
+        // {
+        //     printf("Video output resync count: %d\n", current_resync_count);
+        //     resync_count = current_resync_count;
+        // }
 #if 0
         static absolute_time_t next_frame_time = {0};
         if (init)
