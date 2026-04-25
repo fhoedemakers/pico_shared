@@ -683,8 +683,11 @@ void video_output_core1_run(void)
     uint32_t rate_last_irqs = irq_count;
 #endif
     while (1) {
-        if (dvi_mode)
-        {
+        // resync watchdog: if we haven't seen a new frame in a while, the output is probably stuck and monitor looses signal; try to recover with hstx_resync()
+        // Signal loss normally occurs only in DVI mode, never seen in HDMI mode.
+        //  Enable it for HDMI mode as well, just in case.
+        // if (dvi_mode)
+        // {
             uint32_t now = time_us_32();
             uint32_t current_count = video_frame_count;
             if (current_count != last_frame_count_seen)
@@ -759,7 +762,7 @@ void video_output_core1_run(void)
                 overrate_last_frames = video_frame_count;
                 printf("HSTX resync performed! Total resyncs since boot: %d\n", resync_count);
             }
-        }
+       // }
         if (background_task) {
             background_task();
         }
