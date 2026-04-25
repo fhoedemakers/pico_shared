@@ -1,5 +1,54 @@
 # Release notes
 
+## 25/4/2025
+
+- **New `pico_hdmi` HSTX driver** by [@fliperama86](https://github.com/fliperama86/pico_hdmi) replaces the in-tree HSTX driver used previously.
+  - Several RP2350 board configurations switched from the PicoDVI driver to HSTX: HW_CONFIG 2 (Breadboard / PCB Pico/Pico 2) and HW_CONFIG 5 (Adafruit Metro RP2350). Adafruit Fruit Jam and Murmulator M2 also use the new driver.
+  - `pico_hdmi` is embedded as a Git submodule; include path fixed in `CMakeLists.txt`.
+  - `HSTX` definition now guarded by `PICO_RP2350` to keep RP2040 builds clean.
+
+- **HDMI audio over HSTX**.
+  - HSTX output now embeds audio in the HDMI stream (previously HSTX was video-only on this codebase).
+  - Pre-encoded silence packets are emitted when no game audio is playing, keeping the audio clock alive.
+  - Sample-rate setup moved into `hstx.c`; `hstx_init()` gained a `dviOnly` parameter so the same driver can be configured for full HDMI or DVI-only signaling.
+  - WAV player audio path refactored to handle both DVI (no embedded audio) and HSTX (embedded audio) configurations.
+  - `di_ring_buffer` offloaded to PSRAM where available to free SRAM.
+
+- **DVI / HDMI display-mode setting** added to the settings menu (`SETTINGS_VERSION` bumped to 107).
+  - On boards that support both, users can pick full HDMI (with embedded audio) or DVI-only (video only). Some monitors prefer the DVI signaling.
+  - `SELECT + A` shortcut switches to DVI-only at runtime for quick troubleshooting.
+  - New `ENABLEDVI` build flag (in `FrensHelpers.h` / `BoardConfigs.cmake`) controls whether the toggle is exposed per hardware configuration.
+  - Display-mode initialisation fixed when external audio is enabled at boot.
+
+- **HSTX picture-loss watchdog** (`video_output.c`).
+  - Two cooperating watchdogs detect a wedged DMA chain: a stuck-frame check (no new frame for ~500 ms) and an over-rate check (>75 fps measured in a 1 Hz sliding window — observed ~158 Hz drift in DVI mode).
+  - Recovery calls `hstx_resync()` to rebuild the DMA chain in place — no reboot needed.
+  - A soft HSTX CSR-toggle recovery was tested and removed; only a full resync reliably clears the wedge.
+  - Manual resync is also triggered when the settings menu is opened.
+  - Extensive diagnostics available behind `HSTX_DEBUG`: frame/IRQ rates, `clk_sys`/`clk_hstx` values, HSTX CSR, ping/pong DMA control words, PLL state, and frequency-counter readings.
+  - DMA resync now correctly clears and restores the channel enable bits during abort.
+
+- **Frame pacing / VSync rework**.
+  - New `hstx_paceFrame()` implements slack-aware frame pacing for steady 60 fps output.
+  - `hstx_waitForVSync()` switched from polling to a frame-counter–driven wait.
+  - Menu code refactored to use VSync-based pacing for smoother scrolling; pacing state is reset on menu exit so the emulator returns to normal timing.
+
+- **Headphone jack detection** (Adafruit Fruit Jam):
+  - New `Frens::pollHeadPhoneJack()` returns a connection-status enum.
+  - Polling is gated by `EXT_AUDIO_IS_ENABLED` so it only runs on boards that actually have a jack.
+  - Removed the Fruit Jam internal-speaker mute setting and the Button 1 mute shortcut — superseded by automatic detection.
+
+- **Settings / in-game menu additions**:
+  - **Reset game** option in the settings menu, restarts the running game without a reboot.
+  - **BOOTSEL mode** option in the settings menu, for flashing firmware without unplugging the device.
+  - HDMI/DVI label rendering logic refactored to reflect the active display mode.
+
+- **Other**:
+  - Directory and file sorting in the menu switched from `std::sort` to `std::stable_sort` for predictable ordering of equal keys.
+  - UART output enabled in `BoardConfigs.cmake` for the RP2040/RP2350-Zero PCB builds.
+  - Added a clarifying comment for `FLASHPARAM_MAX_FREQ_KHZ` referencing the conditions under which higher flash frequencies can produce screen artifacts.
+  - Fixed a typo in the Adafruit Metro RP2350 board configuration.
+
 ## 16/10/2025
 
 - Added support for [Retro-Bit Genesis/Megadrive 8 button Arcade Pad with USB](https://www.retro-bit.com/controllers/genesis/#usb).

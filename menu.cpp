@@ -204,7 +204,8 @@ static bool isArtWorkEnabled()
 
 int Menu_LoadFrame()
 {
-    Frens::waitForVSync();
+    //Frens::waitForVSync();
+    Frens::PaceFrames60fps(false);
 #if NES_PIN_CLK != -1
     nespad_read_start();
 #endif
@@ -215,7 +216,7 @@ int Menu_LoadFrame()
 #else
         hstx_getframecounter();
 #endif
-    EXT_AUDIO_POLL_HEADPHONE();
+    Frens::pollHeadPhoneJack();
     auto onOff = hw_divider_s32_quotient_inlined(count, 60) & 1;
     Frens::blinkLed(onOff);
 #if NES_PIN_CLK != -1
@@ -2068,8 +2069,8 @@ bool showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
 #else
     hstx_setScanLines(settings.flags.scanlineOn);
 #endif
-    //Frens::PaceFrames60fps(true);
-    Frens::waitForVSync();
+    Frens::PaceFrames60fps(true);
+    //Frens::waitForVSync();
     printf("Exiting save state menu.\n");
     Frens::f_free(screenBuffer);
     return saveStateLoadedOK;
@@ -2086,6 +2087,13 @@ int showSettingsMenu(bool calledFromGame)
     int margintop = 0;
     int marginbottom = 0;
     settingsActive = true;
+    
+    // #if HSTX
+    //     if (settings.flags.useDVIModeForHDMI)
+    //     {
+    //         video_output_request_resync();
+    //     }
+    // #endif
     // Allocate screen buffer if called from game
     if (calledFromGame)
     {
@@ -2172,7 +2180,7 @@ int showSettingsMenu(bool calledFromGame)
         // -1 is always hidden
         if (g_settings_visibility[i] >= 0)
         {
-            if (g_settings_visibility[i] || (i == MenuSettingsIndex::MOPT_EXIT_GAME || i == MenuSettingsIndex::MOPT_SAVE_RESTORE_STATE) && calledFromGame)
+            if (g_settings_visibility[i] || (i == MenuSettingsIndex::MOPT_EXIT_GAME || i == MenuSettingsIndex::MOPT_SAVE_RESTORE_STATE || i == MenuSettingsIndex::MOPT_RESET_GAME) && calledFromGame)
             {
                 visibleIndices[visibleCount++] = i;
             }
@@ -2185,7 +2193,6 @@ int showSettingsMenu(bool calledFromGame)
     // spacerAfterOptionsRow (blank)
     // paletteStartRow .. paletteStartRow+3 : 4 rows of 16 color blocks (64 colors total)
     // paletteInfoRow: textual FG/BG info using working colors
-    // spacerAfterPaletteRow (blank)
     // SAVE
     // CANCEL
     // DEFAULT
@@ -2194,8 +2201,7 @@ int showSettingsMenu(bool calledFromGame)
     const int paletteStartRow = spacerAfterOptionsRow + 1;
     const int paletteRowCount = 4;                                // 4 x 16 = 64
     const int paletteInfoRow = paletteStartRow + paletteRowCount; // textual line
-    const int spacerAfterPaletteRow = paletteInfoRow + 1;
-    const int saveRowScreen = spacerAfterPaletteRow + 1;
+    const int saveRowScreen = paletteInfoRow + 1;
     const int cancelRowScreen = saveRowScreen + 1;
     const int defaultRowScreen = cancelRowScreen + 1;
     const int helpRowScreen = defaultRowScreen + 2; // extra spacer before help line
@@ -2236,6 +2242,12 @@ int showSettingsMenu(bool calledFromGame)
                 {
                     label = "Back to main menu";
                 }
+                value = "";
+                break;
+            }
+            case MenuSettingsIndex::MOPT_RESET_GAME:
+            {
+                label = "Reset game";
                 value = "";
                 break;
             }
@@ -2427,7 +2439,7 @@ int showSettingsMenu(bool calledFromGame)
                 value = "";
                 break;
             }
-            snprintf(line, sizeof(line), "%s%s%s", label, (optIndex == MOPT_EXIT_GAME || optIndex == MOPT_SAVE_RESTORE_STATE || optIndex == MOPT_ENTER_BOOTSEL_MODE) ? "" : ": ", value);
+            snprintf(line, sizeof(line), "%s%s%s", label, (optIndex == MOPT_EXIT_GAME || optIndex == MOPT_SAVE_RESTORE_STATE || optIndex == MOPT_ENTER_BOOTSEL_MODE || optIndex == MOPT_RESET_GAME) ? "" : ": ", value);
             putText(0, row++, line, CBLACK, CWHITE);
         }
         // Blank spacer after last option
@@ -2461,8 +2473,6 @@ int showSettingsMenu(bool calledFromGame)
         if (infoCol < 0)
             infoCol = 0;
         putText(infoCol, row++, line, working.fgcolor, working.bgcolor);
-        // Spacer after palette/info
-        putText(0, row++, "", CBLACK, CWHITE);
         if (settingsChanged)
         {
             putText(0, row++, "SAVE *", CBLACK, CWHITE);
@@ -2479,7 +2489,8 @@ int showSettingsMenu(bool calledFromGame)
         {
             if (visibleIndices[selectedRowLocal - rowStartOptions] == MOPT_EXIT_GAME ||
                 visibleIndices[selectedRowLocal - rowStartOptions] == MOPT_SAVE_RESTORE_STATE ||
-                visibleIndices[selectedRowLocal - rowStartOptions] == MOPT_ENTER_BOOTSEL_MODE)
+                visibleIndices[selectedRowLocal - rowStartOptions] == MOPT_ENTER_BOOTSEL_MODE ||
+                visibleIndices[selectedRowLocal - rowStartOptions] == MOPT_RESET_GAME)
             {
                 snprintf(line, sizeof(line), "UP/DOWN: Move, %s: select", buttonLabel1);
             }
@@ -2627,8 +2638,7 @@ int showSettingsMenu(bool calledFromGame)
                     } while (
                         selectedRowLocal == spacerAfterOptionsRow ||
                         (selectedRowLocal >= paletteStartRow && selectedRowLocal < paletteStartRow + paletteRowCount) ||
-                        selectedRowLocal == paletteInfoRow ||
-                        selectedRowLocal == spacerAfterPaletteRow);
+                        selectedRowLocal == paletteInfoRow);
                 }
                 else
                 {
@@ -2646,15 +2656,14 @@ int showSettingsMenu(bool calledFromGame)
                     } while (
                         selectedRowLocal == spacerAfterOptionsRow ||
                         (selectedRowLocal >= paletteStartRow && selectedRowLocal < paletteStartRow + paletteRowCount) ||
-                        selectedRowLocal == paletteInfoRow ||
-                        selectedRowLocal == spacerAfterPaletteRow);
+                        selectedRowLocal == paletteInfoRow);
                 }
                 else
                 {
                     selectedRowLocal = rowStartOptions; // wrap
                 }
             }
-            else if (pad & LEFT || pad & RIGHT || ((pad & A) && (optIndex == MOPT_EXIT_GAME || optIndex == MOPT_SAVE_RESTORE_STATE || optIndex == MOPT_ENTER_BOOTSEL_MODE)))
+            else if (pad & LEFT || pad & RIGHT || ((pad & A) && (optIndex == MOPT_EXIT_GAME || optIndex == MOPT_SAVE_RESTORE_STATE || optIndex == MOPT_ENTER_BOOTSEL_MODE || optIndex == MOPT_RESET_GAME)))
             {
                 if (optIndex != -1)
                 {
@@ -2675,6 +2684,12 @@ int showSettingsMenu(bool calledFromGame)
                     case MOPT_SAVE_RESTORE_STATE:
                     {
                         rval = 4; // save/restore state
+                        exitMenu = true;
+                        break;
+                    }
+                     case MOPT_RESET_GAME:
+                    {
+                        rval = 5; // reset game
                         exitMenu = true;
                         break;
                     }
@@ -2933,13 +2948,14 @@ int showSettingsMenu(bool calledFromGame)
         // Speaker can be muted/unmuted from settings menu
         //EXT_AUDIO_MUTE_INTERNAL_SPEAKER(settings.flags.fruitJamEnableInternalSpeaker == 0);
         EXT_AUDIO_SETVOLUME(settings.fruitjamVolumeLevel);
-        //Frens::PaceFrames60fps(true);
-        Frens::waitForVSync();
+        Frens::PaceFrames60fps(true);
+        //Frens::waitForVSync();
     }
 #if USE_I2S_AUDIO == PICO_AUDIO_I2S_DRIVER_TLV320
     wavplayer::reset(); // stop menu music
 #endif
     settingsActive = false; 
+    Frens::PaceFrames60fps(true); // ensure normal timing after menu
     return rval;
 }
 void setclockInFlashAndReboot(uint32_t freq, vreg_voltage voltage)
@@ -2980,8 +2996,8 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
     hstx_setScanLines(false);
 #endif
     abSwapped = 1; // Swap A and B buttons, so menu is consistent across different emulators
-    //Frens::PaceFrames60fps(true);
-    Frens::waitForVSync();
+    Frens::PaceFrames60fps(true);
+    //Frens::waitForVSync();
     //
     menutitle = (char *)title;
     int totalFrames = -1;
@@ -3547,6 +3563,6 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
         // Never return
     }
     Frens::restoreScanlines();
-    //Frens::PaceFrames60fps(true); // reset frame pacing
-    Frens::waitForVSync();
+    Frens::PaceFrames60fps(true); // reset frame pacing
+    //Frens::waitForVSync();
 }

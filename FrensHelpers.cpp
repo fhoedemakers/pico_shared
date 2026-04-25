@@ -58,6 +58,7 @@ namespace Frens
     static bool fatfsUsesPioSpi = false;
     static DWORD totalSpace = 0;
     static DWORD freeSpace = 0;
+    static bool extSpeakerEnabled = false;
 #if !HSTX && FRAMEBUFFERISPOSSIBLE
     // uint8_t *framebuffer1; // [320 * 240];
     // uint8_t *framebuffer2; // [320 * 240];
@@ -207,6 +208,15 @@ namespace Frens
             }
         }
 #else
+        //static int resync_count = 0;
+        hstx_paceFrame(init);
+        // int current_resync_count = get_video_output_resync_count();
+        // if (current_resync_count != resync_count)
+        // {
+        //     printf("Video output resync count: %d\n", current_resync_count);
+        //     resync_count = current_resync_count;
+        // }
+#if 0
         static absolute_time_t next_frame_time = {0};
         if (init)
         {
@@ -220,6 +230,8 @@ namespace Frens
         // Pace to 60fps
         sleep_until(next_frame_time);
         next_frame_time = delayed_by_us(next_frame_time, 16666); // 1/60s = 16666us
+
+#endif
 #endif
     }
 #endif
@@ -1733,6 +1745,22 @@ namespace Frens
         return (f_stat(filepath, &fno) == FR_OK);
     }
 
+    void pollHeadPhoneJack()
+    {
+#if EXT_AUDIO_IS_ENABLED
+        auto hpToggle = EXT_AUDIO_POLL_HEADPHONE();
+        if (hpToggle != HP_TOGGLE_NONE)
+        {
+            extSpeakerEnabled = (hpToggle == HP_TOGGLE_CONNECT) ? true : false;
+            // printf("Headphone toggle detected. Headphones %s\n", extSpeakerEnabled ? "unplugged, using speakers" : "plugged in, using headphones");
+        }
+#endif
+    }
+
+    bool isHeadPhoneJackConnected()
+    {
+        return extSpeakerEnabled;
+    }
 }
 // C-compatible wrappers
 extern "C"

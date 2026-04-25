@@ -4,7 +4,7 @@
 #include "stdio.h"
 // Custom changes
 volatile bool HSTX_vblank = false;
-static uint8_t FRAMEBUFFER[(MODE_H_ACTIVE_PIXELS / 2) * (MODE_V_ACTIVE_LINES / 2) * 2] __attribute__((aligned(4)));
+static uint8_t FRAMEBUFFER[(MODE_H_ACTIVE_PIXELS / 2) * (MODE_V_ACTIVE_LINES / 2) * 2];
 // uint16_t ALIGNED HDMIlines[2][MODE_H_ACTIVE_PIXELS] = {0};
 static uint8_t *WriteBuf = FRAMEBUFFER;
 static uint8_t *DisplayBuf = FRAMEBUFFER;
@@ -75,45 +75,72 @@ void __not_in_flash_func(hstx_vsync_callbackfunc)(void)
 }
 void __not_in_flash_func(scanline_callbackfunc)(uint32_t v_scanline, uint32_t active_line, uint32_t *buff)
 {
-    int load_line = v_scanline - (MODE_V_TOTAL_LINES - MODE_V_ACTIVE_LINES);
-    if (load_line < 0 || load_line >= MODE_V_ACTIVE_LINES)
-        return;
+    uint16_t *p = (uint16_t *)buff;
+    int last_line = 2, load_line, line_to_load, Line_dup;
+    load_line = v_scanline - (MODE_V_TOTAL_LINES - MODE_V_ACTIVE_LINES);
+    Line_dup = load_line >> 1;
+    if (load_line >= 0 && load_line < MODE_V_ACTIVE_LINES)
+    {
+        HSTX_vblank = false;
+        __dmb();
 
-    HSTX_vblank = false;
-    __dmb();
+        for (int i = 0; i < MODE_H_ACTIVE_PIXELS / 2; i++)
+        {
+            uint8_t *d = &DisplayBuf[(Line_dup)*MODE_H_ACTIVE_PIXELS + i * 2];
+            int c = *d++;
+            c |= ((*d++) << 8);
+#if 1
+            // Apply CRT scanline effect for RGB555: darken every other line
+            if (load_line & 1 && enableScanLines)
+            { // Odd lines = scanlines
+                int r = (c >> 10) & 0x1F;
+                int g = (c >> 5) & 0x1F;
+                int b = c & 0x1F;
+                r = r >> 1;
+                g = g >> 1;
+                b = b >> 1;
+                c = (r << 10) | (g << 5) | b;
+            }
+            // tried vertical and pixel-grid scanlines
+            // but this is probably too much for the RP2350:
+#else
+            // Horizontal scanlines: darken every other line
+            if (scanlineMode == 1 && (load_line & 1))
+            {
+                int r = (c >> 10) & 0x1F;
+                int g = (c >> 5) & 0x1F;
+                int b = c & 0x1F;
+                r = r >> 1;
+                g = g >> 1;
+                b = b >> 1;
+                c = (r << 10) | (g << 5) | b;
+            }
+            // Vertical scanlines: darken every other pixel column
+            else if (scanlineMode == 2 && (i & 1))
+            {
+                int r = (c >> 10) & 0x1F;
+                int g = (c >> 5) & 0x1F;
+                int b = c & 0x1F;
+                r = r >> 1;
+                g = g >> 1;
+                b = b >> 1;
+                c = (r << 10) | (g << 5) | b;
+            }
+            // Pixel-grid: darken every other line and every other pixel column
+            else if (scanlineMode == 3 && ((load_line & 1) || (i & 1)))
+            {
+                int r = (c >> 10) & 0x1F;
+                int g = (c >> 5) & 0x1F;
+                int b = c & 0x1F;
+                r = r >> 1;
+                g = g >> 1;
+                b = b >> 1;
+                c = (r << 10) | (g << 5) | b;
+            }
 
-    // Source row (320 pixels RGB555 = 640 bytes = 160 uint32_t) with vertical
-    // line doubling (two output scanlines share one framebuffer row).
-    int Line_dup = load_line >> 1;
-    const uint32_t *src = (const uint32_t *)&DisplayBuf[Line_dup * MODE_H_ACTIVE_PIXELS];
-    uint32_t *dst = buff;
-    const uint32_t iters = MODE_H_ACTIVE_PIXELS / 4; // 2 src pixels in, 4 dst pixels out
-
-    // Darken-both-halves mask for a 32-bit word holding two RGB555 pixels.
-    // Per 5-bit component, divide-by-two is (c & 0x1E) >> 1, i.e. mask off
-    // the LSB and shift. Applied to both pixels in parallel with one AND+shift.
-    //   r: bits 10..14   mask 0x7800 -> 0x7800 with LSB cleared = 0x7800
-    //   g: bits  5.. 9   mask 0x03E0 -> LSB cleared             = 0x03C0
-    //   b: bits  0.. 4   mask 0x001F -> LSB cleared             = 0x001E
-    // Combined per pixel = 0x7BDE; packed twice = 0x7BDE7BDE.
-    // (Faster than a 32-entry lookup table: no memory access, single cycle.)
-    const uint32_t DARKEN_MASK = 0x7BDE7BDEu;
-
-    if ((load_line & 1) && enableScanLines) {
-        for (uint32_t i = 0; i < iters; i++) {
-            uint32_t pair = (src[i] & DARKEN_MASK) >> 1; // darken both pixels
-            uint32_t px0 = pair & 0xFFFFu;
-            uint32_t px1 = pair >> 16;
-            *dst++ = px0 | (px0 << 16); // duplicate pixel 0
-            *dst++ = px1 | (px1 << 16); // duplicate pixel 1
-        }
-    } else {
-        for (uint32_t i = 0; i < iters; i++) {
-            uint32_t pair = src[i];
-            uint32_t px0 = pair & 0xFFFFu;
-            uint32_t px1 = pair >> 16;
-            *dst++ = px0 | (px0 << 16);
-            *dst++ = px1 | (px1 << 16);
+#endif
+            *p++ = c;
+            *p++ = c;
         }
     }
 }

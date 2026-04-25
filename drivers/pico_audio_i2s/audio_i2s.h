@@ -75,17 +75,24 @@ typedef struct {
     PIO pio;     // PIO instance (e.g., pio0 or pio1)
     int dma_chan; // DMA channel for audio transfer
 } audio_i2s_hw_t;
-
+enum headphone_toggle_t {
+    HP_TOGGLE_NONE = 0,
+    HP_TOGGLE_CONNECT = 1,
+    HP_TOGGLE_DISCONNECT = 2
+};
 audio_i2s_hw_t *audio_i2s_setup(int driver, int freqHZ, int dmachan);
 void audio_i2s_update_pio_frequency(uint32_t sample_freq);
 void audio_i2s_out_32(uint32_t sample32);
 void audio_i2s_enqueue_sample(uint32_t sample32);
-void audio_i2s_poll_headphone_status();
+enum headphone_toggle_t audio_i2s_poll_headphone_status();
 int audio_i2s_get_freebuffer_size();
 void audio_i2s_disable() ;
 bool audio_i2s_dacError();
 void audio_i2s_muteInternalSpeaker(bool mute);
 void audio_i2s_setVolume(int8_t level);
+
+
+
 #ifdef __cplusplus
 }
 #endif

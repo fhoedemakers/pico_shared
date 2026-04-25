@@ -69,6 +69,9 @@ enum class ScreenMode
 #define RETROJAM 0
 #endif
 
+#ifndef ENABLEDVI
+#define ENABLEDVI 0 
+#endif
 extern uintptr_t ROM_FILE_ADDR ; //0x10090000
 extern int maxRomSize;
 extern char ErrorMessage[];
@@ -149,6 +152,9 @@ namespace Frens
     uint32_t getCrcOfLoadedRom();
     bool fileExists(const char *filename);
     float read_onboard_temperature(const char unit);
+
+     void pollHeadPhoneJack();
+     bool isHeadPhoneJackConnected();
    
 } // namespace Frens
 

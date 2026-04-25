@@ -185,13 +185,13 @@ namespace Frens
 		// Sort: directories first (case-insensitive), then files (case-insensitive)
 		if (numberOfEntries > 1)
 		{
-			std::sort(entries, entries + numberOfEntries, [](const RomEntry &a, const RomEntry &b) {
-				if (a.IsDirectory != b.IsDirectory)
-				{
-					return a.IsDirectory && !b.IsDirectory; // directories come before files
-				}
-				return strcasecmp(a.Path, b.Path) < 0; // case-insensitive alphabetical
-			});
+			   std::stable_sort(entries, entries + numberOfEntries, [](const RomEntry &a, const RomEntry &b) {
+				   if (a.IsDirectory != b.IsDirectory)
+				   {
+					   return a.IsDirectory && !b.IsDirectory; // directories come before files
+				   }
+				   return strcasecmp(a.Path, b.Path) < 0; // case-insensitive alphabetical
+			   });
 		}
 		printf("Sort done (std::sort)\n");
 	}

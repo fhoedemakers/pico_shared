@@ -451,7 +451,7 @@ namespace wavplayer
             return;
         // if (!settings.flags.audioEnabled)
         //     return;
-
+        bool hpConnected = Frens::isHeadPhoneJackConnected();
         if (g_wav.kind == WavSrcKind::Memory)
         {
 #if !HSTX
@@ -530,7 +530,7 @@ namespace wavplayer
                 const int16_t *p = g_wav.pcm_mem + (g_wav.frame_pos * 2);
                 int16_t l = p[0], r = p[1];
                 l = apply_gain(l); r = apply_gain(r);
-                if (settings.flags.useExtAudio) {
+                if (settings.flags.useExtAudio || hpConnected) {
                     EXT_AUDIO_ENQUEUE_SAMPLE(l, r);
                 } else {
                     hstx_push_audio_sample(l, r);
@@ -573,7 +573,7 @@ namespace wavplayer
 
 #if !HSTX
 #if EXT_AUDIO_IS_ENABLED
-                if (settings.flags.useExtAudio)
+                if (settings.flags.useExtAudio || hpConnected)
                 {
                     if (g_wav.bits_per == 16)
                     {
@@ -689,7 +689,7 @@ namespace wavplayer
                         int16_t l = *src16++;
                         int16_t r = *src16++;
                         l = apply_gain(l); r = apply_gain(r);
-                        if (settings.flags.useExtAudio) {
+                        if (settings.flags.useExtAudio || hpConnected) {
                             EXT_AUDIO_ENQUEUE_SAMPLE(l, r);
                         } else {
                             hstx_push_audio_sample(l, r);

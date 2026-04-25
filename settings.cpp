@@ -110,7 +110,7 @@ namespace FrensSettings
         settings.flags.rapidFireOnA = 0; // default: rapid fire off
         settings.flags.rapidFireOnB = 0; // default: rapid fire off
         settings.fruitjamVolumeLevel = 16; // default volume level in db to mid (0-24)
-        settings.flags.useDVIModeForHDMI = (HW_CONFIG == 13);; // default on Murmulator M2 (HW_CONFIG == 13) to use DVI mode for HDMI output
+        settings.flags.useDVIModeForHDMI = (HW_CONFIG == 13 && ENABLEDVI); // default on Murmulator M2 (HW_CONFIG == 13) to use DVI mode for HDMI output
         settings.version = SETTINGS_VERSION;
         // clear all the reserved settings
         settings.flags.reserved = 0;
