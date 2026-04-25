@@ -683,86 +683,121 @@ void video_output_core1_run(void)
     uint32_t rate_last_irqs = irq_count;
 #endif
     while (1) {
-        // resync watchdog: if we haven't seen a new frame in a while, the output is probably stuck and monitor looses signal; try to recover with hstx_resync()
-        // Signal loss normally occurs only in DVI mode, never seen in HDMI mode.
-        //  Enable it for HDMI mode as well, just in case.
-        // if (dvi_mode)
-        // {
-            uint32_t now = time_us_32();
-            uint32_t current_count = video_frame_count;
-            if (current_count != last_frame_count_seen)
-            {
-                last_frame_count_seen = current_count;
-                last_frame_us = now;
-            }
+        // ----------------------------------------------------------------
+        // HSTX recovery loop
+        //
+        // The HSTX/DMA pipeline can wedge in two distinct failure modes that
+        // both manifest as the monitor losing signal. Two cooperating
+        // watchdogs detect them; both feed into a single recovery path that
+        // calls hstx_resync() to rebuild the DMA chain from scratch.
+        //
+        //   1. Stuck-frame watchdog (per-iteration check)
+        //      video_frame_count stops advancing — typical after a DMA IRQ
+        //      overrun or HSTX FIFO underflow leaves the ping/pong chain in
+        //      an inconsistent state. Detected when no new frame has been
+        //      observed for VIDEO_OUTPUT_WATCHDOG_US (~500 ms).
+        //
+        //   2. Over-rate watchdog (1 Hz sampling window)
+        //      video_frame_count advances faster than any real display can
+        //      sync to (>75 fps; ~158 Hz observed in DVI mode after the chain
+        //      drifts). Latches resync_requested for the next iteration.
+        //
+        // Originally these checks were gated on dvi_mode (signal loss was
+        // only ever observed in DVI), but they are now run unconditionally
+        // for HDMI as a safety net.
+        //
+        // hstx_resync() is the only recovery that has been shown to work;
+        // a soft HSTX CSR toggle was tested and fails reliably.
+        //
+        // All elapsed-time comparisons use uint32_t subtraction, which is
+        // safe across the ~71 min wrap of time_us_32().
+        // ----------------------------------------------------------------
+
+        uint32_t now = time_us_32();
+        uint32_t current_count = video_frame_count;
+
+        // Stuck-frame watchdog: refresh the "last progress" timestamp
+        // whenever the IRQ-driven frame counter has moved forward.
+        if (current_count != last_frame_count_seen)
+        {
+            last_frame_count_seen = current_count;
+            last_frame_us = now;
+        }
+
 #if HSTX_DEBUG
-            if ((now - rate_last_us) >= 1000000u)
-            {
-                uint32_t d_us = now - rate_last_us;
-                uint32_t d_frames = current_count - rate_last_frames;
-                uint32_t d_irqs = irq_count - rate_last_irqs;
-                printf("video rate: %lu frames/s, %lu irqs/s (dvi=%d) clk_sys=%lu clk_hstx=%lu csr=%08lx resync=%d\n",
-                       (unsigned long)((uint64_t)d_frames * 1000000u / d_us),
-                       (unsigned long)((uint64_t)d_irqs * 1000000u / d_us),
-                       dvi_mode ? 1 : 0,
-                       (unsigned long)clock_get_hz(clk_sys),
-                       (unsigned long)clock_get_hz(clk_hstx),
-                       (unsigned long)hstx_ctrl_hw->csr,
-                       resync_count);
-                printf("  hstx_div=%08lx exp_sh=%08lx exp_tmds=%08lx ping_ctrl=%08lx pong_ctrl=%08lx\n",
-                       (unsigned long)clocks_hw->clk[clk_hstx].div,
-                       (unsigned long)hstx_ctrl_hw->expand_shift,
-                       (unsigned long)hstx_ctrl_hw->expand_tmds,
-                       (unsigned long)dma_hw->ch[DMACH_PING].al1_ctrl,
-                       (unsigned long)dma_hw->ch[DMACH_PONG].al1_ctrl);
-                uint32_t fc_sys_khz = frequency_count_khz(CLOCKS_FC0_SRC_VALUE_CLK_SYS);
-                uint32_t fc_hstx_khz = frequency_count_khz(CLOCKS_FC0_SRC_VALUE_CLK_HSTX);
-                printf("  sys_ctrl=%08lx sys_div=%08lx pll_fbdiv=%lu pll_prim=%08lx fc_sys=%lu kHz fc_hstx=%lu kHz\n",
-                       (unsigned long)clocks_hw->clk[clk_sys].ctrl,
-                       (unsigned long)clocks_hw->clk[clk_sys].div,
-                       (unsigned long)pll_sys_hw->fbdiv_int,
-                       (unsigned long)pll_sys_hw->prim,
-                       (unsigned long)fc_sys_khz,
-                       (unsigned long)fc_hstx_khz);
-                rate_last_us = now;
-                rate_last_frames = current_count;
-                rate_last_irqs = irq_count;
-            }
+        // 1 Hz diagnostic dump: frame/IRQ rates plus a snapshot of every
+        // clock and HSTX/DMA register relevant to debugging a wedge.
+        if ((now - rate_last_us) >= 1000000u)
+        {
+            uint32_t d_us = now - rate_last_us;
+            uint32_t d_frames = current_count - rate_last_frames;
+            uint32_t d_irqs = irq_count - rate_last_irqs;
+            printf("video rate: %lu frames/s, %lu irqs/s (dvi=%d) clk_sys=%lu clk_hstx=%lu csr=%08lx resync=%d\n",
+                   (unsigned long)((uint64_t)d_frames * 1000000u / d_us),
+                   (unsigned long)((uint64_t)d_irqs * 1000000u / d_us),
+                   dvi_mode ? 1 : 0,
+                   (unsigned long)clock_get_hz(clk_sys),
+                   (unsigned long)clock_get_hz(clk_hstx),
+                   (unsigned long)hstx_ctrl_hw->csr,
+                   resync_count);
+            printf("  hstx_div=%08lx exp_sh=%08lx exp_tmds=%08lx ping_ctrl=%08lx pong_ctrl=%08lx\n",
+                   (unsigned long)clocks_hw->clk[clk_hstx].div,
+                   (unsigned long)hstx_ctrl_hw->expand_shift,
+                   (unsigned long)hstx_ctrl_hw->expand_tmds,
+                   (unsigned long)dma_hw->ch[DMACH_PING].al1_ctrl,
+                   (unsigned long)dma_hw->ch[DMACH_PONG].al1_ctrl);
+            uint32_t fc_sys_khz = frequency_count_khz(CLOCKS_FC0_SRC_VALUE_CLK_SYS);
+            uint32_t fc_hstx_khz = frequency_count_khz(CLOCKS_FC0_SRC_VALUE_CLK_HSTX);
+            printf("  sys_ctrl=%08lx sys_div=%08lx pll_fbdiv=%lu pll_prim=%08lx fc_sys=%lu kHz fc_hstx=%lu kHz\n",
+                   (unsigned long)clocks_hw->clk[clk_sys].ctrl,
+                   (unsigned long)clocks_hw->clk[clk_sys].div,
+                   (unsigned long)pll_sys_hw->fbdiv_int,
+                   (unsigned long)pll_sys_hw->prim,
+                   (unsigned long)fc_sys_khz,
+                   (unsigned long)fc_hstx_khz);
+            rate_last_us = now;
+            rate_last_frames = current_count;
+            rate_last_irqs = irq_count;
+        }
 #endif
-            // Rate-limit watchdog: 1-second sliding window. If video_frame_count
-            // advances above ~75 fps (no display exceeds this), DMA chain state
-            // has drifted; full hstx_resync() is the only recovery that works
-            // (soft CSR toggle was tested and fails reliably).
-            if ((now - overrate_last_us) >= 1000000u)
-            {
-                uint32_t d_us = now - overrate_last_us;
-                uint32_t d_frames = current_count - overrate_last_frames;
-                uint32_t fps = (uint32_t)((uint64_t)d_frames * 1000000u / d_us);
-                if (fps > VIDEO_OUTPUT_OVERRATE_FPS)
-                {
-                    resync_requested = true;
-                }
-                overrate_last_us = now;
-                overrate_last_frames = current_count;
-            }
 
-            bool do_resync = resync_requested ||
-                             (now - last_frame_us) > VIDEO_OUTPUT_WATCHDOG_US;
-
-            if (do_resync)
+        // Over-rate watchdog: once per second, compute fps over the elapsed
+        // window. Above VIDEO_OUTPUT_OVERRATE_FPS the DMA chain has drifted
+        // and the recovery is queued for this iteration's resync block.
+        if ((now - overrate_last_us) >= 1000000u)
+        {
+            uint32_t d_us = now - overrate_last_us;
+            uint32_t d_frames = current_count - overrate_last_frames;
+            uint32_t fps = (uint32_t)((uint64_t)d_frames * 1000000u / d_us);
+            if (fps > VIDEO_OUTPUT_OVERRATE_FPS)
             {
-                resync_count++;
-                irq_set_enabled(DMA_IRQ_0, false);
-                hstx_resync();
-                resync_requested = false;
-                irq_set_enabled(DMA_IRQ_0, true);
-                last_frame_us = time_us_32();
-                last_frame_count_seen = video_frame_count;
-                overrate_last_us = last_frame_us;
-                overrate_last_frames = video_frame_count;
-                printf("HSTX resync performed! Total resyncs since boot: %d\n", resync_count);
+                resync_requested = true;
             }
-       // }
+            overrate_last_us = now;
+            overrate_last_frames = current_count;
+        }
+
+        // Trigger recovery if either watchdog has fired. The DMA IRQ is
+        // masked across hstx_resync() so it cannot observe the chain in a
+        // half-rebuilt state, then all watchdog baselines are reset so the
+        // next iteration measures fresh post-recovery progress.
+        bool do_resync = resync_requested ||
+                         (now - last_frame_us) > VIDEO_OUTPUT_WATCHDOG_US;
+
+        if (do_resync)
+        {
+            resync_count++;
+            irq_set_enabled(DMA_IRQ_0, false);
+            hstx_resync();
+            resync_requested = false;
+            irq_set_enabled(DMA_IRQ_0, true);
+            last_frame_us = time_us_32();
+            last_frame_count_seen = video_frame_count;
+            overrate_last_us = last_frame_us;
+            overrate_last_frames = video_frame_count;
+            printf("HSTX resync performed! Total resyncs since boot: %d\n", resync_count);
+        }
+
         if (background_task) {
             background_task();
         }
