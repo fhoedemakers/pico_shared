@@ -25,7 +25,7 @@ namespace FrensSettings
         if ( emu == emulators::MULTI ) {
             emulatorType = emulators::NES;
         }   
-        loadsettings();
+       // loadsettings();
     }
     void setEmulatorType(const char * fileextension)
     {
