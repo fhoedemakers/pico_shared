@@ -3488,6 +3488,10 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
 #endif
             }
         }
+        // Refresh selectedRomOrFolder in case navigation changed selectedRow this frame
+        auto newIdx = settings.selectedRow - STARTROW + settings.firstVisibleRowINDEX;
+        selectedRomOrFolder = (romlister.Count() > 0) ? entries[newIdx].Path : nullptr;
+
         // scroll selected row horizontally if textsize exceeds rowlength
         if (selectedRomOrFolder)
         {
