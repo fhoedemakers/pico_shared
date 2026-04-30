@@ -25,6 +25,7 @@ enum MenuSettingsIndex {
     MOPT_RAPID_FIRE_ON_A,
     MOPT_RAPID_FIRE_ON_B,
     MOPT_ENTER_BOOTSEL_MODE,
+    MOPT_FDS_DISK_SWAP,
     MOPT_COUNT
 };
 // Create and initialize an array which explains each option in a short description of max 40 characters
@@ -48,7 +49,8 @@ const char* const g_settings_descriptions[MOPT_COUNT] = {
     "Select border artwork",
     "Enable rapid fire for this button",
     "Enable rapid fire for this button",
-    "Reboot to BOOTSEL mode for flashing"
+    "Reboot to BOOTSEL mode for flashing",
+    "Eject / insert FDS disk side"
 };
 
 extern const int8_t *g_settings_visibility; // Visibility configuration for options menu

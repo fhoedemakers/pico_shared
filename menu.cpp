@@ -27,6 +27,18 @@
 #include "wavplayer.h"
 const int8_t *g_settings_visibility;
 const uint8_t *g_available_screen_modes;
+
+// FDS disk-swap hooks. Null in builds (or ROM contexts) where FDS is
+// not active; the menu option is also kept hidden in those cases via
+// g_settings_visibility[MOPT_FDS_DISK_SWAP].
+static const MenuFdsHooks *s_fdsHooks = nullptr;
+void menuSetFdsHooks(const MenuFdsHooks *hooks) { s_fdsHooks = hooks; }
+
+// LEFT/RIGHT preview the disk choice without committing — A on the
+// option commits (or triggers Reset). -1 means "not initialised yet,
+// use the live current side". Set to "current side" each time the
+// menu opens.
+static int s_fdsPendingChoice = -1;
 #if !HSTX
 #define CC(x) (((x >> 1) & 15) | (((x >> 6) & 15) << 4) | (((x >> 11) & 15) << 8))
 const __UINT16_TYPE__ NesMenuPalette[64] = {
@@ -2087,6 +2099,9 @@ int showSettingsMenu(bool calledFromGame)
     int margintop = 0;
     int marginbottom = 0;
     settingsActive = true;
+    // Re-seed the FDS preview from the live current side on every menu
+    // open. The render switch fills it in on first draw.
+    s_fdsPendingChoice = -1;
     
     // #if HSTX
     //     if (settings.flags.useDVIModeForHDMI)
@@ -2175,8 +2190,15 @@ int showSettingsMenu(bool calledFromGame)
     // visibleCount+3: DEFAULT
     int visibleIndices[MOPT_COUNT];
     int visibleCount = 0;
+    // FDS disk swap goes first so it's auto-selected when an FDS game
+    // is running and the BIOS prompts the user to flip the disk.
+    if (g_settings_visibility[MOPT_FDS_DISK_SWAP] > 0)
+    {
+        visibleIndices[visibleCount++] = MOPT_FDS_DISK_SWAP;
+    }
     for (int i = 0; i < MOPT_COUNT; ++i)
     {
+        if (i == MOPT_FDS_DISK_SWAP) continue; // already handled above
         // -1 is always hidden
         if (g_settings_visibility[i] >= 0)
         {
@@ -2434,6 +2456,42 @@ int showSettingsMenu(bool calledFromGame)
                 value = working.flags.rapidFireOnB ? "ON" : "OFF";
                 break;
             }
+            case MenuSettingsIndex::MOPT_FDS_DISK_SWAP:
+            {
+                label = "Disk";
+                static char fdsBuf[16];
+                if (!s_fdsHooks || !s_fdsHooks->get_num_sides)
+                {
+                    value = "N/A";
+                }
+                else
+                {
+                    int n = s_fdsHooks->get_num_sides();
+                    if (s_fdsPendingChoice < 0)
+                    {
+                        // First render after menu open: seed pending choice
+                        // from the live current side (or 0 if ejected).
+                        int v = s_fdsHooks->get_swap_value();
+                        s_fdsPendingChoice = (v >= n) ? 0 : v;
+                    }
+                    if (s_fdsPendingChoice == n)
+                    {
+                        value = "Reset";
+                    }
+                    else if (n == 1)
+                    {
+                        value = "Disk A";
+                    }
+                    else
+                    {
+                        // 0 -> "Disk A", 1 -> "Disk B", ...
+                        snprintf(fdsBuf, sizeof(fdsBuf), "Disk %c",
+                                 'A' + s_fdsPendingChoice);
+                        value = fdsBuf;
+                    }
+                }
+                break;
+            }
             default:
                 label = "Unknown";
                 value = "";
@@ -2663,7 +2721,7 @@ int showSettingsMenu(bool calledFromGame)
                     selectedRowLocal = rowStartOptions; // wrap
                 }
             }
-            else if (pad & LEFT || pad & RIGHT || ((pad & A) && (optIndex == MOPT_EXIT_GAME || optIndex == MOPT_SAVE_RESTORE_STATE || optIndex == MOPT_ENTER_BOOTSEL_MODE || optIndex == MOPT_RESET_GAME)))
+            else if (pad & LEFT || pad & RIGHT || ((pad & A) && (optIndex == MOPT_EXIT_GAME || optIndex == MOPT_SAVE_RESTORE_STATE || optIndex == MOPT_ENTER_BOOTSEL_MODE || optIndex == MOPT_RESET_GAME || optIndex == MOPT_FDS_DISK_SWAP)))
             {
                 if (optIndex != -1)
                 {
@@ -2847,6 +2905,45 @@ int showSettingsMenu(bool calledFromGame)
 
                         working.flags.rapidFireOnB = !working.flags.rapidFireOnB;
 
+                        break;
+                    }
+                    case MOPT_FDS_DISK_SWAP:
+                    {
+                        if (!s_fdsHooks || !s_fdsHooks->get_num_sides) break;
+                        int n = s_fdsHooks->get_num_sides();
+                        if (n <= 0) break;
+                        int total = n + 1; // sides + Reset
+
+                        if (s_fdsPendingChoice < 0)
+                        {
+                            int v = s_fdsHooks->get_swap_value();
+                            s_fdsPendingChoice = (v >= n) ? 0 : v;
+                        }
+
+                        if (pad & A)
+                        {
+                            // Commit. n means "Reset", anything else is a side index.
+                            if (s_fdsPendingChoice == n)
+                            {
+                                rval = 5; // reset game (same as MOPT_RESET_GAME)
+                            }
+                            else
+                            {
+                                if (s_fdsHooks->request_swap)
+                                    s_fdsHooks->request_swap(s_fdsPendingChoice);
+                                rval = 0; // stay in game, no settings save needed
+                            }
+                            exitMenu = true;
+                            s_fdsPendingChoice = -1; // reset for next open
+                        }
+                        else
+                        {
+                            // LEFT/RIGHT just preview the next choice; do not
+                            // commit until the user presses A.
+                            s_fdsPendingChoice = right
+                                ? (s_fdsPendingChoice + 1) % total
+                                : (s_fdsPendingChoice + total - 1) % total;
+                        }
                         break;
                     }
                     default:

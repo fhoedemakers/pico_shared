@@ -45,6 +45,19 @@ void ClearScreen(int color);
 void putText(int x, int y, const char *text, int fgcolor, int bgcolor, bool wraplines = false, int offset = 0);
 void splash();  // is emulator specific
 int showSettingsMenu(bool calledFromGame = false);
+
+// Optional FDS disk-swap hooks. The NES emulator wires these up to its
+// FDS implementation at startup; other emulators leave it null and the
+// menu hides the option via g_settings_visibility[MOPT_FDS_DISK_SWAP].
+struct MenuFdsHooks
+{
+    int  (*get_swap_value)();          // 0..NumSides-1 for "Side N", NumSides for "Ejected"
+    int  (*get_num_sides)();           // total disk sides
+    void (*request_swap)(int newSide); // schedule eject + insert with newSide
+    void (*request_eject)();           // hold disk ejected
+};
+void menuSetFdsHooks(const MenuFdsHooks *hooks);
+
 bool showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefunc)(const char *path), const char *extraMessage, SaveStateTypes quickSave);
 void getQuickSavePath(char *path, size_t pathsize);
 void getSaveStatePath(char *path, size_t pathsize, int slot);
