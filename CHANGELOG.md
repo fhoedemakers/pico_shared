@@ -2,6 +2,9 @@
 
 ## 2/5/2026
 
+- **EMulator Specific**:
+  - NES: Added support for FDS disk switching in settings menu.
+
 - **Menu navigation fixes**:
   - Fixed menu selection refresh when navigating folders and files.
   - Improved handling of `selectedRomOrFolder` state during menu navigation changes.
