@@ -29,7 +29,7 @@ namespace FrensSettings
     }
     void setEmulatorType(const char * fileextension)
     {
-        if (strcasecmp(fileextension, ".nes") == 0 || strcasecmp(fileextension, ".fds") == 0)
+        if (strcasecmp(fileextension, ".nes") == 0 || strcasecmp(fileextension, ".fds") == 0 || strcasecmp(fileextension, ".nsf") == 0)
         {
             if ( emulatorType == emulators::NES ) return;
             emulatorType = emulators::NES;
