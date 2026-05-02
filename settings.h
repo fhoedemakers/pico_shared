@@ -66,9 +66,11 @@ namespace FrensSettings
     const char *getEmulatorTypeString(bool forSettings = false);
     emulators getEmulatorTypeForSettings();
 }
-extern const int8_t *g_settings_visibility; 
+extern const int8_t *g_settings_visibility;
 extern const uint8_t *g_available_screen_modes;
-extern const int8_t g_settings_visibility_nes[];
+// Non-const so the FDS disk-swap entry can be flipped on at runtime
+// when a .fds image is loaded (see main.cpp).
+extern int8_t g_settings_visibility_nes[];
 extern const int8_t g_settings_visibility_gb[];
 extern const int8_t g_settings_visibility_sms[];
 extern const int8_t g_settings_visibility_md[];

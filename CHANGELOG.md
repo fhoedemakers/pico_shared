@@ -1,5 +1,17 @@
 # Release notes
 
+## 2/5/2026
+
+- **Emulator Specific**:
+  - NES: Added support for FDS disk switching in settings menu.
+
+- **Menu navigation fixes**:
+  - Fixed menu selection refresh when navigating folders and files.
+  - Improved handling of `selectedRomOrFolder` state during menu navigation changes.
+
+- **Settings initialization fix**:
+  - Fixed premature settings loading in `initSettings()` before SD driver is ready. Settings are now loaded only after the SD card is initialized.
+
 ## 25/4/2025
 
 - **New `pico_hdmi` HSTX driver** by [@fliperama86](https://github.com/fliperama86/pico_hdmi) replaces the in-tree HSTX driver used previously.
