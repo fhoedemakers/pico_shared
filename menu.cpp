@@ -2220,14 +2220,12 @@ int showSettingsMenu(bool calledFromGame)
     // DEFAULT
     const int rowStartOptions = 2;
     const int spacerAfterOptionsRow = rowStartOptions + visibleCount; // first spacer (blank)
-    const int paletteStartRow = spacerAfterOptionsRow + 1;
+    const int actionRowScreen = spacerAfterOptionsRow + 1;         // single row for SAVE / CANCEL / DEFAULT
+    const int paletteStartRow = actionRowScreen + 2;              // +2 = blank spacer between action row and palette
     const int paletteRowCount = 4;                                // 4 x 16 = 64
-    const int paletteInfoRow = paletteStartRow + paletteRowCount; // textual line
-    const int saveRowScreen = paletteInfoRow + 1;
-    const int cancelRowScreen = saveRowScreen + 1;
-    const int defaultRowScreen = cancelRowScreen + 1;
-    const int helpRowScreen = defaultRowScreen + 2; // extra spacer before help line
+    const int helpRowScreen = paletteStartRow + paletteRowCount + 1; // extra spacer before help line
     int selectedRowLocal = rowStartOptions;         // first selectable option row
+    int actionSubSelect = 0;                        // 0=SAVE, 1=CANCEL, 2=DEFAULT
     exitMenu = false;
     bool applySettings = false; // true when SAVE, false when CANCEL
     // lambda to redraw the entire menu
@@ -2464,7 +2462,7 @@ int showSettingsMenu(bool calledFromGame)
             }
             case MenuSettingsIndex::MOPT_FDS_DISK_SWAP:
             {
-                label = "Disk";
+                label = "Select disk";
                 static char fdsBuf[16];
                 if (!s_fdsHooks || !s_fdsHooks->get_num_sides)
                 {
@@ -2486,12 +2484,12 @@ int showSettingsMenu(bool calledFromGame)
                     }
                     else if (n == 1)
                     {
-                        value = "Disk A";
+                        value = "Side A";
                     }
                     else
                     {
-                        // 0 -> "Disk A", 1 -> "Disk B", ...
-                        snprintf(fdsBuf, sizeof(fdsBuf), "Disk %c",
+                        // 0 -> "Side A", 1 -> "Side B", ...
+                        snprintf(fdsBuf, sizeof(fdsBuf), "Side %c",
                                  'A' + s_fdsPendingChoice);
                         value = fdsBuf;
                     }
@@ -2507,6 +2505,28 @@ int showSettingsMenu(bool calledFromGame)
             putText(0, row++, line, CBLACK, CWHITE);
         }
         // Blank spacer after last option
+        putText(0, row++, "", CBLACK, CWHITE);
+        // Render SAVE / CANCEL / DEFAULT on a single row with per-word highlighting
+        {
+            const char *saveLabel  = settingsChanged ? "SAVE *" : "SAVE";
+            const char *labels[3]  = { saveLabel, "CANCEL", "DEFAULT" };
+            int lens[3]            = { (int)strlen(labels[0]), (int)strlen(labels[1]), (int)strlen(labels[2]) };
+            const int gap          = 2; // spaces between words
+            int totalLen           = lens[0] + gap + lens[1] + gap + lens[2];
+            int startCol           = (SCREEN_COLS - totalLen) / 2;
+            if (startCol < 0) startCol = 0;
+            int col3 = startCol;
+            bool onActionRow = (selectedRowLocal == actionRowScreen);
+            for (int ai = 0; ai < 3; ++ai)
+            {
+                int fg = (onActionRow && actionSubSelect == ai) ? CWHITE : CBLACK;
+                int bg = (onActionRow && actionSubSelect == ai) ? CBLACK : CWHITE;
+                putText(col3, row, labels[ai], fg, bg);
+                col3 += lens[ai] + gap;
+            }
+            row++;
+        }
+        // Blank spacer after action row
         putText(0, row++, "", CBLACK, CWHITE);
         // 64-color palette grid (4 rows x 16 columns). Each block is a space with fg=bg=colorIndex
         int blocksPerRow = 16;
@@ -2528,28 +2548,23 @@ int showSettingsMenu(bool calledFromGame)
                     putText(gridStartCol + pc, row, " ", colorIndex, colorIndex);
                 }
             }
+            // FG= after first palette row, BG= after second
+            int afterGrid = gridStartCol + blocksPerRow + 1;
+            if (pr == 0)
+            {
+                snprintf(line, sizeof(line), "FG=%02d", working.fgcolor);
+                putText(afterGrid, row, line, working.fgcolor, working.bgcolor);
+            }
+            else if (pr == 1)
+            {
+                snprintf(line, sizeof(line), "BG=%02d", working.bgcolor);
+                putText(afterGrid, row, line, working.fgcolor, working.bgcolor);
+            }
             row++;
         }
-        // FG/BG info line centered
-        snprintf(line, sizeof(line), "FG=%02d BG=%02d", working.fgcolor, working.bgcolor);
-        int infoLen = (int)strlen(line);
-        int infoCol = (SCREEN_COLS - infoLen) / 2;
-        if (infoCol < 0)
-            infoCol = 0;
-        putText(infoCol, row++, line, working.fgcolor, working.bgcolor);
-        if (settingsChanged)
-        {
-            putText(0, row++, "SAVE *", CBLACK, CWHITE);
-        }
-        else
-        {
-            putText(0, row++, "SAVE", CBLACK, CWHITE);
-        }
-        putText(0, row++, "CANCEL", CBLACK, CWHITE);
-        putText(0, row++, "DEFAULT", CBLACK, CWHITE);
         // Help text (dynamic button labels)
 
-        if (selectedRowLocal < saveRowScreen)
+        if (selectedRowLocal < actionRowScreen)
         {
             if (visibleIndices[selectedRowLocal - rowStartOptions] == MOPT_EXIT_GAME ||
                 visibleIndices[selectedRowLocal - rowStartOptions] == MOPT_SAVE_RESTORE_STATE ||
@@ -2565,7 +2580,8 @@ int showSettingsMenu(bool calledFromGame)
         }
         else
         {
-            strcpy(line, "UP/DOWN: Move");
+            // On the action row: show LEFT/RIGHT + confirm hint
+            snprintf(line, sizeof(line), "LEFT/RIGHT: Select, %s: Confirm", buttonLabel1);
         }
 
         int helpCount = 2;
@@ -2575,17 +2591,10 @@ int showSettingsMenu(bool calledFromGame)
         if (col < 0)
             col = 0;
         putText(col, row++, line, CBLACK, CWHITE);
-        if (selectedRowLocal == saveRowScreen)
+        if (selectedRowLocal == actionRowScreen)
         {
-            snprintf(line, sizeof(line), "%s: Confirm changes", buttonLabel1);
-        }
-        else if (selectedRowLocal == cancelRowScreen)
-        {
-            snprintf(line, sizeof(line), "%s: Discard changes", buttonLabel1);
-        }
-        else if (selectedRowLocal == defaultRowScreen)
-        {
-            snprintf(line, sizeof(line), "%s: Restore defaults", buttonLabel1);
+            const char *actionHints[3] = { "Confirm changes", "Discard changes", "Restore defaults" };
+            snprintf(line, sizeof(line), "%s: %s", buttonLabel1, actionHints[actionSubSelect]);
         }
         else
         {
@@ -2601,9 +2610,6 @@ int showSettingsMenu(bool calledFromGame)
             putText(0, helpRowScreen, "                                        ", CBLACK, CWHITE);
         }
 
-        // snprintf(line, sizeof(line),
-        //          "%s: SAVE/CANCEL/DEFAULT,  %s: Cancel",
-        //          buttonLabel1, buttonLabel2);
         hlen = (int)strlen(line);
         col = (SCREEN_COLS - hlen) / 2;
         if (col < 0)
@@ -2622,7 +2628,9 @@ int showSettingsMenu(bool calledFromGame)
         putText(1, helpRowScreen + 4, "SD:", CBLACK, CWHITE);
         putText(5, helpRowScreen + 4, line, CBLACK, CWHITE);
 #endif
-        drawAllLines(selectedRowLocal);
+        // Suppress row-level highlight for action row; per-word colors handle it
+        int displayRow = (selectedRowLocal == actionRowScreen) ? -1 : selectedRowLocal;
+        drawAllLines(displayRow);
     }; // redraw lambda
     // for volume control option: initialize audio stream
 #if USE_I2S_AUDIO == PICO_AUDIO_I2S_DRIVER_TLV320
@@ -2701,17 +2709,16 @@ int showSettingsMenu(bool calledFromGame)
                         // printf("Selected row: %d\n", selectedRowLocal);
                     } while (
                         selectedRowLocal == spacerAfterOptionsRow ||
-                        (selectedRowLocal >= paletteStartRow && selectedRowLocal < paletteStartRow + paletteRowCount) ||
-                        selectedRowLocal == paletteInfoRow);
+                        (selectedRowLocal >= paletteStartRow && selectedRowLocal < paletteStartRow + paletteRowCount));
                 }
                 else
                 {
-                    selectedRowLocal = defaultRowScreen; // wrap
+                    selectedRowLocal = actionRowScreen; // wrap
                 }
             }
             else if (pad & DOWN)
             {
-                if (selectedRowLocal < defaultRowScreen)
+                if (selectedRowLocal < actionRowScreen)
                 {
                     do
                     {
@@ -2719,8 +2726,7 @@ int showSettingsMenu(bool calledFromGame)
                         // printf("Selected row: %d\n", selectedRowLocal);
                     } while (
                         selectedRowLocal == spacerAfterOptionsRow ||
-                        (selectedRowLocal >= paletteStartRow && selectedRowLocal < paletteStartRow + paletteRowCount) ||
-                        selectedRowLocal == paletteInfoRow);
+                        (selectedRowLocal >= paletteStartRow && selectedRowLocal < paletteStartRow + paletteRowCount));
                 }
                 else
                 {
@@ -2729,7 +2735,15 @@ int showSettingsMenu(bool calledFromGame)
             }
             else if (pad & LEFT || pad & RIGHT || ((pad & A) && (optIndex == MOPT_EXIT_GAME || optIndex == MOPT_SAVE_RESTORE_STATE || optIndex == MOPT_ENTER_BOOTSEL_MODE || optIndex == MOPT_RESET_GAME || optIndex == MOPT_FDS_DISK_SWAP)))
             {
-                if (optIndex != -1)
+                // LEFT/RIGHT on the action row cycles sub-selection
+                if (selectedRowLocal == actionRowScreen && (pad & (LEFT | RIGHT)))
+                {
+                    if (pad & RIGHT)
+                        actionSubSelect = (actionSubSelect + 1) % 3;
+                    else
+                        actionSubSelect = (actionSubSelect + 2) % 3;
+                }
+                else if (optIndex != -1)
                 {
                      if (optIndex == MOPT_ENTER_BOOTSEL_MODE && pad & A) 
                     {
@@ -2964,20 +2978,22 @@ int showSettingsMenu(bool calledFromGame)
             }
             else if (pad & A)
             {
-               
-                if (selectedRowLocal == saveRowScreen)
+                if (selectedRowLocal == actionRowScreen)
                 {
-                    applySettings = true;
-                    exitMenu = true;
-                }
-                else if (selectedRowLocal == cancelRowScreen)
-                {
-                    applySettings = false;
-                    exitMenu = true;
-                }
-                else if (selectedRowLocal == defaultRowScreen)
-                {
-                    FrensSettings::resetsettings(&working);
+                    switch (actionSubSelect)
+                    {
+                    case 0: // SAVE
+                        applySettings = true;
+                        exitMenu = true;
+                        break;
+                    case 1: // CANCEL
+                        applySettings = false;
+                        exitMenu = true;
+                        break;
+                    case 2: // DEFAULT
+                        FrensSettings::resetsettings(&working);
+                        break;
+                    }
                 }
             }
             else if (pad & B)
