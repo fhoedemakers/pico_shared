@@ -2456,6 +2456,12 @@ int showSettingsMenu(bool calledFromGame)
                 value = working.flags.rapidFireOnB ? "ON" : "OFF";
                 break;
             }
+            case MenuSettingsIndex::MOPT_AUTO_SWAP_FDS_DISK:
+            {
+                label = "Auto Swap FDS Disks";
+                value = working.flags.autoSwapFDS ? "ON" : "OFF";
+                break;
+            }
             case MenuSettingsIndex::MOPT_FDS_DISK_SWAP:
             {
                 label = "Disk";
@@ -2905,6 +2911,11 @@ int showSettingsMenu(bool calledFromGame)
 
                         working.flags.rapidFireOnB = !working.flags.rapidFireOnB;
 
+                        break;
+                    }
+                    case MOPT_AUTO_SWAP_FDS_DISK:
+                    {
+                        working.flags.autoSwapFDS = !working.flags.autoSwapFDS;
                         break;
                     }
                     case MOPT_FDS_DISK_SWAP:
