@@ -850,6 +850,7 @@ void showSplashScreen()
 {
     DWORD PAD1_Latch;
     splash();
+    putText(SCREEN_COLS - strlen(SWVERSION) - 2, SCREEN_ROWS - 2, SWVERSION, settings.fgcolor, settings.bgcolor);
     int startFrame = -1;
     while (true)
     {
