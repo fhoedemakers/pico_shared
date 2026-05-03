@@ -50,6 +50,7 @@ const char* const g_settings_descriptions[MOPT_COUNT] = {
     "Select border artwork",
     "Enable rapid fire for this button",
     "Enable rapid fire for this button",
+    "Auto swap FDS disk sides on load",
     "Reboot to BOOTSEL mode for flashing",
     "Eject / insert FDS disk side"
 };
