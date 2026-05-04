@@ -58,7 +58,7 @@ namespace FrensSettings
         {
             if ( emulatorType == emulators::MULTI ) return;
             emulatorType = emulators::MULTI;
-           // g_settings_visibility = g_settings_visibility_main;
+            g_settings_visibility = g_settings_visibility_main;
         }
         printf("Detected ROM extension: %s\n", fileextension);
         //snprintf(settingsFileName, sizeof(settingsFileName), SETTINGSFILE, emulatorstrings[static_cast<int>(emulatorType)]);
