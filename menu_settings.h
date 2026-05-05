@@ -24,6 +24,7 @@ enum MenuSettingsIndex {
     MOPT_BORDER_MODE,
     MOPT_RAPID_FIRE_ON_A,
     MOPT_RAPID_FIRE_ON_B,
+    MOPT_AUTO_SWAP_FDS_DISK, // New menu option for automatically swapping FDS disk sides when loading a .fds file
     MOPT_ENTER_BOOTSEL_MODE,
     MOPT_FDS_DISK_SWAP,
     MOPT_COUNT
@@ -49,6 +50,7 @@ const char* const g_settings_descriptions[MOPT_COUNT] = {
     "Select border artwork",
     "Enable rapid fire for this button",
     "Enable rapid fire for this button",
+    "Auto swap FDS disk sides on load",
     "Reboot to BOOTSEL mode for flashing",
     "Eject / insert FDS disk side"
 };
