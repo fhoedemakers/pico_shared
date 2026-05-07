@@ -147,7 +147,8 @@ void resetColors(int prevfgColor, int prevbgColor)
 static void getButtonLabels(char *buttonLabel1, char *buttonLabel2)
 {
     auto &gp = io::getCurrentGamePadState(0);
-    strcpy(connectedGamePadName, gp.GamePadName);
+    auto &gp2 = io::getCurrentGamePadState(1);
+    strcpy(connectedGamePadName, gp.GamePadName[0] ? gp.GamePadName : gp2.GamePadName);
     if (strcmp(connectedGamePadName, "Dual Shock 4") == 0 || strcmp(connectedGamePadName, "Dual Sense") == 0 || strcmp(connectedGamePadName, "PSClassic") == 0)
     {
         strcpy(buttonLabel1, "O");
@@ -267,18 +268,20 @@ void RomSelect_PadState(DWORD *pdwPad1, bool ignorepushed = false)
     int prevFgColor = settings.fgcolor;
     static DWORD prevButtons{};
     auto &gp = io::getCurrentGamePadState(0);
-    strcpy(connectedGamePadName, gp.GamePadName);
+    auto &gp2 = io::getCurrentGamePadState(1);
+    uint32_t combinedButtons = gp.buttons | gp2.buttons;
+    strcpy(connectedGamePadName, gp.GamePadName[0] ? gp.GamePadName : gp2.GamePadName);
 
-    int v = (gp.buttons & io::GamePadState::Button::LEFT ? LEFT : 0) |
-            (gp.buttons & io::GamePadState::Button::RIGHT ? RIGHT : 0) |
-            (gp.buttons & io::GamePadState::Button::UP ? UP : 0) |
-            (gp.buttons & io::GamePadState::Button::DOWN ? DOWN : 0) |
-            (gp.buttons & io::GamePadState::Button::A ? A : 0) |
-            (gp.buttons & io::GamePadState::Button::B ? B : 0) |
-            (gp.buttons & io::GamePadState::Button::SELECT ? SELECT : 0) |
-            (gp.buttons & io::GamePadState::Button::START ? START : 0) |
-            (gp.buttons & io::GamePadState::Button::X ? X : 0) |
-            (gp.buttons & io::GamePadState::Button::Y ? Y : 0) |
+    int v = (combinedButtons & io::GamePadState::Button::LEFT ? LEFT : 0) |
+            (combinedButtons & io::GamePadState::Button::RIGHT ? RIGHT : 0) |
+            (combinedButtons & io::GamePadState::Button::UP ? UP : 0) |
+            (combinedButtons & io::GamePadState::Button::DOWN ? DOWN : 0) |
+            (combinedButtons & io::GamePadState::Button::A ? A : 0) |
+            (combinedButtons & io::GamePadState::Button::B ? B : 0) |
+            (combinedButtons & io::GamePadState::Button::SELECT ? SELECT : 0) |
+            (combinedButtons & io::GamePadState::Button::START ? START : 0) |
+            (combinedButtons & io::GamePadState::Button::X ? X : 0) |
+            (combinedButtons & io::GamePadState::Button::Y ? Y : 0) |
             0;
 
 #if NES_PIN_CLK != -1

@@ -18,8 +18,8 @@
 #endif
 
 int abSwapped = ABSWAPPED;
-int isManta = 0;        // 1 NES, 2 SNES
-int isMantaVariant = 0; // SNES pad (0810:e501 Personal Communication Systems, Inc. SNES Gamepad)
+int isManta[2] = {0, 0};        // 1 NES, 2 SNES (per player)
+int isMantaVariant[2] = {0, 0}; // SNES pad (per player)
 #ifdef __cplusplus
 extern "C"
 {
@@ -31,6 +31,43 @@ extern "C"
     {
         uint8_t _report_count[CFG_TUH_HID];
         tuh_hid_report_info_t _report_info_arr[CFG_TUH_HID][MAX_REPORT];
+
+        static constexpr int MAX_USB_PLAYERS = 2;
+        static uint8_t playerDevAddr[MAX_USB_PLAYERS] = {0, 0};
+
+        static int assignPlayer(uint8_t dev_addr)
+        {
+            for (int i = 0; i < MAX_USB_PLAYERS; i++)
+                if (playerDevAddr[i] == dev_addr)
+                    return i;
+            for (int i = 0; i < MAX_USB_PLAYERS; i++)
+            {
+                if (playerDevAddr[i] == 0)
+                {
+                    playerDevAddr[i] = dev_addr;
+                    return i;
+                }
+            }
+            return -1;
+        }
+
+        static void unassignPlayer(uint8_t dev_addr)
+        {
+            for (int i = 0; i < MAX_USB_PLAYERS; i++)
+                if (playerDevAddr[i] == dev_addr)
+                {
+                    playerDevAddr[i] = 0;
+                    return;
+                }
+        }
+
+        static int getPlayerIndex(uint8_t dev_addr)
+        {
+            for (int i = 0; i < MAX_USB_PLAYERS; i++)
+                if (playerDevAddr[i] == dev_addr)
+                    return i;
+            return -1;
+        }
 
         // Is dual shock 4 controller detected?
         static inline bool isDS4(uint16_t vid, uint16_t pid)
@@ -332,58 +369,59 @@ extern "C"
     void tuh_hid_mount_cb(uint8_t dev_addr, uint8_t instance, uint8_t const *desc_report, uint16_t desc_len)
     {
         uint16_t vid, pid;
-        isManta = 0;
-        isMantaVariant = 0;
-        auto &gp = io::getCurrentGamePadState(0);
         tuh_vid_pid_get(dev_addr, &vid, &pid);
+        int player = assignPlayer(dev_addr);
+        if (player < 0)
+        {
+            printf("No free player slot for HID device address = %d (VID = %04x, PID = %04x)\n", dev_addr, vid, pid);
+            return;
+        }
+        isManta[player] = 0;
+        isMantaVariant[player] = 0;
+        auto &gp = io::getCurrentGamePadState(player);
 
         if (isDS4(vid, pid))
         {
-            printf("Dual Shock 4 Controller detected - device address = %d, instance = %d is mounted - ", dev_addr, instance);
+            printf("Dual Shock 4 Controller detected - device address = %d, instance = %d, player %d is mounted - ", dev_addr, instance, player + 1);
             strcpy(gp.GamePadName, "Dual Shock 4");
         }
         else if (isDS5(vid, pid))
         {
-            printf("Dual Sense Controller detected - device address = %d, instance = %d is mounted - ", dev_addr, instance);
+            printf("Dual Sense Controller detected - device address = %d, instance = %d, player %d is mounted - ", dev_addr, instance, player + 1);
             strcpy(gp.GamePadName, "Dual Sense");
         }
         else if (isMantaPad(vid, pid))
         {
-            printf("MantaPad detected - device address = %d, instance = %d is mounted - ", dev_addr, instance);
+            printf("MantaPad detected - device address = %d, instance = %d, player %d is mounted - ", dev_addr, instance, player + 1);
             printf("Press Y to activate SNES mode\n");
-            isManta = 1;
+            isManta[player] = 1;
             strcpy(gp.GamePadName, "Manta NES");
         }
         else if (isMantaPadVariant(vid, pid))
         {
-            printf("MantaPad Variant detected - device address = %d, instance = %d is mounted - ", dev_addr, instance);
-            isManta = 2;
-            isMantaVariant = 1;
+            printf("MantaPad Variant detected - device address = %d, instance = %d, player %d is mounted - ", dev_addr, instance, player + 1);
+            isManta[player] = 2;
+            isMantaVariant[player] = 1;
             strcpy(gp.GamePadName, "Manta Variant SNES");
         }
         else if (isGenesisMini(vid, pid))
         {
-            printf("Sega Mega Drive/Genesis Mini %d controller detected - device address = %d, instance = %d is mounted - ", (pid == 0x0025) ? 1 : 2, dev_addr, instance);
+            printf("Sega Mega Drive/Genesis Mini %d controller detected - device address = %d, instance = %d, player %d is mounted - ", (pid == 0x0025) ? 1 : 2, dev_addr, instance, player + 1);
             sprintf(gp.GamePadName, "Genesis Mini %d", (pid == 0x0025) ? 1 : 2);
         }
         else if (isMDArcadePad(vid, pid))
         {
-            printf("Retro-bit MD Arcade pad detected - device address = %d, instance = %d is mounted - ", dev_addr, instance);
+            printf("Retro-bit MD Arcade pad detected - device address = %d, instance = %d, player %d is mounted - ", dev_addr, instance, player + 1);
             sprintf(gp.GamePadName, "MDArcade");
         }
         else if (isPSClassic(vid, pid))
         {
-            printf("PlayStation Classic controller detected - device address = %d, instance = %d is mounted - ", dev_addr, instance);
+            printf("PlayStation Classic controller detected - device address = %d, instance = %d, player %d is mounted - ", dev_addr, instance, player + 1);
             strcpy(gp.GamePadName, "PSClassic");
         }
-        // else if (isNintendo(vid, pid))
-        // {
-        //     printf("(Unsupported) Nintendo controller detected - device address = %d, instance = %d is mounted - ", dev_addr, instance);
-        //     strcpy(gp.GamePadName, "Nintendo");
-        // }
         else
         {
-            printf("Unkown device detected - HID device address = %d, instance = %d is mounted - ", dev_addr, instance);
+            printf("Unkown device detected - HID device address = %d, instance = %d, player %d is mounted - ", dev_addr, instance, player + 1);
             sprintf(gp.GamePadName, "%04x:%04x", vid, pid);
         }
         printf("VID = %04x, PID = %04x\r\n", vid, pid);
@@ -403,16 +441,31 @@ extern "C"
 
     void tuh_hid_umount_cb(uint8_t dev_addr, uint8_t instance)
     {
-        printf("HID device address = %d, instance = %d is unmounted\n", dev_addr, instance);
-        // Assume the controller is disconnected
-        auto &gp = io::getCurrentGamePadState(0);
-        gp.flagConnected(false);
-        gp.GamePadName[0] = 0;
+        int player = getPlayerIndex(dev_addr);
+        if (player >= 0)
+        {
+            printf("HID device address = %d, instance = %d, player %d is unmounted\n", dev_addr, instance, player + 1);
+            auto &gp = io::getCurrentGamePadState(player);
+            gp.flagConnected(false);
+            gp.GamePadName[0] = 0;
+            unassignPlayer(dev_addr);
+        }
+        else
+        {
+            printf("HID device address = %d, instance = %d is unmounted (was not assigned)\n", dev_addr, instance);
+        }
     }
 
     void tuh_hid_report_received_cb(uint8_t dev_addr,
                                     uint8_t instance, uint8_t const *report, uint16_t len)
     {
+        int player = getPlayerIndex(dev_addr);
+        if (player < 0)
+        {
+            tuh_hid_receive_report(dev_addr, instance);
+            return;
+        }
+
         uint8_t const rpt_count = _report_count[instance];
         tuh_hid_report_info_t *rpt_info_arr = _report_info_arr[instance];
         tuh_hid_report_info_t *rpt_info = NULL;
@@ -434,7 +487,7 @@ extern "C"
                     return;
                 }
 
-                auto &gp = io::getCurrentGamePadState(0);
+                auto &gp = io::getCurrentGamePadState(player);
                 gp.axis[0] = r->stickL[0];
                 gp.axis[1] = r->stickL[1];
                 if (abSwapped)
@@ -479,7 +532,7 @@ extern "C"
 
                 auto buttons = r->buttons[0] | (r->buttons[1] << 8) | (r->buttons[2] << 16);
 
-                auto &gp = io::getCurrentGamePadState(0);
+                auto &gp = io::getCurrentGamePadState(player);
                 gp.axis[0] = r->stickL[0];
                 gp.axis[1] = r->stickL[1];
                 if (abSwapped)
@@ -515,21 +568,21 @@ extern "C"
             if (sizeof(MantaPadReport) == len)
             {
                 auto r = reinterpret_cast<const MantaPadReport *>(report);
-                auto &gp = io::getCurrentGamePadState(0);
+                auto &gp = io::getCurrentGamePadState(player);
                 uint8_t udb = r->byte2;
                 uint8_t lrb = r->byte1;
 
                 // When using AlieExpress SNES usb controller, activate SNES mode by pressing Y
                 if (r->byte6 & MantaPadReport::Button::Y)
                 {
-                    isManta = 2;
+                    isManta[player] = 2;
                     strcpy(gp.GamePadName, "Manta SNES");
                     // printf("MantaPad SNES mode activated\n");
                 }
                 // printf("MantaPad report: %02x %02x %02x %02x %02x %02x %02x %02x\n",
                 //        r->byte1, r->byte2, r->byte3, r->byte4, r->byte5, r->byte6, r->byte7, r->byte8);
 
-                if (isMantaVariant)
+                if (isMantaVariant[player])
                 {
                     udb = r->byte5; // UP / DOWN
                     lrb = r->byte4; // LEFT / RIGHT
@@ -538,9 +591,9 @@ extern "C"
                 {
                     gp.buttons =
                         (r->byte6 & MantaPadReport::Button::A ? io::GamePadState::Button::A : 0) |
-                        ((isManta == 1 && r->byte6 & MantaPadReport::Button::NESB) ? io::GamePadState::Button::B : 0) |
-                        ((isManta == 2 && r->byte6 & MantaPadReport::Button::B) ? io::GamePadState::Button::B : 0) |
-                        ((isManta == 2 && r->byte6 & MantaPadReport::Button::X) ? io::GamePadState::Button::X : 0) |
+                        ((isManta[player] == 1 && r->byte6 & MantaPadReport::Button::NESB) ? io::GamePadState::Button::B : 0) |
+                        ((isManta[player] == 2 && r->byte6 & MantaPadReport::Button::B) ? io::GamePadState::Button::B : 0) |
+                        ((isManta[player] == 2 && r->byte6 & MantaPadReport::Button::X) ? io::GamePadState::Button::X : 0) |
                         (r->byte7 & MantaPadReport::Button::START ? io::GamePadState::Button::START : 0) |
                         (r->byte7 & MantaPadReport::Button::SELECT ? io::GamePadState::Button::SELECT : 0) |
                         (udb == MantaPadReport::Button::UP ? io::GamePadState::Button::UP : 0) |
@@ -552,9 +605,9 @@ extern "C"
                 {
                     gp.buttons =
                         (r->byte6 & MantaPadReport::Button::A ? io::GamePadState::Button::B : 0) |
-                        ((isManta == 1 && r->byte6 & MantaPadReport::Button::NESB) ? io::GamePadState::Button::A : 0) |
-                        ((isManta == 2 && r->byte6 & MantaPadReport::Button::B) ? io::GamePadState::Button::A : 0) |
-                        ((isManta == 2 && r->byte6 & MantaPadReport::Button::X) ? io::GamePadState::Button::X : 0) |
+                        ((isManta[player] == 1 && r->byte6 & MantaPadReport::Button::NESB) ? io::GamePadState::Button::A : 0) |
+                        ((isManta[player] == 2 && r->byte6 & MantaPadReport::Button::B) ? io::GamePadState::Button::A : 0) |
+                        ((isManta[player] == 2 && r->byte6 & MantaPadReport::Button::X) ? io::GamePadState::Button::X : 0) |
                         (r->byte7 & MantaPadReport::Button::START ? io::GamePadState::Button::START : 0) |
                         (r->byte7 & MantaPadReport::Button::SELECT ? io::GamePadState::Button::SELECT : 0) |
                         (udb == MantaPadReport::Button::UP ? io::GamePadState::Button::UP : 0) |
@@ -578,7 +631,7 @@ extern "C"
 
                 auto r = reinterpret_cast<const GenesisMiniReport *>(report);
 
-                auto &gp = io::getCurrentGamePadState(0);
+                auto &gp = io::getCurrentGamePadState(player);
                 if (abSwapped)
                 {
                     gp.buttons = (r->byte6 & GenesisMiniReport::Button::B ? io::GamePadState::Button::A : 0) |
@@ -612,7 +665,7 @@ extern "C"
             {
                 auto r = reinterpret_cast<const GenesisMiniReport *>(report);
 
-                auto &gp = io::getCurrentGamePadState(0);
+                auto &gp = io::getCurrentGamePadState(player);
                 if (abSwapped)
                 {
                     gp.buttons = (r->byte1 & GenesisMiniReport::ButtonRetrobit::B ? io::GamePadState::Button::A : 0) |
@@ -644,7 +697,7 @@ extern "C"
             if (sizeof(PSClassicReport) == len)
             {
                 auto r = reinterpret_cast<const PSClassicReport *>(report);
-                auto &gp = io::getCurrentGamePadState(0);
+                auto &gp = io::getCurrentGamePadState(player);
                 if (abSwapped)
                 {
                     gp.buttons = (r->buttons & PSClassicReport::Button::Cross ? io::GamePadState::Button::B : 0) |
@@ -753,7 +806,7 @@ extern "C"
                 case HID_USAGE_DESKTOP_KEYBOARD:
                 {
                     auto r = reinterpret_cast<const hid_keyboard_report_t *>(report);
-                    auto &gp = io::getCurrentGamePadState(0);
+                    auto &gp = io::getCurrentGamePadState(player);
                     strcpy(gp.GamePadName, "Keyboard");
                     gp.buttons = 0;
                     for (uint8_t i = 0; i < 6; i++)
@@ -814,7 +867,7 @@ extern "C"
                     };
                     auto *rep = reinterpret_cast<const JoyStickReport *>(report);
                     //                printf("x %d y %d button %02x\n", rep->axis[0], rep->axis[1], rep->buttons);
-                    auto &gp = io::getCurrentGamePadState(0);
+                    auto &gp = io::getCurrentGamePadState(player);
                     gp.axis[0] = rep->axis[0];
                     gp.axis[1] = rep->axis[1];
                     gp.axis[2] = rep->axis[2];
@@ -877,7 +930,13 @@ extern "C"
     {
         const xinput_gamepad_t *p = &xid_itf->pad;
         const char *type_str;
-        isManta = 0;
+        int player = getPlayerIndex(dev_addr);
+        if (player < 0)
+        {
+            tuh_xinput_receive_report(dev_addr, instance);
+            return;
+        }
+        isManta[player] = 0;
         if (xid_itf->last_xfer_result == XFER_RESULT_SUCCESS)
         {
             switch (xid_itf->type)
@@ -901,7 +960,7 @@ extern "C"
             if (xid_itf->connected && xid_itf->new_pad_data)
             {
 
-                auto &gp = io::getCurrentGamePadState(0);
+                auto &gp = io::getCurrentGamePadState(player);
                 gp.buttons = 0;
 
                 if (p->wButtons & XINPUT_GAMEPAD_A)
@@ -932,9 +991,15 @@ extern "C"
 
     void tuh_xinput_mount_cb(uint8_t dev_addr, uint8_t instance, const xinputh_interface_t *xinput_itf)
     {
-        auto &gp = io::getCurrentGamePadState(0);
+        int player = assignPlayer(dev_addr);
+        if (player < 0)
+        {
+            printf("No free player slot for XINPUT device address = %02x\n", dev_addr);
+            return;
+        }
+        auto &gp = io::getCurrentGamePadState(player);
         strcpy(gp.GamePadName, "XInput");
-        printf("XINPUT MOUNTED %02x %d\n", dev_addr, instance);
+        printf("XINPUT MOUNTED %02x %d player %d\n", dev_addr, instance, player + 1);
         // If this is a Xbox 360 Wireless controller we need to wait for a connection packet
         // on the in pipe before setting LEDs etc. So just start getting data until a controller is connected.
         if (xinput_itf->type == XBOX360_WIRELESS && xinput_itf->connected == false)
@@ -950,10 +1015,19 @@ extern "C"
 
     void tuh_xinput_umount_cb(uint8_t dev_addr, uint8_t instance)
     {
-        auto &gp = io::getCurrentGamePadState(0);
-        gp.GamePadName[0] = 0;
-        gp.flagConnected(false);
-        printf("XINPUT UNMOUNTED %02x %d\n", dev_addr, instance);
+        int player = getPlayerIndex(dev_addr);
+        if (player >= 0)
+        {
+            auto &gp = io::getCurrentGamePadState(player);
+            gp.GamePadName[0] = 0;
+            gp.flagConnected(false);
+            unassignPlayer(dev_addr);
+            printf("XINPUT UNMOUNTED %02x %d player %d\n", dev_addr, instance, player + 1);
+        }
+        else
+        {
+            printf("XINPUT UNMOUNTED %02x %d (was not assigned)\n", dev_addr, instance);
+        }
     }
 #pragma endregion
 #ifdef __cplusplus
