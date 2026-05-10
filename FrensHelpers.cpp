@@ -689,15 +689,15 @@ namespace Frens
             void *pMem = psram_.Malloc(size);
             if (!pMem)
             {
-                panic("Cannot allocate %zu bytes in PSRAM\n", size);
+                panic("[f_malloc] Cannot allocate %zu bytes in PSRAM\n", size);
             }
-            printf("Allocated %zu bytes in PSRAM at %p\n", size, pMem);
+            printf("[f_malloc] Allocated %zu bytes in PSRAM at %p\n", size, pMem);
             return pMem;
         }
 #endif
         // PSRAM not enabled, use malloc
         void *pMem = malloc(size); // panics if unavailable
-        printf("Allocated %zu bytes in RAM at %p\n", size, pMem);
+        printf("[f_malloc] Allocated %zu bytes in RAM at %p\n", size, pMem);
         return pMem;
     }
 
@@ -714,7 +714,7 @@ namespace Frens
         {
             PicoPlusPsram &psram_ = PicoPlusPsram::getInstance();
             size_t uFreeing = psram_.GetSize(pMem);
-            printf("Freeing %zu bytes from PSRAM at %p\n", uFreeing, pMem);
+            printf("[f_malloc] Freeing %zu bytes from PSRAM at %p\n", uFreeing, pMem);
             psram_.Free(pMem);
             return;
         }
@@ -722,7 +722,7 @@ namespace Frens
         // PSRAM not enabled, use free
         if (pMem)
         {
-            printf("Freeing memory at %p\n", pMem);
+            printf("[f_malloc] Freeing memory at %p\n", pMem);
             free(pMem);
         }
     }
@@ -743,13 +743,13 @@ namespace Frens
             {
                 panic("Cannot allocate %zu bytes in PSRAM\n", newSize);
             }
-            printf("re-Allocated %zu bytes in PSRAM at %p\n", newSize, newMem);
+            printf("[f_malloc] Re-Allocated %zu bytes in PSRAM at %p\n", newSize, newMem);
             return newMem;
         }
 #endif
         // PSRAM not enabled, use realloc
         newMem = realloc(pMem, newSize);
-        printf("Re-Allocated memory at %p to %zu bytes\n", pMem, newSize);
+        printf("[f_malloc] Re-Allocated memory at %p to %zu bytes\n", pMem, newSize);
         return newMem;
     }
 

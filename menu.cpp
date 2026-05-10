@@ -3027,35 +3027,13 @@ int showSettingsMenu(bool calledFromGame)
     // restore contents of swap file back to altScreenbuffer when not nullptr
     if (calledFromGame)
     {
-#if 0
-        FIL fil;
-        FRESULT fr;
-        fr = f_open(&fil, "/swapfile.DAT", FA_READ);
-        if (fr == FR_OK) {
-            size_t br;
-            fr = f_read(&fil, altscreenBuffer, altscreenBufferSize, &br);
-            if (fr != FR_OK || br != altscreenBufferSize) {
-                printf("Error reading swapfile.DAT: %d, read %d bytes\n", fr, br);
-            } else {        
-                printf("Read %d bytes from swapfile.DAT\n", br);
-            }
-            f_close(&fil);
-            // delete the swap file
-            fr = f_unlink("/swapfile.DAT");
-            if (fr != FR_OK) {
-                printf("Error deleting swapfile.DAT: %d\n", fr);
-            } else {
-                printf("Deleted swapfile.DAT\n");
-            }
-        } else {
-            printf("Error opening swapfile.DAT for reading: %d\n", fr);
-        }
-#else
-        Frens::f_free((void *)screenBuffer);
-#endif
+
         ClearScreen(CBLACK); // Removes artifacts from previous screen
-                             // Wait until user has released all buttons
         waitForNoButtonPress();
+        Frens::f_free((void *)screenBuffer);
+        screenBuffer = nullptr;
+
+      
 #if !HSTX
         scaleMode8_7_ = Frens::applyScreenMode(settings.screenMode);
         // Reset the screen mode to the original settings
