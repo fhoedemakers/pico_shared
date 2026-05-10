@@ -32,11 +32,9 @@ void hstx_di_queue_init(void)
     audio_sample_accum = 0;
     // Allocate memory for the ring buffer
     if (di_ring_buffer == NULL) {
-        printf("Allocating memory for HSTX DI ring buffer: %d bytes\n", DI_RING_BUFFER_SIZE * sizeof(hstx_data_island_t));  
-        di_ring_buffer = (hstx_data_island_t *)frens_f_malloc(DI_RING_BUFFER_SIZE * sizeof(hstx_data_island_t));
+        printf("Allocating memory for HSTX DI ring buffer: %d bytes\n", DI_RING_BUFFER_SIZE * sizeof(hstx_data_island_t));
+        di_ring_buffer = (hstx_data_island_t *)malloc(DI_RING_BUFFER_SIZE * sizeof(hstx_data_island_t));
     }
-    // Build a single silent audio packet with fixed B-frame flags.
-    di_ring_buffer = (hstx_data_island_t *)malloc(DI_RING_BUFFER_SIZE * sizeof(hstx_data_island_t));
     // Build a single silent audio packet with fixed B-frame flags.
     hstx_packet_t packet;
     audio_sample_t samples[4] = {0};
