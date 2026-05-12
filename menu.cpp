@@ -763,6 +763,35 @@ void waitForNoButtonPress()
         }
     }
 }
+void menuPumpBlankFrames(int count)
+{
+    for (int i = 0; i < count; i++)
+    {
+#if HSTX
+        memset(hstx_getframebuffer(), 0, SCREENWIDTH * SCREENHEIGHT * sizeof(WORD));
+#else
+#if FRAMEBUFFERISPOSSIBLE
+        if (Frens::isFrameBufferUsed())
+        {
+            memset(Frens::framebuffer, 0, SCREENWIDTH * SCREENHEIGHT * sizeof(WORD));
+        }
+        else
+        {
+#endif
+            for (int line = 0; line < SCREENHEIGHT; line++)
+            {
+                auto b = dvi_->getLineBuffer();
+                memset(b->data(), 0, SCREENWIDTH * sizeof(uint16_t));
+                dvi_->setLineBuffer(line, b);
+            }
+#if FRAMEBUFFERISPOSSIBLE
+        }
+#endif
+#endif
+        Menu_LoadFrame();
+    }
+}
+
 static inline int centerColClamped(int textLen)
 {
     int col = (SCREEN_COLS - textLen) / 2;
@@ -2457,8 +2486,14 @@ int showSettingsMenu(bool calledFromGame)
             }
             case MenuSettingsIndex::MOPT_AUTO_SWAP_FDS_DISK:
             {
-                label = "Auto Swap FDS Disks";
+                label = "FDS - Auto Swap Disk side";
                 value = working.flags.autoSwapFDS ? "ON" : "OFF";
+                break;
+            }
+            case MenuSettingsIndex::MOPT_AUTO_INSERT_FDS_DISK_A:
+            {
+                label = "FDS - Auto Insert Disk 1 On Start";
+                value = working.flags.autoInsertDiskA ? "ON" : "OFF";
                 break;
             }
             case MenuSettingsIndex::MOPT_FDS_DISK_SWAP:
@@ -2933,6 +2968,11 @@ int showSettingsMenu(bool calledFromGame)
                         working.flags.autoSwapFDS = !working.flags.autoSwapFDS;
                         break;
                     }
+                    case MOPT_AUTO_INSERT_FDS_DISK_A:
+                    {
+                        working.flags.autoInsertDiskA = !working.flags.autoInsertDiskA;
+                        break;
+                    }
                     case MOPT_FDS_DISK_SWAP:
                     {
                         if (!s_fdsHooks || !s_fdsHooks->get_num_sides) break;
@@ -3011,7 +3051,7 @@ int showSettingsMenu(bool calledFromGame)
             break;
         }
     }
-    if (applySettings && rval == 0)
+    if (applySettings && (rval == 0 || rval == 5))
     {
         // Copy working settings into global settings and persist.
         // Preserve directory navigation fields that user did not edit here.
@@ -3021,7 +3061,7 @@ int showSettingsMenu(bool calledFromGame)
         strcpy(working.currentDir, settings.currentDir);
         settings = working;
         FrensSettings::savesettings();
-        rval = 1;
+        if (rval == 0) rval = 1;
     }
     Frens::f_free(workingDyn);
     // restore contents of swap file back to altScreenbuffer when not nullptr

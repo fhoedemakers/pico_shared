@@ -88,6 +88,7 @@ namespace FrensSettings
         printf("rapidFireOnB: %d\n", settings.flags.rapidFireOnB);
         printf("useDVIModeForHDMI: %d\n", settings.flags.useDVIModeForHDMI);
         printf("autoSwapFDS: %d\n", settings.flags.autoSwapFDS);
+        printf("autoInsertDiskA: %d\n", settings.flags.autoInsertDiskA);
         printf("\n");
     }
     void resetsettings(struct settings *settingsPtr)
@@ -114,7 +115,8 @@ namespace FrensSettings
         settings.fruitjamVolumeLevel = 16; // default volume level in db to mid (0-24)
         settings.flags.useDVIModeForHDMI = (HW_CONFIG == 13 && ENABLEDVI); // default on Murmulator M2 (HW_CONFIG == 13) to use DVI mode for HDMI output
         settings.version = SETTINGS_VERSION;
-        settings.flags.autoSwapFDS = 0; // default to automatically swap FDS disk sides when loading a .fds file, because it's less confusing for users if the correct disk side is automatically loaded. User can manually toggle this off in settings menu if they prefer to manually select disk sides.
+        settings.flags.autoSwapFDS = 0;
+        settings.flags.autoInsertDiskA = 1; // default: disk side A pre-inserted at boot
         // clear all the reserved settings
         settings.flags.reserved = 0;
         strcpy(settings.currentDir, "/");

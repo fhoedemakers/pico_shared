@@ -6,7 +6,7 @@
 
 
 extern struct settings settings;
-#define SETTINGS_VERSION 110
+#define SETTINGS_VERSION 111
 
 struct settings
 {
@@ -36,7 +36,8 @@ struct settings
         unsigned short rapidFireOnB : 1;      // 1 = rapid fire on B button, 0 = off
         unsigned short useDVIModeForHDMI : 1;      // 1 = use DVI mode for HDMI output (lower latency, but no audio), 0 = use HDMI mode (required for audio, but slightly higher latency)
         unsigned short autoSwapFDS : 1;      // 1 = automatically swap FDS disk sides when loading a .fds file, 0 = do not auto swap (user must manually select "FDS Disk Swap" in settings menu to swap sides). Default to on, because it's less confusing for users if the correct disk side is automatically loaded.
-        unsigned short reserved : 2;         // keep struct size the same
+        unsigned short autoInsertDiskA : 1;  // 1 = disk side A is pre-inserted at boot, 0 = disk starts ejected (user presses A to insert, allowing BIOS Mario/Luigi animation to play)
+        unsigned short reserved : 1;         // keep struct size the same
     } flags; // Total 16 bits
    
 };
