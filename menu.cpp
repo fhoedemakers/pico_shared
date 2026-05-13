@@ -2515,13 +2515,13 @@ int showSettingsMenu(bool calledFromGame)
             }
             case MenuSettingsIndex::MOPT_AUTO_SWAP_FDS_DISK:
             {
-                label = "FDS - Auto Swap Disk side";
+                label = "FDS Auto Swap Disk side";
                 value = working.flags.autoSwapFDS ? "ON" : "OFF";
                 break;
             }
             case MenuSettingsIndex::MOPT_AUTO_INSERT_FDS_DISK_A:
             {
-                label = "FDS - Auto Insert Disk 1 On Start";
+                label = "FDS Auto Insert Disk 1 On Start";
                 value = working.flags.autoInsertDiskA ? "ON" : "OFF";
                 break;
             }
