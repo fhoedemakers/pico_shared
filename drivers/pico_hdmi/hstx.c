@@ -85,6 +85,56 @@ void __not_in_flash_func(hstx_vsync_callbackfunc)(void)
 {
    HSTX_vblank = true;
 }
+
+/// Per-scanline callback invoked by the HSTX video output on core 1.
+/// Converts one row of the 320x240 RGB555 framebuffer into a 640-pixel
+/// output scanline in `buff`, applying vertical line-doubling, optional
+/// scanline darkening, and either 1:1 or 8:7 horizontal scaling.
+///
+/// Framebuffer layout : 320 x 240 pixels, 16 bpp (RGB555), row stride =
+///                      MODE_H_ACTIVE_PIXELS bytes (640).
+/// Output             : 640 x 480, each framebuffer row used twice
+///                      (load_line >> 1 maps two output lines to one row).
+///
+/// Darkening math     : halve every RGB555 channel in one step by masking
+///                      out the per-channel LSB and shifting right:
+///                        dark(px) = (px & 0x7BDE) >> 1
+///                      For a pair of pixels packed in a uint32_t:
+///                        dark(pair) = (pair & 0x7BDE7BDE) >> 1
+///
+/// Scanline effects (active only when enableScanLines != 0):
+///   stype 0 (Simple) : darken the entire odd output line by 50 %.
+///   stype 1 (LCD)    : darken every other *output column* (the high
+///                       half of each uint32_t word) on all lines;
+///                       odd lines are additionally darkened by 50 %
+///                       before the column effect is applied.
+///
+/// Two horizontal scaling paths:
+///
+/// -- 8:7 PAR (enableAspectRatio87) --
+///   Source  : 252 pixels starting at offset 34 (clips 2 px overscan each
+///             side of the NES 256-pixel output centred at column 32).
+///   Output  : 32 px black + 576 px scaled + 32 px black = 640.
+///
+///   Bresenham-style integer scaling stretches 7 source pixels into 16
+///   output pixels (ratio 16/7).  Each pixel needs at least 2 copies
+///   (7 x 2 = 14); the 2 remaining slots are distributed as evenly as
+///   possible, giving the pattern [2, 2, 3, 2, 2, 3, 2]:
+///
+///     p0 p0 | p1 p1 | p2 p2 p2 | p3 p3 | p4 p4 | p5 p5 p5 | p6 p6
+///      2       2        3          2        2        3          2   = 16
+///
+///   Each uint32_t word packs two output pixels (low + high half):
+///     word 0: p0 | p0    word 1: p1 | p1    word 2: p2 | p2
+///     word 3: p2 | p3    word 4: p3 | p4    word 5: p4 | p5
+///     word 6: p5 | p5    word 7: p6 | p6
+///
+///   This repeats 36 times (36 x 7 = 252 src, 36 x 16 = 576 dst).
+///
+/// -- 1:1 pixel doubling --
+///   Each source pixel is written twice (low and high half of a uint32_t).
+///   320 source pixels -> 640 output pixels, 160 loop iterations (reading
+///   two source pixels per uint32_t).
 void __not_in_flash_func(scanline_callbackfunc)(uint32_t v_scanline, uint32_t active_line, uint32_t *buff)
 {
     int load_line = v_scanline - (MODE_V_TOTAL_LINES - MODE_V_ACTIVE_LINES);
@@ -105,11 +155,11 @@ void __not_in_flash_func(scanline_callbackfunc)(uint32_t v_scanline, uint32_t ac
         const uint16_t *sp = (const uint16_t *)&DisplayBuf[Line_dup * MODE_H_ACTIVE_PIXELS] + 34;
         uint32_t *dp = buff;
 
+        // 32 px left black border (16 uint32_t words)
         for (int i = 0; i < 16; i++)
             *dp++ = 0;
 
         if (stype == 1) {
-            // LCD: darken every other output column (high half of each word)
             for (int g = 0; g < 36; g++) {
                 uint32_t p0=*sp++,p1=*sp++,p2=*sp++,p3=*sp++,p4=*sp++,p5=*sp++,p6=*sp++;
                 if (do_scanline) {
@@ -118,13 +168,13 @@ void __not_in_flash_func(scanline_callbackfunc)(uint32_t v_scanline, uint32_t ac
                 }
                 uint32_t d0=(p0&DM)>>1,d1=(p1&DM)>>1,d2=(p2&DM)>>1,d3=(p3&DM)>>1;
                 uint32_t d4=(p4&DM)>>1,d5=(p5&DM)>>1,d6=(p6&DM)>>1;
+                // [2,2,2,3,2,2,3] pattern: normal pixel in low half, darkened in high half
                 *dp++=p0|(d0<<16); *dp++=p1|(d1<<16);
                 *dp++=p2|(d2<<16); *dp++=p2|(d3<<16);
                 *dp++=p3|(d4<<16); *dp++=p4|(d5<<16);
                 *dp++=p5|(d5<<16); *dp++=p6|(d6<<16);
             }
         } else if (do_scanline) {
-            // Simple: darken odd lines
             for (int g = 0; g < 36; g++) {
                 uint32_t p0=(*sp++&DM)>>1,p1=(*sp++&DM)>>1,p2=(*sp++&DM)>>1;
                 uint32_t p3=(*sp++&DM)>>1,p4=(*sp++&DM)>>1,p5=(*sp++&DM)>>1;
@@ -135,7 +185,6 @@ void __not_in_flash_func(scanline_callbackfunc)(uint32_t v_scanline, uint32_t ac
                 *dp++=p5|(p5<<16); *dp++=p6|(p6<<16);
             }
         } else {
-            // No scanlines
             for (int g = 0; g < 36; g++) {
                 uint32_t p0=*sp++,p1=*sp++,p2=*sp++,p3=*sp++,p4=*sp++,p5=*sp++,p6=*sp++;
                 *dp++=p0|(p0<<16); *dp++=p1|(p1<<16);
@@ -145,26 +194,25 @@ void __not_in_flash_func(scanline_callbackfunc)(uint32_t v_scanline, uint32_t ac
             }
         }
 
+        // 32 px right black border
         for (int i = 0; i < 16; i++)
             *dp++ = 0;
     } else {
-        // 1:1 pixel doubling: 320 source pixels -> 640 output pixels.
         const uint32_t *src = (const uint32_t *)&DisplayBuf[Line_dup * MODE_H_ACTIVE_PIXELS];
         uint32_t *dst = buff;
         const uint32_t iters = MODE_H_ACTIVE_PIXELS / 4; // 160
 
         if (stype == 1) {
-            // LCD: darken every other output column (high half of each word)
             for (uint32_t i = 0; i < iters; i++) {
                 uint32_t pair = src[i];
                 if (do_scanline) pair = (pair & DARKEN_MASK) >> 1;
                 uint32_t px0 = pair & 0xFFFFu;
                 uint32_t px1 = pair >> 16;
+                // normal pixel in low half, darkened copy in high half
                 *dst++ = px0 | (((px0 & DM) >> 1) << 16);
                 *dst++ = px1 | (((px1 & DM) >> 1) << 16);
             }
         } else if (do_scanline) {
-            // Simple: darken odd lines
             for (uint32_t i = 0; i < iters; i++) {
                 uint32_t pair = (src[i] & DARKEN_MASK) >> 1;
                 uint32_t px0 = pair & 0xFFFFu;
@@ -173,7 +221,6 @@ void __not_in_flash_func(scanline_callbackfunc)(uint32_t v_scanline, uint32_t ac
                 *dst++ = px1 | (px1 << 16);
             }
         } else {
-            // No scanlines
             for (uint32_t i = 0; i < iters; i++) {
                 uint32_t pair = src[i];
                 uint32_t px0 = pair & 0xFFFFu;
