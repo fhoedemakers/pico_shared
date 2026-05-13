@@ -1635,12 +1635,10 @@ bool showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
 #if !HSTX
     margintop = dvi_->getBlankSettings().top;
     marginbottom = dvi_->getBlankSettings().bottom;
-    scaleMode8_7_ = Frens::applyScreenMode(ScreenMode::NOSCANLINE_1_1);
     dvi_->getBlankSettings().top = 0;
     dvi_->getBlankSettings().bottom = 0;
-#else
-    hstx_setScanLines(false);
 #endif
+    scaleMode8_7_ = Frens::applyScreenMode(ScreenMode::NOSCANLINE_1_1);
     getAutoSaveStatePath(tmppath, sizeof(tmppath));
     bool autosaveFileExists = Frens::fileExists(tmppath);
     // Handle quicksave and quick load
@@ -2120,15 +2118,13 @@ bool showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
     ClearScreen(CBLACK);
     waitForNoButtonPress();
 
-#if !HSTX
     scaleMode8_7_ = Frens::applyScreenMode(settings.screenMode);
+#if !HSTX
     if (!Frens::isFrameBufferUsed())
     {
         dvi_->getBlankSettings().top = margintop;
         dvi_->getBlankSettings().bottom = marginbottom;
     }
-#else
-    hstx_setScanLines(settings.flags.scanlineOn);
 #endif
     Frens::PaceFrames60fps(true);
     //Frens::waitForVSync();
@@ -2195,13 +2191,10 @@ int showSettingsMenu(bool calledFromGame)
         margintop = dvi_->getBlankSettings().top;
         marginbottom = dvi_->getBlankSettings().bottom;
         printf("Top margin: %d, bottom margin: %d\n", margintop, marginbottom);
-        // Use the entire screen resolution of 320x240 pixels. This makes a 40x30 screen with 8x8 font possible.
-        scaleMode8_7_ = Frens::applyScreenMode(ScreenMode::NOSCANLINE_1_1);
         dvi_->getBlankSettings().top = 0;
         dvi_->getBlankSettings().bottom = 0;
-#else
-        hstx_setScanLines(false);
 #endif
+        scaleMode8_7_ = Frens::applyScreenMode(ScreenMode::NOSCANLINE_1_1);
     }
 
     // Local working copy of settings.
@@ -2210,7 +2203,7 @@ int showSettingsMenu(bool calledFromGame)
     {
         return false; // allocation failed
     }
-    *workingDyn = settings;                 // copy current settings into dynamic block
+    memcpy(workingDyn, &settings, sizeof(settings)); // byte-exact copy including padding for memcmp
     struct settings &working = *workingDyn; // keep existing code unchanged (reference alias)
     // Ensure current screenMode is valid; if not, pick first available
 #if !HSTX
@@ -2372,6 +2365,23 @@ int showSettingsMenu(bool calledFromGame)
                 label = "Scanlines";
                 value = "-";
 #endif
+                break;
+            }
+            case MenuSettingsIndex::MOPT_SCANLINE_TYPE:
+            {
+                label = "Scanline Type";
+                switch ((ScanlineType)working.scanlineType)
+                {
+                case ScanlineType::SIMPLE:
+                    value = "Simple";
+                    break;
+                case ScanlineType::LCD:
+                    value = "LCD";
+                    break;
+                default:
+                    value = "?";
+                    break;
+                }
                 break;
             }
             case MenuSettingsIndex::MOPT_FPS_OVERLAY:
@@ -2873,6 +2883,16 @@ int showSettingsMenu(bool calledFromGame)
                         // !HSTX build will never have this option visible.
                         break;
                     }
+                    case MOPT_SCANLINE_TYPE:
+                    {
+                        int t = working.scanlineType;
+                        if (right)
+                            t = (t + 1) % (int)ScanlineType::MAX;
+                        else
+                            t = (t == 0) ? (int)ScanlineType::MAX - 1 : t - 1;
+                        working.scanlineType = (uint8_t)t;
+                        break;
+                    }
                     case MOPT_FPS_OVERLAY:
                         working.flags.displayFrameRate = !working.flags.displayFrameRate;
                         break;
@@ -3093,9 +3113,8 @@ int showSettingsMenu(bool calledFromGame)
         screenBuffer = nullptr;
 
       
-#if !HSTX
         scaleMode8_7_ = Frens::applyScreenMode(settings.screenMode);
-        // Reset the screen mode to the original settings
+#if !HSTX
         // Do not reset the margins when framebuffer is used, this will lock up the display driver
         // Margins will be handled by the framebuffer.
         if (!Frens::isFrameBufferUsed())
@@ -3103,9 +3122,6 @@ int showSettingsMenu(bool calledFromGame)
             dvi_->getBlankSettings().top = margintop;
             dvi_->getBlankSettings().bottom = marginbottom;
         }
-#else
-        // Restore scanline setting
-        hstx_setScanLines(settings.flags.scanlineOn);
 #endif
         // Speaker can be muted/unmuted from settings menu
         //EXT_AUDIO_MUTE_INTERNAL_SPEAKER(settings.flags.fruitJamEnableInternalSpeaker == 0);
@@ -3150,13 +3166,10 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
     int margintop = dvi_->getBlankSettings().top;
     int marginbottom = dvi_->getBlankSettings().bottom;
     printf("Top margin: %d, bottom margin: %d\n", margintop, marginbottom);
-    // Use the entire screen resolution of 320x240 pixels. This makes a 40x30 screen with 8x8 font possible.
-    scaleMode8_7_ = Frens::applyScreenMode(ScreenMode::NOSCANLINE_1_1);
     dvi_->getBlankSettings().top = 0;
     dvi_->getBlankSettings().bottom = 0;
-#else
-    hstx_setScanLines(false);
 #endif
+    scaleMode8_7_ = Frens::applyScreenMode(ScreenMode::NOSCANLINE_1_1);
     abSwapped = 1; // Swap A and B buttons, so menu is consistent across different emulators
     Frens::PaceFrames60fps(true);
     //Frens::waitForVSync();

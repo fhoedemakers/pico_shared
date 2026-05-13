@@ -84,6 +84,7 @@ namespace FrensSettings
         printf("scanlineOn: %d\n", settings.flags.scanlineOn);
         //printf("fruitJamEnableInternalSpeaker: %d\n", settings.flags.fruitJamEnableInternalSpeaker);
         printf("fruitjamVolumeLevel: %d\n", settings.fruitjamVolumeLevel);
+        printf("scanlineType: %d\n", settings.scanlineType);
         printf("rapidFireOnA: %d\n", settings.flags.rapidFireOnA);
         printf("rapidFireOnB: %d\n", settings.flags.rapidFireOnB);
         printf("useDVIModeForHDMI: %d\n", settings.flags.useDVIModeForHDMI);
@@ -113,6 +114,7 @@ namespace FrensSettings
         settings.flags.rapidFireOnA = 0; // default: rapid fire off
         settings.flags.rapidFireOnB = 0; // default: rapid fire off
         settings.fruitjamVolumeLevel = 16; // default volume level in db to mid (0-24)
+        settings.scanlineType = 0;
         settings.flags.useDVIModeForHDMI = (HW_CONFIG == 13 && ENABLEDVI); // default on Murmulator M2 (HW_CONFIG == 13) to use DVI mode for HDMI output
         settings.version = SETTINGS_VERSION;
         settings.flags.autoSwapFDS = 0;

@@ -11,7 +11,9 @@ static uint8_t *DisplayBuf = FRAMEBUFFER;
 static uint8_t *LayerBuf = FRAMEBUFFER;
 static uint16_t *tilefcols;
 static uint16_t *tilebcols;
-static volatile int enableScanLines = 0; // Enable scanlines
+static volatile int enableScanLines = 0;
+static volatile int enableAspectRatio87 = 0;
+static volatile int scanlineType = 0;
 static volatile int scanlineMode = 0;
 #define HRes (MODE_H_ACTIVE_PIXELS / 2) // 320
 #define VRes (MODE_V_ACTIVE_LINES / 2)  // 240
@@ -65,6 +67,16 @@ void hstx_setScanLines(int enable)
     enableScanLines = enable ? 1 : 0;
 }
 
+void hstx_setAspectRatio87(int enable)
+{
+    enableAspectRatio87 = enable ? 1 : 0;
+}
+
+void hstx_setScanLineType(int type)
+{
+    scanlineType = type;
+}
+
 uint16_t *__not_in_flash_func(hstx_getlineFromFramebuffer)(int scanline)
 {
     return (uint16_t *)(WriteBuf + (scanline * HRes * 2));
@@ -82,38 +94,93 @@ void __not_in_flash_func(scanline_callbackfunc)(uint32_t v_scanline, uint32_t ac
     HSTX_vblank = false;
     __dmb();
 
-    // Source row (320 pixels RGB555 = 640 bytes = 160 uint32_t) with vertical
-    // line doubling (two output scanlines share one framebuffer row).
     int Line_dup = load_line >> 1;
-    const uint32_t *src = (const uint32_t *)&DisplayBuf[Line_dup * MODE_H_ACTIVE_PIXELS];
-    uint32_t *dst = buff;
-    const uint32_t iters = MODE_H_ACTIVE_PIXELS / 4; // 2 src pixels in, 4 dst pixels out
-
-    // Darken-both-halves mask for a 32-bit word holding two RGB555 pixels.
-    // Per 5-bit component, divide-by-two is (c & 0x1E) >> 1, i.e. mask off
-    // the LSB and shift. Applied to both pixels in parallel with one AND+shift.
-    //   r: bits 10..14   mask 0x7800 -> 0x7800 with LSB cleared = 0x7800
-    //   g: bits  5.. 9   mask 0x03E0 -> LSB cleared             = 0x03C0
-    //   b: bits  0.. 4   mask 0x001F -> LSB cleared             = 0x001E
-    // Combined per pixel = 0x7BDE; packed twice = 0x7BDE7BDE.
-    // (Faster than a 32-entry lookup table: no memory access, single cycle.)
     const uint32_t DARKEN_MASK = 0x7BDE7BDEu;
+    const uint16_t DM = 0x7BDEu;
+    int is_odd_line = load_line & 1;
+    int do_scanline = is_odd_line && enableScanLines;
+    int stype = enableScanLines ? scanlineType : 0;
 
-    if ((load_line & 1) && enableScanLines) {
-        for (uint32_t i = 0; i < iters; i++) {
-            uint32_t pair = (src[i] & DARKEN_MASK) >> 1; // darken both pixels
-            uint32_t px0 = pair & 0xFFFFu;
-            uint32_t px1 = pair >> 16;
-            *dst++ = px0 | (px0 << 16); // duplicate pixel 0
-            *dst++ = px1 | (px1 << 16); // duplicate pixel 1
+    if (enableAspectRatio87) {
+        const uint16_t *sp = (const uint16_t *)&DisplayBuf[Line_dup * MODE_H_ACTIVE_PIXELS] + 34;
+        uint32_t *dp = buff;
+
+        for (int i = 0; i < 16; i++)
+            *dp++ = 0;
+
+        if (stype == 1) {
+            // LCD: darken every other output column (high half of each word)
+            for (int g = 0; g < 36; g++) {
+                uint32_t p0=*sp++,p1=*sp++,p2=*sp++,p3=*sp++,p4=*sp++,p5=*sp++,p6=*sp++;
+                if (do_scanline) {
+                    p0=(p0&DM)>>1; p1=(p1&DM)>>1; p2=(p2&DM)>>1; p3=(p3&DM)>>1;
+                    p4=(p4&DM)>>1; p5=(p5&DM)>>1; p6=(p6&DM)>>1;
+                }
+                uint32_t d0=(p0&DM)>>1,d1=(p1&DM)>>1,d2=(p2&DM)>>1,d3=(p3&DM)>>1;
+                uint32_t d4=(p4&DM)>>1,d5=(p5&DM)>>1,d6=(p6&DM)>>1;
+                *dp++=p0|(d0<<16); *dp++=p1|(d1<<16);
+                *dp++=p2|(d2<<16); *dp++=p2|(d3<<16);
+                *dp++=p3|(d4<<16); *dp++=p4|(d5<<16);
+                *dp++=p5|(d5<<16); *dp++=p6|(d6<<16);
+            }
+        } else if (do_scanline) {
+            // Simple: darken odd lines
+            for (int g = 0; g < 36; g++) {
+                uint32_t p0=(*sp++&DM)>>1,p1=(*sp++&DM)>>1,p2=(*sp++&DM)>>1;
+                uint32_t p3=(*sp++&DM)>>1,p4=(*sp++&DM)>>1,p5=(*sp++&DM)>>1;
+                uint32_t p6=(*sp++&DM)>>1;
+                *dp++=p0|(p0<<16); *dp++=p1|(p1<<16);
+                *dp++=p2|(p2<<16); *dp++=p2|(p3<<16);
+                *dp++=p3|(p4<<16); *dp++=p4|(p5<<16);
+                *dp++=p5|(p5<<16); *dp++=p6|(p6<<16);
+            }
+        } else {
+            // No scanlines
+            for (int g = 0; g < 36; g++) {
+                uint32_t p0=*sp++,p1=*sp++,p2=*sp++,p3=*sp++,p4=*sp++,p5=*sp++,p6=*sp++;
+                *dp++=p0|(p0<<16); *dp++=p1|(p1<<16);
+                *dp++=p2|(p2<<16); *dp++=p2|(p3<<16);
+                *dp++=p3|(p4<<16); *dp++=p4|(p5<<16);
+                *dp++=p5|(p5<<16); *dp++=p6|(p6<<16);
+            }
         }
+
+        for (int i = 0; i < 16; i++)
+            *dp++ = 0;
     } else {
-        for (uint32_t i = 0; i < iters; i++) {
-            uint32_t pair = src[i];
-            uint32_t px0 = pair & 0xFFFFu;
-            uint32_t px1 = pair >> 16;
-            *dst++ = px0 | (px0 << 16);
-            *dst++ = px1 | (px1 << 16);
+        // 1:1 pixel doubling: 320 source pixels -> 640 output pixels.
+        const uint32_t *src = (const uint32_t *)&DisplayBuf[Line_dup * MODE_H_ACTIVE_PIXELS];
+        uint32_t *dst = buff;
+        const uint32_t iters = MODE_H_ACTIVE_PIXELS / 4; // 160
+
+        if (stype == 1) {
+            // LCD: darken every other output column (high half of each word)
+            for (uint32_t i = 0; i < iters; i++) {
+                uint32_t pair = src[i];
+                if (do_scanline) pair = (pair & DARKEN_MASK) >> 1;
+                uint32_t px0 = pair & 0xFFFFu;
+                uint32_t px1 = pair >> 16;
+                *dst++ = px0 | (((px0 & DM) >> 1) << 16);
+                *dst++ = px1 | (((px1 & DM) >> 1) << 16);
+            }
+        } else if (do_scanline) {
+            // Simple: darken odd lines
+            for (uint32_t i = 0; i < iters; i++) {
+                uint32_t pair = (src[i] & DARKEN_MASK) >> 1;
+                uint32_t px0 = pair & 0xFFFFu;
+                uint32_t px1 = pair >> 16;
+                *dst++ = px0 | (px0 << 16);
+                *dst++ = px1 | (px1 << 16);
+            }
+        } else {
+            // No scanlines
+            for (uint32_t i = 0; i < iters; i++) {
+                uint32_t pair = src[i];
+                uint32_t px0 = pair & 0xFFFFu;
+                uint32_t px1 = pair >> 16;
+                *dst++ = px0 | (px0 << 16);
+                *dst++ = px1 | (px1 << 16);
+            }
         }
     }
 }
