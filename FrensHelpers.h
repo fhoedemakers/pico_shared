@@ -49,6 +49,13 @@ enum class ScreenMode
         MAX,
     };
 
+enum class ScanlineType : uint8_t
+    {
+        SIMPLE = 0,
+        LCD = 1,
+        MAX
+    };
+
 #define CBLACK 15
 #define CWHITE 48
 #define CRED 21

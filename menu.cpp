@@ -2203,7 +2203,7 @@ int showSettingsMenu(bool calledFromGame)
     {
         return false; // allocation failed
     }
-    *workingDyn = settings;                 // copy current settings into dynamic block
+    memcpy(workingDyn, &settings, sizeof(settings)); // byte-exact copy including padding for memcmp
     struct settings &working = *workingDyn; // keep existing code unchanged (reference alias)
     // Ensure current screenMode is valid; if not, pick first available
 #if !HSTX
@@ -2365,6 +2365,23 @@ int showSettingsMenu(bool calledFromGame)
                 label = "Scanlines";
                 value = "-";
 #endif
+                break;
+            }
+            case MenuSettingsIndex::MOPT_SCANLINE_TYPE:
+            {
+                label = "Scanline Type";
+                switch ((ScanlineType)working.scanlineType)
+                {
+                case ScanlineType::SIMPLE:
+                    value = "Simple";
+                    break;
+                case ScanlineType::LCD:
+                    value = "LCD";
+                    break;
+                default:
+                    value = "?";
+                    break;
+                }
                 break;
             }
             case MenuSettingsIndex::MOPT_FPS_OVERLAY:
@@ -2864,6 +2881,16 @@ int showSettingsMenu(bool calledFromGame)
                         working.flags.scanlineOn = !working.flags.scanlineOn;
 #endif
                         // !HSTX build will never have this option visible.
+                        break;
+                    }
+                    case MOPT_SCANLINE_TYPE:
+                    {
+                        int t = working.scanlineType;
+                        if (right)
+                            t = (t + 1) % (int)ScanlineType::MAX;
+                        else
+                            t = (t == 0) ? (int)ScanlineType::MAX - 1 : t - 1;
+                        working.scanlineType = (uint8_t)t;
                         break;
                     }
                     case MOPT_FPS_OVERLAY:

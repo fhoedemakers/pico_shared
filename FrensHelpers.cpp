@@ -622,6 +622,7 @@ namespace Frens
 #else
         hstx_setScanLines(scanLine ? 1 : 0);
         hstx_setAspectRatio87(scaleMode8_7_ ? 1 : 0);
+        hstx_setScanLineType(settings.scanlineType);
 #endif
         return scaleMode8_7_;
     }
