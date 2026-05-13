@@ -765,6 +765,13 @@ void waitForNoButtonPress()
 }
 void menuPumpBlankFrames(int count)
 {
+#if !HSTX
+    int margintop = dvi_->getBlankSettings().top;
+    int marginbottom = dvi_->getBlankSettings().bottom;
+    scaleMode8_7_ = Frens::applyScreenMode(ScreenMode::NOSCANLINE_1_1);
+    dvi_->getBlankSettings().top = 0;
+    dvi_->getBlankSettings().bottom = 0;
+#endif
     for (int i = 0; i < count; i++)
     {
 #if HSTX
@@ -778,6 +785,7 @@ void menuPumpBlankFrames(int count)
         else
         {
 #endif
+
             for (int line = 0; line < SCREENHEIGHT; line++)
             {
                 auto b = dvi_->getLineBuffer();
@@ -790,6 +798,17 @@ void menuPumpBlankFrames(int count)
 #endif
         Menu_LoadFrame();
     }
+#if !HSTX
+    scaleMode8_7_ = Frens::applyScreenMode(settings.screenMode);
+    // Reset the screen mode to the original settings
+    // Do not reset the margins when framebuffer is used, this will lock up the display driver
+    // Margins will be handled by the framebuffer.
+    if (!Frens::isFrameBufferUsed())
+    {
+        dvi_->getBlankSettings().top = margintop;
+        dvi_->getBlankSettings().bottom = marginbottom;
+    }
+#endif
 }
 
 static inline int centerColClamped(int textLen)
