@@ -2573,7 +2573,7 @@ int showSettingsMenu(bool calledFromGame)
         putText(0, row++, "", CBLACK, CWHITE);
         // Render SAVE / CANCEL / DEFAULT on a single row with per-word highlighting
         {
-            const char *saveLabel  = settingsChanged ? "SAVE *" : "SAVE";
+            const char *saveLabel  = settingsChanged ? "SAVE*" : "SAVE";
             const char *labels[3]  = { saveLabel, "CANCEL", "DEFAULT" };
             int lens[3]            = { (int)strlen(labels[0]), (int)strlen(labels[1]), (int)strlen(labels[2]) };
             const int gap          = 2; // spaces between words
