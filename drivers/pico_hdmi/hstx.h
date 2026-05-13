@@ -20,6 +20,7 @@ void hstx_waitForVSync(void);
 void hstx_paceFrame(bool init);
 uint8_t *hstx_getframebuffer(void);
 void hstx_setScanLines(int enable);
+void hstx_setAspectRatio87(int enable);
 uint16_t *hstx_getlineFromFramebuffer(int scanline);
 void hstx_init(bool dviOnly);
 void video_output_core1_run(void);

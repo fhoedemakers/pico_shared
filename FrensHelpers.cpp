@@ -586,7 +586,6 @@ namespace Frens
         }
         return true;
     }
-#if !HSTX
     bool applyScreenMode(ScreenMode screenMode_)
     {
         bool scanLine = false;
@@ -616,34 +615,30 @@ namespace Frens
             scanLine = false;
             printf("ScreenMode::NOSCANLINE_8_7\n");
             break;
-            // case ScreenMode::MAX:
-            //     scaleMode8_7_ = false;
-            //     scanLine = false;
-            //     printf("ScreenMode::MAX\n");
-            //     break;
         }
 
+#if !HSTX
         dvi_->setScanLine(scanLine);
+#else
+        hstx_setScanLines(scanLine ? 1 : 0);
+        hstx_setAspectRatio87(scaleMode8_7_ ? 1 : 0);
+#endif
         return scaleMode8_7_;
     }
 
     bool screenMode(int incr)
     {
-        // Determine next (or previous) available screen mode based on g_available_screen_modes.
-        // Only modes with value 1 are selectable. Order must match ScreenMode enum.
-        constexpr int kModeCount = 4; // Mask logic (&3) previously assumed 4 modes.
+        constexpr int kModeCount = 4;
         int current = static_cast<int>(settings.screenMode);
         int attempts = 0;
         do
         {
             current = (current + incr) & 3; // wrap 0..3
             attempts++;
-            // Break if this mode is available
             if (g_available_screen_modes[current])
                 break;
-        } while (attempts < kModeCount); // prevent infinite loop if none available
+        } while (attempts < kModeCount);
 
-        // If no available mode found (all disabled), keep original
         if (!g_available_screen_modes[current])
         {
             current = static_cast<int>(settings.screenMode);
@@ -654,22 +649,28 @@ namespace Frens
         FrensSettings::savesettings();
         return scaleMode8_7_;
     }
-#endif
+
     void toggleScanLines()
     {
 #if !HSTX
 #else
-        settings.flags.scanlineOn = settings.flags.scanlineOn ? 0 : 1; // toggle
+        switch (settings.screenMode)
+        {
+        case ScreenMode::SCANLINE_8_7:    settings.screenMode = ScreenMode::NOSCANLINE_8_7; break;
+        case ScreenMode::NOSCANLINE_8_7:  settings.screenMode = ScreenMode::SCANLINE_8_7; break;
+        case ScreenMode::SCANLINE_1_1:    settings.screenMode = ScreenMode::NOSCANLINE_1_1; break;
+        case ScreenMode::NOSCANLINE_1_1:  settings.screenMode = ScreenMode::SCANLINE_1_1; break;
+        default: break;
+        }
+        applyScreenMode(settings.screenMode);
         FrensSettings::savesettings();
-        hstx_setScanLines(settings.flags.scanlineOn);
-        printf("Scanlines %s\n", settings.flags.scanlineOn ? "enabled" : "disabled");
 #endif
     }
     void restoreScanlines()
     {
 #if !HSTX
 #else
-        hstx_setScanLines(settings.flags.scanlineOn);
+        applyScreenMode(settings.screenMode);
 #endif
     }
 

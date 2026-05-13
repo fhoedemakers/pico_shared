@@ -12,6 +12,7 @@ static uint8_t *LayerBuf = FRAMEBUFFER;
 static uint16_t *tilefcols;
 static uint16_t *tilebcols;
 static volatile int enableScanLines = 0; // Enable scanlines
+static volatile int enableAspectRatio87 = 0; // Enable 8:7 aspect ratio scaling
 static volatile int scanlineMode = 0;
 #define HRes (MODE_H_ACTIVE_PIXELS / 2) // 320
 #define VRes (MODE_V_ACTIVE_LINES / 2)  // 240
@@ -65,6 +66,11 @@ void hstx_setScanLines(int enable)
     enableScanLines = enable ? 1 : 0;
 }
 
+void hstx_setAspectRatio87(int enable)
+{
+    enableAspectRatio87 = enable ? 1 : 0;
+}
+
 uint16_t *__not_in_flash_func(hstx_getlineFromFramebuffer)(int scanline)
 {
     return (uint16_t *)(WriteBuf + (scanline * HRes * 2));
@@ -82,38 +88,83 @@ void __not_in_flash_func(scanline_callbackfunc)(uint32_t v_scanline, uint32_t ac
     HSTX_vblank = false;
     __dmb();
 
-    // Source row (320 pixels RGB555 = 640 bytes = 160 uint32_t) with vertical
-    // line doubling (two output scanlines share one framebuffer row).
     int Line_dup = load_line >> 1;
-    const uint32_t *src = (const uint32_t *)&DisplayBuf[Line_dup * MODE_H_ACTIVE_PIXELS];
-    uint32_t *dst = buff;
-    const uint32_t iters = MODE_H_ACTIVE_PIXELS / 4; // 2 src pixels in, 4 dst pixels out
-
-    // Darken-both-halves mask for a 32-bit word holding two RGB555 pixels.
-    // Per 5-bit component, divide-by-two is (c & 0x1E) >> 1, i.e. mask off
-    // the LSB and shift. Applied to both pixels in parallel with one AND+shift.
-    //   r: bits 10..14   mask 0x7800 -> 0x7800 with LSB cleared = 0x7800
-    //   g: bits  5.. 9   mask 0x03E0 -> LSB cleared             = 0x03C0
-    //   b: bits  0.. 4   mask 0x001F -> LSB cleared             = 0x001E
-    // Combined per pixel = 0x7BDE; packed twice = 0x7BDE7BDE.
-    // (Faster than a 32-entry lookup table: no memory access, single cycle.)
     const uint32_t DARKEN_MASK = 0x7BDE7BDEu;
 
-    if ((load_line & 1) && enableScanLines) {
-        for (uint32_t i = 0; i < iters; i++) {
-            uint32_t pair = (src[i] & DARKEN_MASK) >> 1; // darken both pixels
-            uint32_t px0 = pair & 0xFFFFu;
-            uint32_t px1 = pair >> 16;
-            *dst++ = px0 | (px0 << 16); // duplicate pixel 0
-            *dst++ = px1 | (px1 << 16); // duplicate pixel 1
+    if (enableAspectRatio87) {
+        // 8:7 PAR scaling. 252 source pixels (offsets 34..285, clipping 2px
+        // overscan each side) scale to 576 output pixels at 16:7 ratio.
+        // Pattern [2,2,2,3,2,2,3] repeats 36 times (36*7=252, 36*16=576).
+        // Output layout: 32px black + 576px scaled + 32px black = 640.
+        const uint16_t *sp = (const uint16_t *)&DisplayBuf[Line_dup * MODE_H_ACTIVE_PIXELS] + 34;
+        uint32_t *dp = buff;
+
+        for (int i = 0; i < 16; i++)
+            *dp++ = 0;
+
+        if ((load_line & 1) && enableScanLines) {
+            const uint16_t DM = 0x7BDEu;
+            for (int g = 0; g < 36; g++) {
+                uint32_t p0 = (*sp++ & DM) >> 1;
+                uint32_t p1 = (*sp++ & DM) >> 1;
+                uint32_t p2 = (*sp++ & DM) >> 1;
+                uint32_t p3 = (*sp++ & DM) >> 1;
+                uint32_t p4 = (*sp++ & DM) >> 1;
+                uint32_t p5 = (*sp++ & DM) >> 1;
+                uint32_t p6 = (*sp++ & DM) >> 1;
+                *dp++ = p0 | (p0 << 16);
+                *dp++ = p1 | (p1 << 16);
+                *dp++ = p2 | (p2 << 16);
+                *dp++ = p2 | (p3 << 16);
+                *dp++ = p3 | (p4 << 16);
+                *dp++ = p4 | (p5 << 16);
+                *dp++ = p5 | (p5 << 16);
+                *dp++ = p6 | (p6 << 16);
+            }
+        } else {
+            for (int g = 0; g < 36; g++) {
+                uint32_t p0 = *sp++;
+                uint32_t p1 = *sp++;
+                uint32_t p2 = *sp++;
+                uint32_t p3 = *sp++;
+                uint32_t p4 = *sp++;
+                uint32_t p5 = *sp++;
+                uint32_t p6 = *sp++;
+                *dp++ = p0 | (p0 << 16);
+                *dp++ = p1 | (p1 << 16);
+                *dp++ = p2 | (p2 << 16);
+                *dp++ = p2 | (p3 << 16);
+                *dp++ = p3 | (p4 << 16);
+                *dp++ = p4 | (p5 << 16);
+                *dp++ = p5 | (p5 << 16);
+                *dp++ = p6 | (p6 << 16);
+            }
         }
+
+        for (int i = 0; i < 16; i++)
+            *dp++ = 0;
     } else {
-        for (uint32_t i = 0; i < iters; i++) {
-            uint32_t pair = src[i];
-            uint32_t px0 = pair & 0xFFFFu;
-            uint32_t px1 = pair >> 16;
-            *dst++ = px0 | (px0 << 16);
-            *dst++ = px1 | (px1 << 16);
+        // 1:1 pixel doubling: 320 source pixels → 640 output pixels.
+        const uint32_t *src = (const uint32_t *)&DisplayBuf[Line_dup * MODE_H_ACTIVE_PIXELS];
+        uint32_t *dst = buff;
+        const uint32_t iters = MODE_H_ACTIVE_PIXELS / 4;
+
+        if ((load_line & 1) && enableScanLines) {
+            for (uint32_t i = 0; i < iters; i++) {
+                uint32_t pair = (src[i] & DARKEN_MASK) >> 1;
+                uint32_t px0 = pair & 0xFFFFu;
+                uint32_t px1 = pair >> 16;
+                *dst++ = px0 | (px0 << 16);
+                *dst++ = px1 | (px1 << 16);
+            }
+        } else {
+            for (uint32_t i = 0; i < iters; i++) {
+                uint32_t pair = src[i];
+                uint32_t px0 = pair & 0xFFFFu;
+                uint32_t px1 = pair >> 16;
+                *dst++ = px0 | (px0 << 16);
+                *dst++ = px1 | (px1 << 16);
+            }
         }
     }
 }
