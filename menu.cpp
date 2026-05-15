@@ -83,7 +83,10 @@ const __UINT16_TYPE__ NesMenuPalette[64] = {
 #define METADDATAFILE "/metadata/%s/descr/%c/%s.txt"
 
 int NesMenuPaletteItems = sizeof(NesMenuPalette) / sizeof(NesMenuPalette[0]);
-static char connectedGamePadName[sizeof(io::GamePadState::GamePadName)];
+const static char *connectedGamePadName[2];
+const static char *connectedGamePadShortName[2];
+
+
 #define SCREENBUFCELLS SCREEN_ROWS *SCREEN_COLS
 charCell *screenBuffer;
 
@@ -147,18 +150,17 @@ void resetColors(int prevfgColor, int prevbgColor)
 static void getButtonLabels(char *buttonLabel1, char *buttonLabel2)
 {
     auto &gp = io::getCurrentGamePadState(0);
-    strcpy(connectedGamePadName, gp.GamePadName);
-    if (strcmp(connectedGamePadName, "Dual Shock 4") == 0 || strcmp(connectedGamePadName, "Dual Sense") == 0 || strcmp(connectedGamePadName, "PSClassic") == 0)
+    if (strcmp(gp.GamePadName, "Dual Shock 4") == 0 || strcmp(gp.GamePadName, "Dual Sense") == 0 || strcmp(gp.GamePadName, "PSClassic") == 0)
     {
         strcpy(buttonLabel1, "O");
         strcpy(buttonLabel2, "X");
     }
-    else if (strcmp(connectedGamePadName, "XInput") == 0 || strncmp(connectedGamePadName, "Genesis", 7) == 0 || strcmp(connectedGamePadName, "MDArcade") == 0)
+    else if (strcmp(gp.GamePadName, "XInput") == 0 || strncmp(gp.GamePadName, "Genesis", 7) == 0 || strcmp(gp.GamePadName, "MDArcade") == 0)
     {
         strcpy(buttonLabel1, "B");
         strcpy(buttonLabel2, "A");
     }
-    else if (strcmp(connectedGamePadName, "Keyboard") == 0)
+    else if (strcmp(gp.GamePadName, "Keyboard") == 0)
     {
         strcpy(buttonLabel1, "X");
         strcpy(buttonLabel2, "Z");
@@ -267,18 +269,23 @@ void RomSelect_PadState(DWORD *pdwPad1, bool ignorepushed = false)
     int prevFgColor = settings.fgcolor;
     static DWORD prevButtons{};
     auto &gp = io::getCurrentGamePadState(0);
-    strcpy(connectedGamePadName, gp.GamePadName);
+    auto &gp2 = io::getCurrentGamePadState(1);
+    uint32_t combinedButtons = gp.buttons | gp2.buttons;
+    connectedGamePadName[0] = gp.GamePadName;
+    connectedGamePadName[1] = gp2.GamePadName;
+    connectedGamePadShortName[0] = gp.GamePadShortName;
+    connectedGamePadShortName[1] = gp2.GamePadShortName;
 
-    int v = (gp.buttons & io::GamePadState::Button::LEFT ? LEFT : 0) |
-            (gp.buttons & io::GamePadState::Button::RIGHT ? RIGHT : 0) |
-            (gp.buttons & io::GamePadState::Button::UP ? UP : 0) |
-            (gp.buttons & io::GamePadState::Button::DOWN ? DOWN : 0) |
-            (gp.buttons & io::GamePadState::Button::A ? A : 0) |
-            (gp.buttons & io::GamePadState::Button::B ? B : 0) |
-            (gp.buttons & io::GamePadState::Button::SELECT ? SELECT : 0) |
-            (gp.buttons & io::GamePadState::Button::START ? START : 0) |
-            (gp.buttons & io::GamePadState::Button::X ? X : 0) |
-            (gp.buttons & io::GamePadState::Button::Y ? Y : 0) |
+    int v = (combinedButtons & io::GamePadState::Button::LEFT ? LEFT : 0) |
+            (combinedButtons & io::GamePadState::Button::RIGHT ? RIGHT : 0) |
+            (combinedButtons & io::GamePadState::Button::UP ? UP : 0) |
+            (combinedButtons & io::GamePadState::Button::DOWN ? DOWN : 0) |
+            (combinedButtons & io::GamePadState::Button::A ? A : 0) |
+            (combinedButtons & io::GamePadState::Button::B ? B : 0) |
+            (combinedButtons & io::GamePadState::Button::SELECT ? SELECT : 0) |
+            (combinedButtons & io::GamePadState::Button::START ? START : 0) |
+            (combinedButtons & io::GamePadState::Button::X ? X : 0) |
+            (combinedButtons & io::GamePadState::Button::Y ? Y : 0) |
             0;
 
 #if NES_PIN_CLK != -1
@@ -606,7 +613,7 @@ void putText(int x, int y, const char *text, int fgcolor, int bgcolor, bool wrap
 void DrawScreen(int selectedRow, int w = 0, int h = 0, uint16_t *imagebuffer = nullptr, int imagex = 0, int imagey = 0)
 {
     const char *spaces = "                   ";
-    char tmpstr[sizeof(connectedGamePadName) + 4];
+    char tmpstr[24];
     char s[SCREEN_COLS + 1];
     char buttonLabel1[2];
     char buttonLabel2[2];
@@ -618,7 +625,27 @@ void DrawScreen(int selectedRow, int w = 0, int h = 0, uint16_t *imagebuffer = n
             putText(1, ENDROW + 3, "Dac Initialization Failed", CRED, CWHITE);
         }
         putText(SCREEN_COLS / 2 - strlen(spaces) / 2, SCREEN_ROWS - 1, spaces, settings.bgcolor, settings.bgcolor);
-        snprintf(tmpstr, sizeof(tmpstr), "- %s -", connectedGamePadName[0] != 0 ? connectedGamePadName : "No USB GamePad");
+        if ( connectedGamePadShortName[0] != nullptr && connectedGamePadShortName[1] != nullptr)
+        {
+            snprintf(tmpstr, sizeof(tmpstr), "%s/%s", connectedGamePadShortName[0], connectedGamePadShortName[1]);
+        }
+        else
+        {
+            if (connectedGamePadName[0] != nullptr)
+            {
+                snprintf(tmpstr, sizeof(tmpstr), "%s", connectedGamePadName[0]);
+            }
+            else
+            {
+                if (connectedGamePadName[1] != nullptr)
+                {
+                    snprintf(tmpstr, sizeof(tmpstr), "%s", connectedGamePadName[1]);
+                }
+                else {
+                    snprintf(tmpstr, sizeof(tmpstr), "No USB GamePad");
+                }
+            }
+        }
         putText(SCREEN_COLS / 2 - strlen(tmpstr) / 2, SCREEN_ROWS - 1, tmpstr, CBLUE, CWHITE);
         snprintf(s, sizeof(s), "%c%dK %c", Frens::isPsramEnabled() ? 'P' : 'F', maxRomSize / 1024, WIIPAD_IS_CONNECTED() ? 'W' : ' ');
         putText(1, SCREEN_ROWS - 1, s, settings.fgcolor, settings.bgcolor);
@@ -633,13 +660,13 @@ void DrawScreen(int selectedRow, int w = 0, int h = 0, uint16_t *imagebuffer = n
         }
         int optionsRow = artworkEnabled ? ENDROW + 3 : ENDROW + 2;
 
-        if (strcmp(connectedGamePadName, "Genesis Mini 2") == 0 || strcmp(connectedGamePadName, "MDArcade") == 0)
+        if (strcmp(connectedGamePadName[0], "Genesis Mini 2") == 0 || strcmp(connectedGamePadName[0], "MDArcade") == 0)
         {
             strcpy(s, "Mode:Settings");
         }
         else
         {
-            if (strncmp(connectedGamePadName, "Genesis", 7) == 0)
+            if (strncmp(connectedGamePadName[0] , "Genesis", 7) == 0)
             {
                 strcpy(s, "C:Settings");
             }
