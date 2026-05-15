@@ -45,8 +45,14 @@
 #endif
 
 // RHPort number used for host can be defined by board.mk, default to port 1
+// RHPort number used for host can be defined by board.mk
+// PIO-USB lives on RHPort 1, native USB on RHPort 0
 #ifndef BOARD_TUH_RHPORT
-#define BOARD_TUH_RHPORT      1
+  #if CFG_TUH_RPI_PIO_USB
+    #define BOARD_TUH_RHPORT  1
+  #else
+    #define BOARD_TUH_RHPORT  0
+  #endif
 #endif
 
 // RHPort max operational speed can defined by board.mk
