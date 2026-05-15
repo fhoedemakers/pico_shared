@@ -89,7 +89,6 @@ extern std::unique_ptr<dvi::DVI> dvi_;
 extern char __flash_binary_start;  // defined in linker script
 extern char __flash_binary_end; 
 extern int abSwapped;      // defined in hid_app.cpp
-extern int isManta;        // defined in hid_app.cpp
 
 namespace Frens
 {
