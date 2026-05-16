@@ -714,6 +714,7 @@ inline void showhdmilabel()
 
 char *menutitle = nullptr;
 
+// Returns SWVERSION, or build date/time as "DD/MM[/YY] HH:MM" when SWVERSION is "VX.X".
 static const char *getVersionString(char *buf, size_t bufsize, bool showYear = false)
 {
     if (strcmp(SWVERSION, "VX.X") == 0) {
