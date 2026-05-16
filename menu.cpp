@@ -83,7 +83,10 @@ const __UINT16_TYPE__ NesMenuPalette[64] = {
 #define METADDATAFILE "/metadata/%s/descr/%c/%s.txt"
 
 int NesMenuPaletteItems = sizeof(NesMenuPalette) / sizeof(NesMenuPalette[0]);
-static char connectedGamePadName[sizeof(io::GamePadState::GamePadName)];
+const static char *connectedGamePadName[2];
+const static char *connectedGamePadShortName[2];
+
+
 #define SCREENBUFCELLS SCREEN_ROWS *SCREEN_COLS
 charCell *screenBuffer;
 
@@ -147,18 +150,17 @@ void resetColors(int prevfgColor, int prevbgColor)
 static void getButtonLabels(char *buttonLabel1, char *buttonLabel2)
 {
     auto &gp = io::getCurrentGamePadState(0);
-    strcpy(connectedGamePadName, gp.GamePadName);
-    if (strcmp(connectedGamePadName, "Dual Shock 4") == 0 || strcmp(connectedGamePadName, "Dual Sense") == 0 || strcmp(connectedGamePadName, "PSClassic") == 0)
+    if (strcmp(gp.GamePadName, "Dual Shock 4") == 0 || strcmp(gp.GamePadName, "Dual Sense") == 0 || strcmp(gp.GamePadName, "PSClassic") == 0)
     {
         strcpy(buttonLabel1, "O");
         strcpy(buttonLabel2, "X");
     }
-    else if (strcmp(connectedGamePadName, "XInput") == 0 || strncmp(connectedGamePadName, "Genesis", 7) == 0 || strcmp(connectedGamePadName, "MDArcade") == 0)
+    else if (strcmp(gp.GamePadName, "XInput") == 0 || strncmp(gp.GamePadName, "Genesis", 7) == 0 || strcmp(gp.GamePadName, "MDArcade") == 0)
     {
         strcpy(buttonLabel1, "B");
         strcpy(buttonLabel2, "A");
     }
-    else if (strcmp(connectedGamePadName, "Keyboard") == 0)
+    else if (strcmp(gp.GamePadName, "Keyboard") == 0)
     {
         strcpy(buttonLabel1, "X");
         strcpy(buttonLabel2, "Z");
@@ -267,18 +269,23 @@ void RomSelect_PadState(DWORD *pdwPad1, bool ignorepushed = false)
     int prevFgColor = settings.fgcolor;
     static DWORD prevButtons{};
     auto &gp = io::getCurrentGamePadState(0);
-    strcpy(connectedGamePadName, gp.GamePadName);
+    auto &gp2 = io::getCurrentGamePadState(1);
+    uint32_t combinedButtons = gp.buttons | gp2.buttons;
+    connectedGamePadName[0] = gp.GamePadName;
+    connectedGamePadName[1] = gp2.GamePadName;
+    connectedGamePadShortName[0] = gp.GamePadShortName;
+    connectedGamePadShortName[1] = gp2.GamePadShortName;
 
-    int v = (gp.buttons & io::GamePadState::Button::LEFT ? LEFT : 0) |
-            (gp.buttons & io::GamePadState::Button::RIGHT ? RIGHT : 0) |
-            (gp.buttons & io::GamePadState::Button::UP ? UP : 0) |
-            (gp.buttons & io::GamePadState::Button::DOWN ? DOWN : 0) |
-            (gp.buttons & io::GamePadState::Button::A ? A : 0) |
-            (gp.buttons & io::GamePadState::Button::B ? B : 0) |
-            (gp.buttons & io::GamePadState::Button::SELECT ? SELECT : 0) |
-            (gp.buttons & io::GamePadState::Button::START ? START : 0) |
-            (gp.buttons & io::GamePadState::Button::X ? X : 0) |
-            (gp.buttons & io::GamePadState::Button::Y ? Y : 0) |
+    int v = (combinedButtons & io::GamePadState::Button::LEFT ? LEFT : 0) |
+            (combinedButtons & io::GamePadState::Button::RIGHT ? RIGHT : 0) |
+            (combinedButtons & io::GamePadState::Button::UP ? UP : 0) |
+            (combinedButtons & io::GamePadState::Button::DOWN ? DOWN : 0) |
+            (combinedButtons & io::GamePadState::Button::A ? A : 0) |
+            (combinedButtons & io::GamePadState::Button::B ? B : 0) |
+            (combinedButtons & io::GamePadState::Button::SELECT ? SELECT : 0) |
+            (combinedButtons & io::GamePadState::Button::START ? START : 0) |
+            (combinedButtons & io::GamePadState::Button::X ? X : 0) |
+            (combinedButtons & io::GamePadState::Button::Y ? Y : 0) |
             0;
 
 #if NES_PIN_CLK != -1
@@ -606,7 +613,7 @@ void putText(int x, int y, const char *text, int fgcolor, int bgcolor, bool wrap
 void DrawScreen(int selectedRow, int w = 0, int h = 0, uint16_t *imagebuffer = nullptr, int imagex = 0, int imagey = 0)
 {
     const char *spaces = "                   ";
-    char tmpstr[sizeof(connectedGamePadName) + 4];
+    char tmpstr[24];
     char s[SCREEN_COLS + 1];
     char buttonLabel1[2];
     char buttonLabel2[2];
@@ -618,7 +625,27 @@ void DrawScreen(int selectedRow, int w = 0, int h = 0, uint16_t *imagebuffer = n
             putText(1, ENDROW + 3, "Dac Initialization Failed", CRED, CWHITE);
         }
         putText(SCREEN_COLS / 2 - strlen(spaces) / 2, SCREEN_ROWS - 1, spaces, settings.bgcolor, settings.bgcolor);
-        snprintf(tmpstr, sizeof(tmpstr), "- %s -", connectedGamePadName[0] != 0 ? connectedGamePadName : "No USB GamePad");
+        if ( connectedGamePadShortName[0] != nullptr && connectedGamePadShortName[1] != nullptr)
+        {
+            snprintf(tmpstr, sizeof(tmpstr), "%s/%s", connectedGamePadShortName[0], connectedGamePadShortName[1]);
+        }
+        else
+        {
+            if (connectedGamePadName[0] != nullptr)
+            {
+                snprintf(tmpstr, sizeof(tmpstr), "%s", connectedGamePadName[0]);
+            }
+            else
+            {
+                if (connectedGamePadName[1] != nullptr)
+                {
+                    snprintf(tmpstr, sizeof(tmpstr), "%s", connectedGamePadName[1]);
+                }
+                else {
+                    snprintf(tmpstr, sizeof(tmpstr), "No USB GamePad");
+                }
+            }
+        }
         putText(SCREEN_COLS / 2 - strlen(tmpstr) / 2, SCREEN_ROWS - 1, tmpstr, CBLUE, CWHITE);
         snprintf(s, sizeof(s), "%c%dK %c", Frens::isPsramEnabled() ? 'P' : 'F', maxRomSize / 1024, WIIPAD_IS_CONNECTED() ? 'W' : ' ');
         putText(1, SCREEN_ROWS - 1, s, settings.fgcolor, settings.bgcolor);
@@ -633,13 +660,13 @@ void DrawScreen(int selectedRow, int w = 0, int h = 0, uint16_t *imagebuffer = n
         }
         int optionsRow = artworkEnabled ? ENDROW + 3 : ENDROW + 2;
 
-        if (strcmp(connectedGamePadName, "Genesis Mini 2") == 0 || strcmp(connectedGamePadName, "MDArcade") == 0)
+        if (strcmp(connectedGamePadName[0], "Genesis Mini 2") == 0 || strcmp(connectedGamePadName[0], "MDArcade") == 0)
         {
             strcpy(s, "Mode:Settings");
         }
         else
         {
-            if (strncmp(connectedGamePadName, "Genesis", 7) == 0)
+            if (strncmp(connectedGamePadName[0] , "Genesis", 7) == 0)
             {
                 strcpy(s, "C:Settings");
             }
@@ -687,6 +714,31 @@ inline void showhdmilabel()
 
 char *menutitle = nullptr;
 
+// Returns SWVERSION, or build date/time as "DD/MM[/YY] HH:MM" when SWVERSION is "VX.X".
+static const char *getVersionString(char *buf, size_t bufsize, bool showYear = false)
+{
+    if (strcmp(SWVERSION, "VX.X") == 0) {
+        const char *months = "JanFebMarAprMayJunJulAugSepOctNovDec";
+        const char *d = __DATE__;
+        const char *t = __TIME__;
+        int day = (d[4] == ' ' ? 0 : (d[4] - '0') * 10) + (d[5] - '0');
+        int m = 0;
+        for (int i = 0; i < 12; i++) {
+            if (months[i * 3] == d[0] && months[i * 3 + 1] == d[1] && months[i * 3 + 2] == d[2]) {
+                m = i + 1;
+                break;
+            }
+        }
+        if (showYear)
+            snprintf(buf, bufsize, "%02d/%02d/%.2s %.5s", day, m, d + 9, t);
+        else
+            snprintf(buf, bufsize, "%02d/%02d %.5s", day, m, t);
+    } else {
+        snprintf(buf, bufsize, "%s", SWVERSION);
+    }
+    return buf;
+}
+
 void displayRoms(Frens::RomLister &romlister, int startIndex)
 {
     char buffer[ROMLISTER_MAXPATH + 4];
@@ -716,7 +768,11 @@ void displayRoms(Frens::RomLister &romlister, int startIndex)
     // strcpy(s, "A Select, B Back");
     // putText(1, ENDROW + 2, s, settings.fgcolor, settings.bgcolor);
     putText(SCREEN_COLS - strlen(PICOHWNAME_) - 1, ENDROW + 2, PICOHWNAME_, settings.fgcolor, settings.bgcolor);
-    putText(SCREEN_COLS - strlen(SWVERSION) - 1, SCREEN_ROWS - 1, SWVERSION, settings.fgcolor, settings.bgcolor);
+    {
+        char versionStr[30];
+        getVersionString(versionStr, sizeof(versionStr));
+        putText(SCREEN_COLS - strlen(versionStr) - 1, SCREEN_ROWS - 1, versionStr, settings.fgcolor, settings.bgcolor);
+    }
 
     // putText(SCREEN_COLS / 2 - strlen(picoType()) / 2, SCREEN_ROWS - 2, picoType(), fgcolor, bgcolor);
 
@@ -763,6 +819,54 @@ void waitForNoButtonPress()
         }
     }
 }
+void menuPumpBlankFrames(int count)
+{
+#if !HSTX
+    int margintop = dvi_->getBlankSettings().top;
+    int marginbottom = dvi_->getBlankSettings().bottom;
+    scaleMode8_7_ = Frens::applyScreenMode(ScreenMode::NOSCANLINE_1_1);
+    dvi_->getBlankSettings().top = 0;
+    dvi_->getBlankSettings().bottom = 0;
+#endif
+    for (int i = 0; i < count; i++)
+    {
+#if HSTX
+        memset(hstx_getframebuffer(), 0, SCREENWIDTH * SCREENHEIGHT * sizeof(WORD));
+#else
+#if FRAMEBUFFERISPOSSIBLE
+        if (Frens::isFrameBufferUsed())
+        {
+            memset(Frens::framebuffer, 0, SCREENWIDTH * SCREENHEIGHT * sizeof(WORD));
+        }
+        else
+        {
+#endif
+
+            for (int line = 0; line < SCREENHEIGHT; line++)
+            {
+                auto b = dvi_->getLineBuffer();
+                memset(b->data(), 0, SCREENWIDTH * sizeof(uint16_t));
+                dvi_->setLineBuffer(line, b);
+            }
+#if FRAMEBUFFERISPOSSIBLE
+        }
+#endif
+#endif
+        Menu_LoadFrame();
+    }
+#if !HSTX
+    scaleMode8_7_ = Frens::applyScreenMode(settings.screenMode);
+    // Reset the screen mode to the original settings
+    // Do not reset the margins when framebuffer is used, this will lock up the display driver
+    // Margins will be handled by the framebuffer.
+    if (!Frens::isFrameBufferUsed())
+    {
+        dvi_->getBlankSettings().top = margintop;
+        dvi_->getBlankSettings().bottom = marginbottom;
+    }
+#endif
+}
+
 static inline int centerColClamped(int textLen)
 {
     int col = (SCREEN_COLS - textLen) / 2;
@@ -850,7 +954,11 @@ void showSplashScreen()
 {
     DWORD PAD1_Latch;
     splash();
-    putText(SCREEN_COLS - strlen(SWVERSION) - 2, SCREEN_ROWS - 2, SWVERSION, settings.fgcolor, settings.bgcolor);
+    {
+        char versionStr[30];
+        getVersionString(versionStr, sizeof(versionStr), true);
+        putText(SCREEN_COLS - strlen(versionStr) - 2, SCREEN_ROWS - 2, versionStr, DEFAULT_FGCOLOR, DEFAULT_BGCOLOR);
+    }
     int startFrame = -1;
     while (true)
     {
@@ -1587,12 +1695,10 @@ bool showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
 #if !HSTX
     margintop = dvi_->getBlankSettings().top;
     marginbottom = dvi_->getBlankSettings().bottom;
-    scaleMode8_7_ = Frens::applyScreenMode(ScreenMode::NOSCANLINE_1_1);
     dvi_->getBlankSettings().top = 0;
     dvi_->getBlankSettings().bottom = 0;
-#else
-    hstx_setScanLines(false);
 #endif
+    scaleMode8_7_ = Frens::applyScreenMode(ScreenMode::NOSCANLINE_1_1);
     getAutoSaveStatePath(tmppath, sizeof(tmppath));
     bool autosaveFileExists = Frens::fileExists(tmppath);
     // Handle quicksave and quick load
@@ -2072,15 +2178,13 @@ bool showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
     ClearScreen(CBLACK);
     waitForNoButtonPress();
 
-#if !HSTX
     scaleMode8_7_ = Frens::applyScreenMode(settings.screenMode);
+#if !HSTX
     if (!Frens::isFrameBufferUsed())
     {
         dvi_->getBlankSettings().top = margintop;
         dvi_->getBlankSettings().bottom = marginbottom;
     }
-#else
-    hstx_setScanLines(settings.flags.scanlineOn);
 #endif
     Frens::PaceFrames60fps(true);
     //Frens::waitForVSync();
@@ -2147,13 +2251,10 @@ int showSettingsMenu(bool calledFromGame)
         margintop = dvi_->getBlankSettings().top;
         marginbottom = dvi_->getBlankSettings().bottom;
         printf("Top margin: %d, bottom margin: %d\n", margintop, marginbottom);
-        // Use the entire screen resolution of 320x240 pixels. This makes a 40x30 screen with 8x8 font possible.
-        scaleMode8_7_ = Frens::applyScreenMode(ScreenMode::NOSCANLINE_1_1);
         dvi_->getBlankSettings().top = 0;
         dvi_->getBlankSettings().bottom = 0;
-#else
-        hstx_setScanLines(false);
 #endif
+        scaleMode8_7_ = Frens::applyScreenMode(ScreenMode::NOSCANLINE_1_1);
     }
 
     // Local working copy of settings.
@@ -2162,7 +2263,7 @@ int showSettingsMenu(bool calledFromGame)
     {
         return false; // allocation failed
     }
-    *workingDyn = settings;                 // copy current settings into dynamic block
+    memcpy(workingDyn, &settings, sizeof(settings)); // byte-exact copy including padding for memcmp
     struct settings &working = *workingDyn; // keep existing code unchanged (reference alias)
     // Ensure current screenMode is valid; if not, pick first available
 #if !HSTX
@@ -2326,6 +2427,23 @@ int showSettingsMenu(bool calledFromGame)
 #endif
                 break;
             }
+            case MenuSettingsIndex::MOPT_SCANLINE_TYPE:
+            {
+                label = "Scanline Type";
+                switch ((ScanlineType)working.scanlineType)
+                {
+                case ScanlineType::SIMPLE:
+                    value = "Simple";
+                    break;
+                case ScanlineType::LCD:
+                    value = "LCD";
+                    break;
+                default:
+                    value = "?";
+                    break;
+                }
+                break;
+            }
             case MenuSettingsIndex::MOPT_FPS_OVERLAY:
             {
                 label = "Framerate Overlay";
@@ -2457,8 +2575,14 @@ int showSettingsMenu(bool calledFromGame)
             }
             case MenuSettingsIndex::MOPT_AUTO_SWAP_FDS_DISK:
             {
-                label = "Auto Swap FDS Disks";
+                label = "FDS Auto Swap Disk side";
                 value = working.flags.autoSwapFDS ? "ON" : "OFF";
+                break;
+            }
+            case MenuSettingsIndex::MOPT_AUTO_INSERT_FDS_DISK_A:
+            {
+                label = "FDS Auto Insert Disk 1 On Start";
+                value = working.flags.autoInsertDiskA ? "ON" : "OFF";
                 break;
             }
             case MenuSettingsIndex::MOPT_FDS_DISK_SWAP:
@@ -2509,7 +2633,7 @@ int showSettingsMenu(bool calledFromGame)
         putText(0, row++, "", CBLACK, CWHITE);
         // Render SAVE / CANCEL / DEFAULT on a single row with per-word highlighting
         {
-            const char *saveLabel  = settingsChanged ? "SAVE *" : "SAVE";
+            const char *saveLabel  = settingsChanged ? "SAVE*" : "SAVE";
             const char *labels[3]  = { saveLabel, "CANCEL", "DEFAULT" };
             int lens[3]            = { (int)strlen(labels[0]), (int)strlen(labels[1]), (int)strlen(labels[2]) };
             const int gap          = 2; // spaces between words
@@ -2819,6 +2943,16 @@ int showSettingsMenu(bool calledFromGame)
                         // !HSTX build will never have this option visible.
                         break;
                     }
+                    case MOPT_SCANLINE_TYPE:
+                    {
+                        int t = working.scanlineType;
+                        if (right)
+                            t = (t + 1) % (int)ScanlineType::MAX;
+                        else
+                            t = (t == 0) ? (int)ScanlineType::MAX - 1 : t - 1;
+                        working.scanlineType = (uint8_t)t;
+                        break;
+                    }
                     case MOPT_FPS_OVERLAY:
                         working.flags.displayFrameRate = !working.flags.displayFrameRate;
                         break;
@@ -2933,6 +3067,11 @@ int showSettingsMenu(bool calledFromGame)
                         working.flags.autoSwapFDS = !working.flags.autoSwapFDS;
                         break;
                     }
+                    case MOPT_AUTO_INSERT_FDS_DISK_A:
+                    {
+                        working.flags.autoInsertDiskA = !working.flags.autoInsertDiskA;
+                        break;
+                    }
                     case MOPT_FDS_DISK_SWAP:
                     {
                         if (!s_fdsHooks || !s_fdsHooks->get_num_sides) break;
@@ -3011,7 +3150,7 @@ int showSettingsMenu(bool calledFromGame)
             break;
         }
     }
-    if (applySettings && rval == 0)
+    if (applySettings && (rval == 0 || rval == 5))
     {
         // Copy working settings into global settings and persist.
         // Preserve directory navigation fields that user did not edit here.
@@ -3021,7 +3160,7 @@ int showSettingsMenu(bool calledFromGame)
         strcpy(working.currentDir, settings.currentDir);
         settings = working;
         FrensSettings::savesettings();
-        rval = 1;
+        if (rval == 0) rval = 1;
     }
     Frens::f_free(workingDyn);
     // restore contents of swap file back to altScreenbuffer when not nullptr
@@ -3034,9 +3173,8 @@ int showSettingsMenu(bool calledFromGame)
         screenBuffer = nullptr;
 
       
-#if !HSTX
         scaleMode8_7_ = Frens::applyScreenMode(settings.screenMode);
-        // Reset the screen mode to the original settings
+#if !HSTX
         // Do not reset the margins when framebuffer is used, this will lock up the display driver
         // Margins will be handled by the framebuffer.
         if (!Frens::isFrameBufferUsed())
@@ -3044,9 +3182,6 @@ int showSettingsMenu(bool calledFromGame)
             dvi_->getBlankSettings().top = margintop;
             dvi_->getBlankSettings().bottom = marginbottom;
         }
-#else
-        // Restore scanline setting
-        hstx_setScanLines(settings.flags.scanlineOn);
 #endif
         // Speaker can be muted/unmuted from settings menu
         //EXT_AUDIO_MUTE_INTERNAL_SPEAKER(settings.flags.fruitJamEnableInternalSpeaker == 0);
@@ -3091,13 +3226,10 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
     int margintop = dvi_->getBlankSettings().top;
     int marginbottom = dvi_->getBlankSettings().bottom;
     printf("Top margin: %d, bottom margin: %d\n", margintop, marginbottom);
-    // Use the entire screen resolution of 320x240 pixels. This makes a 40x30 screen with 8x8 font possible.
-    scaleMode8_7_ = Frens::applyScreenMode(ScreenMode::NOSCANLINE_1_1);
     dvi_->getBlankSettings().top = 0;
     dvi_->getBlankSettings().bottom = 0;
-#else
-    hstx_setScanLines(false);
 #endif
+    scaleMode8_7_ = Frens::applyScreenMode(ScreenMode::NOSCANLINE_1_1);
     abSwapped = 1; // Swap A and B buttons, so menu is consistent across different emulators
     Frens::PaceFrames60fps(true);
     //Frens::waitForVSync();

@@ -197,6 +197,12 @@ static void setPage(uint8_t page)
 
 #define MASK_SPK_UNMUTE (1 << 2) // D2
 
+// HP analog volume (Page 1, Reg 0x24/0x25): 0 = 0 dB, each LSB = -0.5 dB, 0x7F = mute.
+// Speaker level is the init default; HP level adds 20 dB of attenuation so headphones
+// aren't painfully loud at a volume comfortable for the speaker.
+#define HP_ANALOG_VOL_SPEAKER 0x0A  // -5 dB (same as speaker analog vol)
+#define HP_ANALOG_VOL_HP      0x34  // -25 dB (20 dB quieter)
+
 void speakerMute(void)
 {
 	// Switch to page 1
@@ -279,12 +285,21 @@ static enum headphone_toggle_t tlv320_handle_headphone_event()
 
 	if (hp_inserted)
 	{
-		speakerMute();		
+		printf("HP connected: muting speaker, setting HP analog vol to 0x%02X (-%.1f dB)\n",
+			   HP_ANALOG_VOL_HP, HP_ANALOG_VOL_HP * 0.5f);
+		speakerMute(); // switches to page 1
+		writeRegister(0x24, HP_ANALOG_VOL_HP);
+		writeRegister(0x25, HP_ANALOG_VOL_HP);
 	}
 	else
 	{
-		speakerUnmute();
+		printf("HP disconnected: unmuting speaker, restoring HP analog vol to 0x%02X (-%.1f dB)\n",
+			   HP_ANALOG_VOL_SPEAKER, HP_ANALOG_VOL_SPEAKER * 0.5f);
+		speakerUnmute(); // switches to page 1
+		writeRegister(0x24, HP_ANALOG_VOL_SPEAKER);
+		writeRegister(0x25, HP_ANALOG_VOL_SPEAKER);
 	}
+	setPage(0);
 	speakerIsMuted = hp_inserted;
 	return hp_inserted ? HP_TOGGLE_CONNECT : HP_TOGGLE_DISCONNECT;
 }
@@ -544,8 +559,8 @@ static void tlv320_init()
 	// DAC Volume Control
 	setPage(0);
 	modifyRegister(0x40, 0x0C, 0x00);
-	writeRegister(0x41, 0x20); // Left DAC Vol  , was 0x28
-	writeRegister(0x42, 0x20); // Right DAC Vol , was 0x28
+	writeRegister(0x41, 0x0A); // Left DAC Vol +5 dB (0x20 was +16 dB, clipped NES peaks)
+	writeRegister(0x42, 0x0A); // Right DAC Vol +5 dB
 
 	// ADC Setup
 	modifyRegister(0x51, 0x80, 0x80);
