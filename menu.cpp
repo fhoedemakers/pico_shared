@@ -714,6 +714,30 @@ inline void showhdmilabel()
 
 char *menutitle = nullptr;
 
+static const char *getVersionString(char *buf, size_t bufsize, bool showYear = false)
+{
+    if (strcmp(SWVERSION, "VX.X") == 0) {
+        const char *months = "JanFebMarAprMayJunJulAugSepOctNovDec";
+        const char *d = __DATE__;
+        const char *t = __TIME__;
+        int day = (d[4] == ' ' ? 0 : (d[4] - '0') * 10) + (d[5] - '0');
+        int m = 0;
+        for (int i = 0; i < 12; i++) {
+            if (months[i * 3] == d[0] && months[i * 3 + 1] == d[1] && months[i * 3 + 2] == d[2]) {
+                m = i + 1;
+                break;
+            }
+        }
+        if (showYear)
+            snprintf(buf, bufsize, "%02d/%02d/%.2s %.5s", day, m, d + 9, t);
+        else
+            snprintf(buf, bufsize, "%02d/%02d %.5s", day, m, t);
+    } else {
+        snprintf(buf, bufsize, "%s", SWVERSION);
+    }
+    return buf;
+}
+
 void displayRoms(Frens::RomLister &romlister, int startIndex)
 {
     char buffer[ROMLISTER_MAXPATH + 4];
@@ -743,7 +767,11 @@ void displayRoms(Frens::RomLister &romlister, int startIndex)
     // strcpy(s, "A Select, B Back");
     // putText(1, ENDROW + 2, s, settings.fgcolor, settings.bgcolor);
     putText(SCREEN_COLS - strlen(PICOHWNAME_) - 1, ENDROW + 2, PICOHWNAME_, settings.fgcolor, settings.bgcolor);
-    putText(SCREEN_COLS - strlen(SWVERSION) - 1, SCREEN_ROWS - 1, SWVERSION, settings.fgcolor, settings.bgcolor);
+    {
+        char versionStr[30];
+        getVersionString(versionStr, sizeof(versionStr));
+        putText(SCREEN_COLS - strlen(versionStr) - 1, SCREEN_ROWS - 1, versionStr, settings.fgcolor, settings.bgcolor);
+    }
 
     // putText(SCREEN_COLS / 2 - strlen(picoType()) / 2, SCREEN_ROWS - 2, picoType(), fgcolor, bgcolor);
 
@@ -925,7 +953,11 @@ void showSplashScreen()
 {
     DWORD PAD1_Latch;
     splash();
-    putText(SCREEN_COLS - strlen(SWVERSION) - 2, SCREEN_ROWS - 2, SWVERSION, DEFAULT_FGCOLOR, DEFAULT_BGCOLOR);
+    {
+        char versionStr[30];
+        getVersionString(versionStr, sizeof(versionStr), true);
+        putText(SCREEN_COLS - strlen(versionStr) - 2, SCREEN_ROWS - 2, versionStr, DEFAULT_FGCOLOR, DEFAULT_BGCOLOR);
+    }
     int startFrame = -1;
     while (true)
     {
