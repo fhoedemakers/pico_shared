@@ -22,6 +22,7 @@
 #include "hardware/pio.h"
 #include "hardware/clocks.h"
 #include "hardware/dma.h"
+#include "hardware/sync.h"
 #include "pico/stdlib.h"
 #include <stdlib.h>
 #include "audio_i2s.pio.h"
@@ -865,9 +866,18 @@ audio_i2s_hw_t *audio_i2s_setup(int driver, int freqHZ, int dmachan)
 		irq_set_exclusive_handler(DMA_IRQ_0, dma_handler);
 		irq_set_enabled(DMA_IRQ_0, true);
 	}
-	dma_channel_set_read_addr(audio_i2s.dma_chan, &audio_ring[read_index], false);
-	dma_channel_set_trans_count(audio_i2s.dma_chan, DMA_BLOCK_SIZE, true); // true = start immediately
-	return &audio_i2s;													   // Return the audio_i2s hardware structure for further use
+	if (_driver == PICO_AUDIO_I2S_DRIVER_TLV320)
+	{
+		// Pre-fill one DMA block of silence and start DMA so that BCLK begins
+		// toggling immediately, giving the TLV320's PLL time to lock before
+		// real audio arrives.
+		write_index = DMA_BLOCK_SIZE;
+		dma_channel_set_read_addr(audio_i2s.dma_chan, &audio_ring[read_index], false);
+		dma_channel_set_trans_count(audio_i2s.dma_chan, DMA_BLOCK_SIZE, true);
+	}
+	// For other DACs (e.g. PCM5000A), don't start DMA yet — enqueue_sample
+	// will kick it once enough real data accumulates.
+	return &audio_i2s;
 }
 
 /**
@@ -881,18 +891,13 @@ audio_i2s_hw_t *audio_i2s_setup(int driver, int freqHZ, int dmachan)
  */
 void __not_in_flash_func(audio_i2s_enqueue_sample)(uint32_t sample32)
 {
-#if 0
-	static int droppedsamples = 0;
-#endif
-	// Ensure we don't write past the end of the buffer
-
 	size_t next_write = (write_index + 1) % I2S_AUDIO_RING_SIZE;
 	if (next_write != read_index)
 	{
 		audio_ring[write_index] = sample32;
 		write_index = next_write;
-		// If the DMA channel is not busy, check if we have enough data to continue the transfer
-		// If write_index is ahead of read_index, we have data to send.
+		// Disable IRQs to prevent dma_handler from racing with this DMA restart logic.
+		uint32_t save = save_and_disable_interrupts();
 		if (!dma_channel_is_busy(audio_i2s.dma_chan))
 		{
 			size_t available = (write_index >= read_index)
@@ -904,18 +909,8 @@ void __not_in_flash_func(audio_i2s_enqueue_sample)(uint32_t sample32)
 				dma_channel_set_trans_count(audio_i2s.dma_chan, DMA_BLOCK_SIZE, true);
 			}
 		}
+		restore_interrupts(save);
 	}
-#if 0
-	else
-	{
-		// Buffer is full, drop sample
-		droppedsamples++;
-		if (droppedsamples % 1000 == 0)
-		{
-			printf("Dropped samples: %d\n", droppedsamples);
-		}
-	}
-#endif
 }
 int audio_i2s_get_freebuffer_size()
 {
