@@ -3,6 +3,7 @@
 #include "pico/multicore.h" 
 #include "stdio.h"
 #include "string.h"
+#include "stdlib.h"
 // Custom changes
 volatile bool HSTX_vblank = false;
 static uint8_t FRAMEBUFFER[(MODE_H_ACTIVE_PIXELS / 2) * (MODE_V_ACTIVE_LINES / 2) * 2] __attribute__((aligned(4)));
@@ -28,15 +29,22 @@ static void __not_in_flash_func(swapFrameBuffers)(void)
     DisplayBuf = tmp;
 }
 
-void hstx_enableDoubleBuffering(uint8_t *secondBuffer)
+void hstx_enableDoubleBuffering(void)
 {
-    memset(secondBuffer, 0, (MODE_H_ACTIVE_PIXELS / 2) * (MODE_V_ACTIVE_LINES / 2) * 2);
+    size_t fbSize = (MODE_H_ACTIVE_PIXELS / 2) * (MODE_V_ACTIVE_LINES / 2) * 2;
+    uint8_t *secondBuffer = (uint8_t *)malloc(fbSize);
+    if (!secondBuffer)
+    {
+        printf("SRAM allocation for double buffer failed (%zu bytes)\n", fbSize);
+        return;
+    }
+    memset(secondBuffer, 0, fbSize);
     DisplayBuf = secondBuffer;
     WriteBuf = FRAMEBUFFER;
     LayerBuf = FRAMEBUFFER;
     __dmb();
     doubleBufferingActive = true;
-    printf("Double buffering enabled (SRAM at %p)\n", secondBuffer);
+    printf("Double buffering enabled (SRAM at %p, %zu bytes)\n", secondBuffer, fbSize);
 }
 #endif
 

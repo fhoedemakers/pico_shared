@@ -1284,16 +1284,7 @@ namespace Frens
 #if DOUBLEFRAMEBUFFER
         if (isPsramEnabled())
         {
-            size_t fbSize = (MODE_H_ACTIVE_PIXELS / 2) * (MODE_V_ACTIVE_LINES / 2) * 2;
-            uint8_t *secondBuf = (uint8_t *)malloc(fbSize);
-            if (secondBuf)
-            {
-                hstx_enableDoubleBuffering(secondBuf);
-            }
-            else
-            {
-                printf("SRAM allocation for double buffer failed (%zu bytes)\n", fbSize);
-            }
+            hstx_enableDoubleBuffering();
         }
 #endif
 #if 0
