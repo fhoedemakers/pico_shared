@@ -880,6 +880,33 @@ audio_i2s_hw_t *audio_i2s_setup(int driver, int freqHZ, int dmachan)
 	return &audio_i2s;
 }
 
+// DC-blocking high-pass filter.
+// Removes DC offset so DACs without built-in DC blocking (e.g., PCM5102A)
+// output a properly centered AC waveform.
+// 1-pole IIR: y[n] = x[n] - x[n-1] + alpha * y[n-1]
+// alpha = 255/256 ≈ 0.996, cutoff ≈ 28 Hz at 44100 Hz.
+static int32_t dc_xL = 0, dc_yL = 0;
+static int32_t dc_xR = 0, dc_yR = 0;
+
+static inline int16_t dc_block_channel(int16_t x, int32_t *prev_x, int32_t *prev_y)
+{
+	int32_t y = (int32_t)x - *prev_x + ((*prev_y * 255) >> 8);
+	*prev_x = (int32_t)x;
+	*prev_y = y;
+	if (y > 32767) y = 32767;
+	else if (y < -32768) y = -32768;
+	return (int16_t)y;
+}
+
+static inline uint32_t __not_in_flash_func(dc_block_sample)(uint32_t sample32)
+{
+	int16_t l = (int16_t)(sample32 >> 16);
+	int16_t r = (int16_t)(sample32 & 0xFFFF);
+	l = dc_block_channel(l, &dc_xL, &dc_yL);
+	r = dc_block_channel(r, &dc_xR, &dc_yR);
+	return ((uint32_t)(uint16_t)l << 16) | (uint16_t)r;
+}
+
 /**
  * @brief Enqueues a 32-bit audio sample into the ring buffer for I2S output.
  *
@@ -891,6 +918,8 @@ audio_i2s_hw_t *audio_i2s_setup(int driver, int freqHZ, int dmachan)
  */
 void __not_in_flash_func(audio_i2s_enqueue_sample)(uint32_t sample32)
 {
+	if (_driver == PICO_AUDIO_I2S_DRIVER_PCM5000A)
+		sample32 = dc_block_sample(sample32);
 	size_t next_write = (write_index + 1) % I2S_AUDIO_RING_SIZE;
 	if (next_write != read_index)
 	{
