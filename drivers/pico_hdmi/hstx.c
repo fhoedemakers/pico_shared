@@ -2,13 +2,16 @@
 #include "hstx.h"
 #include "pico/multicore.h" 
 #include "stdio.h"
+#include "string.h"
 // Custom changes
 volatile bool HSTX_vblank = false;
 static uint8_t FRAMEBUFFER[(MODE_H_ACTIVE_PIXELS / 2) * (MODE_V_ACTIVE_LINES / 2) * 2] __attribute__((aligned(4)));
-// uint16_t ALIGNED HDMIlines[2][MODE_H_ACTIVE_PIXELS] = {0};
 static uint8_t *WriteBuf = FRAMEBUFFER;
 static uint8_t *DisplayBuf = FRAMEBUFFER;
 static uint8_t *LayerBuf = FRAMEBUFFER;
+#if DOUBLEFRAMEBUFFER
+static volatile bool doubleBufferingActive = false;
+#endif
 static uint16_t *tilefcols;
 static uint16_t *tilebcols;
 static volatile int enableScanLines = 0;
@@ -17,17 +20,36 @@ static volatile int scanlineType = 0;
 static volatile int scanlineMode = 0;
 #define HRes (MODE_H_ACTIVE_PIXELS / 2) // 320
 #define VRes (MODE_V_ACTIVE_LINES / 2)  // 240
+#if DOUBLEFRAMEBUFFER
+static void __not_in_flash_func(swapFrameBuffers)(void)
+{
+    uint8_t *tmp = WriteBuf;
+    WriteBuf = DisplayBuf;
+    DisplayBuf = tmp;
+}
+
+void hstx_enableDoubleBuffering(uint8_t *secondBuffer)
+{
+    memset(secondBuffer, 0, (MODE_H_ACTIVE_PIXELS / 2) * (MODE_V_ACTIVE_LINES / 2) * 2);
+    DisplayBuf = secondBuffer;
+    WriteBuf = FRAMEBUFFER;
+    LayerBuf = FRAMEBUFFER;
+    __dmb();
+    doubleBufferingActive = true;
+    printf("Double buffering enabled (SRAM at %p)\n", secondBuffer);
+}
+#endif
+
 void hstx_waitForVSync(void)
 {
-    // Wait until the frame counter advances, indicating a new vsync edge.
-    // video_frame_count is incremented exactly once per frame in the DMA ISR
-    // on core1 (video_output.c), so this guarantees one-frame synchronization
-    // without the race conditions of a bool flag approach.
     uint32_t current = video_frame_count;
     while (video_frame_count == current)
     {
         tight_loop_contents();
     }
+#if DOUBLEFRAMEBUFFER
+    if (doubleBufferingActive) swapFrameBuffers();
+#endif
 }
 
 void hstx_paceFrame(bool init)
@@ -54,6 +76,9 @@ void hstx_paceFrame(bool init)
     {
         target_frame = current;
     }
+#if DOUBLEFRAMEBUFFER
+    if (doubleBufferingActive) swapFrameBuffers();
+#endif
 }
 uint8_t *hstx_getframebuffer(void)
 {

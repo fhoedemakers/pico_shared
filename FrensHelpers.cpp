@@ -1281,6 +1281,21 @@ namespace Frens
         dvi_->getAudioRingBuffer().advanceWritePointer(255);
 #else
         hstx_init(settings.flags.useDVIModeForHDMI);
+#if DOUBLEFRAMEBUFFER
+        if (isPsramEnabled())
+        {
+            size_t fbSize = (MODE_H_ACTIVE_PIXELS / 2) * (MODE_V_ACTIVE_LINES / 2) * 2;
+            uint8_t *secondBuf = (uint8_t *)malloc(fbSize);
+            if (secondBuf)
+            {
+                hstx_enableDoubleBuffering(secondBuf);
+            }
+            else
+            {
+                printf("SRAM allocation for double buffer failed (%zu bytes)\n", fbSize);
+            }
+        }
+#endif
 #if 0
         // For now use an MCP4822 DAC for audio output
         // https://ww1.microchip.com/downloads/aemDocuments/documents/OTH/ProductDocuments/DataSheets/20002249B.pdf

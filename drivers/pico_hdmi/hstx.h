@@ -24,6 +24,9 @@ void hstx_setAspectRatio87(int enable);
 void hstx_setScanLineType(int type);
 uint16_t *hstx_getlineFromFramebuffer(int scanline);
 void hstx_init(bool dviOnly);
+#if DOUBLEFRAMEBUFFER
+void hstx_enableDoubleBuffering(uint8_t *secondBuffer);
+#endif
 void video_output_core1_run(void);
 void hstx_push_audio_sample(const int left, const int right);
 #ifdef __cplusplus
