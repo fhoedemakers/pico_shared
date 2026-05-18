@@ -161,6 +161,8 @@ namespace Frens
 
      void pollHeadPhoneJack();
      bool isHeadPhoneJackConnected();
+     void clearFrameBuffers();
+     void swapFrameBuffers();
    
 } // namespace Frens
 

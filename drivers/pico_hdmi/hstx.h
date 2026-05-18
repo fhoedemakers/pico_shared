@@ -26,6 +26,8 @@ uint16_t *hstx_getlineFromFramebuffer(int scanline);
 void hstx_init(bool dviOnly);
 #if DOUBLEFRAMEBUFFER
 void hstx_enableDoubleBuffering(void);
+void hstx_clearFrameBuffers(void);
+void hstx_swapFrameBuffers(void);
 #endif
 void video_output_core1_run(void);
 void hstx_push_audio_sample(const int left, const int right);

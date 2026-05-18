@@ -1769,6 +1769,23 @@ namespace Frens
     {
         return extSpeakerEnabled;
     }
+    void clearFrameBuffers()
+    {
+#if HSTX
+#if DOUBLEFRAMEBUFFER
+        hstx_clearFrameBuffers();
+#endif
+#endif
+    }
+
+    void swapFrameBuffers()
+    {
+#if HSTX
+#if DOUBLEFRAMEBUFFER
+        hstx_swapFrameBuffers();
+#endif
+#endif
+    }
 }
 // C-compatible wrappers
 extern "C"

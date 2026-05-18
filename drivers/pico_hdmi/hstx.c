@@ -29,6 +29,11 @@ static void __not_in_flash_func(swapFrameBuffers)(void)
     DisplayBuf = tmp;
 }
 
+void hstx_clearFrameBuffers() {
+    size_t fbSize = (MODE_H_ACTIVE_PIXELS / 2) * (MODE_V_ACTIVE_LINES / 2) * 2;
+    memset(WriteBuf, 0, fbSize);
+    memset(DisplayBuf, 0, fbSize);
+}
 void hstx_enableDoubleBuffering(void)
 {
     size_t fbSize = (MODE_H_ACTIVE_PIXELS / 2) * (MODE_V_ACTIVE_LINES / 2) * 2;
@@ -38,6 +43,7 @@ void hstx_enableDoubleBuffering(void)
         printf("SRAM allocation for double buffer failed (%zu bytes)\n", fbSize);
         return;
     }
+    memset(FRAMEBUFFER, 0, fbSize);
     memset(secondBuffer, 0, fbSize);
     DisplayBuf = secondBuffer;
     WriteBuf = FRAMEBUFFER;
@@ -45,6 +51,11 @@ void hstx_enableDoubleBuffering(void)
     __dmb();
     doubleBufferingActive = true;
     printf("Double buffering enabled (SRAM at %p, %zu bytes)\n", secondBuffer, fbSize);
+}
+
+void hstx_swapFrameBuffers(void)
+{
+    if (doubleBufferingActive) swapFrameBuffers();
 }
 #endif
 

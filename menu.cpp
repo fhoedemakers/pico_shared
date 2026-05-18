@@ -2190,6 +2190,7 @@ bool showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
     //Frens::waitForVSync();
     printf("Exiting save state menu.\n");
     Frens::f_free(screenBuffer);
+    Frens::clearFrameBuffers();
     return saveStateLoadedOK;
 }
 
@@ -3193,6 +3194,7 @@ int showSettingsMenu(bool calledFromGame)
     wavplayer::reset(); // stop menu music
 #endif
     settingsActive = false; 
+    Frens::clearFrameBuffers(); // Clear framebuffers to remove menu artifacts
     Frens::PaceFrames60fps(true); // ensure normal timing after menu
     return rval;
 }
@@ -3803,5 +3805,6 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
     }
     Frens::restoreScanlines();
     Frens::PaceFrames60fps(true); // reset frame pacing
+    Frens::clearFrameBuffers(); // clear framebuffers to remove artifacts from menu in case the game does not clear the screen
     //Frens::waitForVSync();
 }
