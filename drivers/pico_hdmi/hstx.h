@@ -23,7 +23,7 @@ void hstx_setScanLines(int enable);
 void hstx_setAspectRatio87(int enable);
 void hstx_setScanLineType(int type);
 uint16_t *hstx_getlineFromFramebuffer(int scanline);
-void hstx_init(bool dviOnly);
+void hstx_init(bool dviOnly, bool useDoubleBuffering);
 #if DOUBLEFRAMEBUFFER
 void hstx_enableDoubleBuffering(void);
 void hstx_clearFrameBuffers(void);

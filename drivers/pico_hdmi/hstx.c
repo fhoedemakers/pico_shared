@@ -9,7 +9,7 @@ volatile bool HSTX_vblank = false;
 static uint8_t FRAMEBUFFER[(MODE_H_ACTIVE_PIXELS / 2) * (MODE_V_ACTIVE_LINES / 2) * 2] __attribute__((aligned(4)));
 static uint8_t *WriteBuf = FRAMEBUFFER;
 static uint8_t *DisplayBuf = FRAMEBUFFER;
-static uint8_t *LayerBuf = FRAMEBUFFER;
+
 #if DOUBLEFRAMEBUFFER
 static volatile bool doubleBufferingActive = false;
 #endif
@@ -47,7 +47,6 @@ void hstx_enableDoubleBuffering(void)
     memset(secondBuffer, 0, fbSize);
     DisplayBuf = secondBuffer;
     WriteBuf = FRAMEBUFFER;
-    LayerBuf = FRAMEBUFFER;
     __dmb();
     doubleBufferingActive = true;
     printf("Double buffering enabled (SRAM at %p, %zu bytes)\n", secondBuffer, fbSize);
@@ -308,7 +307,7 @@ void __not_in_flash_func(hstx_push_audio_sample)(const int left, const int right
     }
 }
 
-void hstx_init(bool dviOnly)
+void hstx_init(bool dviOnly, bool useDoubleBuffering)
 {
     video_output_set_dvi_mode(dviOnly);
     hstx_di_queue_init();
@@ -316,6 +315,9 @@ void hstx_init(bool dviOnly)
     video_output_init(640, 480);
     pico_hdmi_set_audio_sample_rate(44100);
     video_output_set_scanline_callback(scanline_callbackfunc);
+    if (useDoubleBuffering) {
+        hstx_enableDoubleBuffering();
+    }
     multicore_launch_core1(video_output_core1_run);
     printf("Pico HDMI initialized.\n");
 }
