@@ -2430,17 +2430,24 @@ int showSettingsMenu(bool calledFromGame)
             case MenuSettingsIndex::MOPT_SCANLINE_TYPE:
             {
                 label = "Scanline Type";
-                switch ((ScanlineType)working.scanlineType)
+                if (working.screenMode == ScreenMode::SCANLINE_8_7)
                 {
-                case ScanlineType::SIMPLE:
                     value = "Simple";
-                    break;
-                case ScanlineType::LCD:
-                    value = "LCD";
-                    break;
-                default:
-                    value = "?";
-                    break;
+                }
+                else
+                {
+                    switch ((ScanlineType)working.scanlineType)
+                    {
+                    case ScanlineType::SIMPLE:
+                        value = "Simple";
+                        break;
+                    case ScanlineType::LCD:
+                        value = "LCD";
+                        break;
+                    default:
+                        value = "?";
+                        break;
+                    }
                 }
                 break;
             }
@@ -2933,6 +2940,8 @@ int showSettingsMenu(bool calledFromGame)
                                 }
                             }
                         }
+                        if (working.screenMode == ScreenMode::SCANLINE_8_7)
+                            working.scanlineType = (uint8_t)ScanlineType::SIMPLE;
                         break;
                     }
                     case MOPT_SCANLINES:
@@ -2945,12 +2954,15 @@ int showSettingsMenu(bool calledFromGame)
                     }
                     case MOPT_SCANLINE_TYPE:
                     {
-                        int t = working.scanlineType;
-                        if (right)
-                            t = (t + 1) % (int)ScanlineType::MAX;
-                        else
-                            t = (t == 0) ? (int)ScanlineType::MAX - 1 : t - 1;
-                        working.scanlineType = (uint8_t)t;
+                        if (working.screenMode != ScreenMode::SCANLINE_8_7)
+                        {
+                            int t = working.scanlineType;
+                            if (right)
+                                t = (t + 1) % (int)ScanlineType::MAX;
+                            else
+                                t = (t == 0) ? (int)ScanlineType::MAX - 1 : t - 1;
+                            working.scanlineType = (uint8_t)t;
+                        }
                         break;
                     }
                     case MOPT_FPS_OVERLAY:
