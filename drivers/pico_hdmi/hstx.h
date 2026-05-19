@@ -14,6 +14,9 @@ extern volatile bool HSTX_vblank;
 #define HSTX_BIT_FROM_GPIO(gpio) ((gpio) - 12)
 #ifndef HSTX_AUDIO_DI_HIGH_WATERMARK
 #define HSTX_AUDIO_DI_HIGH_WATERMARK 200  // ~16–18 ms at 4 samples/packet
+#ifndef DOUBLEFRAMEBUFFER
+#define DOUBLEFRAMEBUFFER 0 
+#endif
 #endif
 uint32_t hstx_getframecounter(void);
 void hstx_waitForVSync(void);
