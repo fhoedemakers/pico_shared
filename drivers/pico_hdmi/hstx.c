@@ -315,9 +315,11 @@ void hstx_init(bool dviOnly, bool useDoubleBuffering)
     video_output_init(640, 480);
     pico_hdmi_set_audio_sample_rate(44100);
     video_output_set_scanline_callback(scanline_callbackfunc);
+#if DOUBLEFRAMEBUFFER
     if (useDoubleBuffering) {
         hstx_enableDoubleBuffering();
     }
+#endif
     multicore_launch_core1(video_output_core1_run);
     printf("Pico HDMI initialized.\n");
 }
