@@ -918,8 +918,10 @@ static inline uint32_t __not_in_flash_func(dc_block_sample)(uint32_t sample32)
  */
 void __not_in_flash_func(audio_i2s_enqueue_sample)(uint32_t sample32)
 {
+#if I2S_AUDIO_COMPENSATE_DC_OFFSET
 	if (_driver == PICO_AUDIO_I2S_DRIVER_PCM5000A)
 		sample32 = dc_block_sample(sample32);
+#endif
 	size_t next_write = (write_index + 1) % I2S_AUDIO_RING_SIZE;
 	if (next_write != read_index)
 	{
