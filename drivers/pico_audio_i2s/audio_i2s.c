@@ -22,6 +22,7 @@
 #include "hardware/pio.h"
 #include "hardware/clocks.h"
 #include "hardware/dma.h"
+#include "hardware/sync.h"
 #include "pico/stdlib.h"
 #include <stdlib.h>
 #include "audio_i2s.pio.h"
@@ -197,6 +198,12 @@ static void setPage(uint8_t page)
 
 #define MASK_SPK_UNMUTE (1 << 2) // D2
 
+// HP analog volume (Page 1, Reg 0x24/0x25): 0 = 0 dB, each LSB = -0.5 dB, 0x7F = mute.
+// Speaker level is the init default; HP level adds 20 dB of attenuation so headphones
+// aren't painfully loud at a volume comfortable for the speaker.
+#define HP_ANALOG_VOL_SPEAKER 0x0A  // -5 dB (same as speaker analog vol)
+#define HP_ANALOG_VOL_HP      0x34  // -25 dB (20 dB quieter)
+
 void speakerMute(void)
 {
 	// Switch to page 1
@@ -279,12 +286,21 @@ static enum headphone_toggle_t tlv320_handle_headphone_event()
 
 	if (hp_inserted)
 	{
-		speakerMute();		
+		printf("HP connected: muting speaker, setting HP analog vol to 0x%02X (-%.1f dB)\n",
+			   HP_ANALOG_VOL_HP, HP_ANALOG_VOL_HP * 0.5f);
+		speakerMute(); // switches to page 1
+		writeRegister(0x24, HP_ANALOG_VOL_HP);
+		writeRegister(0x25, HP_ANALOG_VOL_HP);
 	}
 	else
 	{
-		speakerUnmute();
+		printf("HP disconnected: unmuting speaker, restoring HP analog vol to 0x%02X (-%.1f dB)\n",
+			   HP_ANALOG_VOL_SPEAKER, HP_ANALOG_VOL_SPEAKER * 0.5f);
+		speakerUnmute(); // switches to page 1
+		writeRegister(0x24, HP_ANALOG_VOL_SPEAKER);
+		writeRegister(0x25, HP_ANALOG_VOL_SPEAKER);
 	}
+	setPage(0);
 	speakerIsMuted = hp_inserted;
 	return hp_inserted ? HP_TOGGLE_CONNECT : HP_TOGGLE_DISCONNECT;
 }
@@ -544,8 +560,8 @@ static void tlv320_init()
 	// DAC Volume Control
 	setPage(0);
 	modifyRegister(0x40, 0x0C, 0x00);
-	writeRegister(0x41, 0x20); // Left DAC Vol  , was 0x28
-	writeRegister(0x42, 0x20); // Right DAC Vol , was 0x28
+	writeRegister(0x41, 0x0A); // Left DAC Vol +5 dB (0x20 was +16 dB, clipped NES peaks)
+	writeRegister(0x42, 0x0A); // Right DAC Vol +5 dB
 
 	// ADC Setup
 	modifyRegister(0x51, 0x80, 0x80);
@@ -850,9 +866,45 @@ audio_i2s_hw_t *audio_i2s_setup(int driver, int freqHZ, int dmachan)
 		irq_set_exclusive_handler(DMA_IRQ_0, dma_handler);
 		irq_set_enabled(DMA_IRQ_0, true);
 	}
-	dma_channel_set_read_addr(audio_i2s.dma_chan, &audio_ring[read_index], false);
-	dma_channel_set_trans_count(audio_i2s.dma_chan, DMA_BLOCK_SIZE, true); // true = start immediately
-	return &audio_i2s;													   // Return the audio_i2s hardware structure for further use
+	if (_driver == PICO_AUDIO_I2S_DRIVER_TLV320)
+	{
+		// Pre-fill one DMA block of silence and start DMA so that BCLK begins
+		// toggling immediately, giving the TLV320's PLL time to lock before
+		// real audio arrives.
+		write_index = DMA_BLOCK_SIZE;
+		dma_channel_set_read_addr(audio_i2s.dma_chan, &audio_ring[read_index], false);
+		dma_channel_set_trans_count(audio_i2s.dma_chan, DMA_BLOCK_SIZE, true);
+	}
+	// For other DACs (e.g. PCM5000A), don't start DMA yet — enqueue_sample
+	// will kick it once enough real data accumulates.
+	return &audio_i2s;
+}
+
+// DC-blocking high-pass filter.
+// Removes DC offset so DACs without built-in DC blocking (e.g., PCM5102A)
+// output a properly centered AC waveform.
+// 1-pole IIR: y[n] = x[n] - x[n-1] + alpha * y[n-1]
+// alpha = 255/256 ≈ 0.996, cutoff ≈ 28 Hz at 44100 Hz.
+static int32_t dc_xL = 0, dc_yL = 0;
+static int32_t dc_xR = 0, dc_yR = 0;
+
+static inline int16_t dc_block_channel(int16_t x, int32_t *prev_x, int32_t *prev_y)
+{
+	int32_t y = (int32_t)x - *prev_x + ((*prev_y * 255) >> 8);
+	*prev_x = (int32_t)x;
+	*prev_y = y;
+	if (y > 32767) y = 32767;
+	else if (y < -32768) y = -32768;
+	return (int16_t)y;
+}
+
+static inline uint32_t __not_in_flash_func(dc_block_sample)(uint32_t sample32)
+{
+	int16_t l = (int16_t)(sample32 >> 16);
+	int16_t r = (int16_t)(sample32 & 0xFFFF);
+	l = dc_block_channel(l, &dc_xL, &dc_yL);
+	r = dc_block_channel(r, &dc_xR, &dc_yR);
+	return ((uint32_t)(uint16_t)l << 16) | (uint16_t)r;
 }
 
 /**
@@ -866,18 +918,17 @@ audio_i2s_hw_t *audio_i2s_setup(int driver, int freqHZ, int dmachan)
  */
 void __not_in_flash_func(audio_i2s_enqueue_sample)(uint32_t sample32)
 {
-#if 0
-	static int droppedsamples = 0;
+#if I2S_AUDIO_COMPENSATE_DC_OFFSET
+	if (_driver == PICO_AUDIO_I2S_DRIVER_PCM5000A)
+		sample32 = dc_block_sample(sample32);
 #endif
-	// Ensure we don't write past the end of the buffer
-
 	size_t next_write = (write_index + 1) % I2S_AUDIO_RING_SIZE;
 	if (next_write != read_index)
 	{
 		audio_ring[write_index] = sample32;
 		write_index = next_write;
-		// If the DMA channel is not busy, check if we have enough data to continue the transfer
-		// If write_index is ahead of read_index, we have data to send.
+		// Disable IRQs to prevent dma_handler from racing with this DMA restart logic.
+		uint32_t save = save_and_disable_interrupts();
 		if (!dma_channel_is_busy(audio_i2s.dma_chan))
 		{
 			size_t available = (write_index >= read_index)
@@ -889,18 +940,8 @@ void __not_in_flash_func(audio_i2s_enqueue_sample)(uint32_t sample32)
 				dma_channel_set_trans_count(audio_i2s.dma_chan, DMA_BLOCK_SIZE, true);
 			}
 		}
+		restore_interrupts(save);
 	}
-#if 0
-	else
-	{
-		// Buffer is full, drop sample
-		droppedsamples++;
-		if (droppedsamples % 1000 == 0)
-		{
-			printf("Dropped samples: %d\n", droppedsamples);
-		}
-	}
-#endif
 }
 int audio_i2s_get_freebuffer_size()
 {

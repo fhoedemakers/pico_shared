@@ -10,6 +10,7 @@ enum MenuSettingsIndex {
     MOPT_SAVE_RESTORE_STATE,
     MOPT_SCREENMODE,
     MOPT_SCANLINES,
+    MOPT_SCANLINE_TYPE,
     MOPT_FPS_OVERLAY,
     MOPT_AUDIO_ENABLE,
     MOPT_FRAMESKIP,
@@ -24,6 +25,7 @@ enum MenuSettingsIndex {
     MOPT_BORDER_MODE,
     MOPT_RAPID_FIRE_ON_A,
     MOPT_RAPID_FIRE_ON_B,
+    MOPT_AUTO_INSERT_FDS_DISK_A, // Auto-insert disk side A at boot (On) or wait for user A press (Off)
     MOPT_AUTO_SWAP_FDS_DISK, // New menu option for automatically swapping FDS disk sides when loading a .fds file
     MOPT_ENTER_BOOTSEL_MODE,
     MOPT_FDS_DISK_SWAP,
@@ -36,6 +38,7 @@ const char* const g_settings_descriptions[MOPT_COUNT] = {
     "Save or load emulator state",
     "Screen scaling & scanline mode",
     "Toggle scanlines effect",
+    "Scanline type (CRT/LCD style)",
     "Show FPS (frame rate)",
     "Toggle game audio",
     "Skip frames for speed",
@@ -50,7 +53,8 @@ const char* const g_settings_descriptions[MOPT_COUNT] = {
     "Select border artwork",
     "Enable rapid fire for this button",
     "Enable rapid fire for this button",
-    "Auto swap FDS disk sides on load",
+    "Insert disk at boot or stay in BIOS",
+    "Auto swap disk side when game asks",
     "Reboot to BOOTSEL mode for flashing",
     "Eject / insert FDS disk side"
 };

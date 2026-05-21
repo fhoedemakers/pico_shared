@@ -1,5 +1,26 @@
 # Release notes
 
+## 14/5/2026
+
+- **8:7 aspect ratio scaling** added as a new screen mode option, giving a more authentic CRT pixel shape alongside the existing 1:1 mode.
+- **Configurable scanline type** (HSTX boards): choose between *Simple* (darken odd lines) and *LCD* (darken every other output column) in the settings menu.
+- **FDS auto-insert disk setting**: new *Auto Insert Disk A* option (default On). When set to Off, the disk starts ejected so the player can press A to insert it manually, showing the BIOS animation.
+- **Software version** now displayed on the splash screen.
+- **Settings menu improvements**:
+  - Refactored layout with dedicated SAVE / CANCEL / DEFAULT action row.
+  - FDS menu labels cleaned up for consistency and clarity.
+  - Fixed save label formatting.
+  - Fixed settings showing unsaved changes due to struct padding bytes (now uses `memcpy` for comparison-safe copies).
+  - Settings are now correctly persisted on game reset.
+  - Settings version bumped to 111.
+- **Memory / stability fixes**:
+  - Fixed double memory allocation for the HSTX DI ring buffer in `hstx_di_queue_init`.
+  - Fixed use-after-free bug in the settings menu.
+  - Enhanced memory allocation logging to include function context.
+- **Other**:
+  - Splash screen text colors updated to use default foreground and background colors.
+  - Refactored `menuPumpBlankFrames` for RP2040 to feed black scanlines for display sync without requiring screenBuffer allocation.
+
 ## 2/5/2026
 
 - **Emulator Specific**:

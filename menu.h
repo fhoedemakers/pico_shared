@@ -58,6 +58,7 @@ struct MenuFdsHooks
 };
 void menuSetFdsHooks(const MenuFdsHooks *hooks);
 
+void menuPumpBlankFrames(int count);
 bool showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefunc)(const char *path), const char *extraMessage, SaveStateTypes quickSave);
 void getQuickSavePath(char *path, size_t pathsize);
 void getSaveStatePath(char *path, size_t pathsize, int slot);

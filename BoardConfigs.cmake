@@ -61,7 +61,7 @@ if ( HW_CONFIG EQUAL 1 )
 	set(WII_SDA "-1" CACHE STRING "Select the SDA GPIO pin for Wii Classic controller")
 	set(WII_SCL "-1" CACHE STRING "Select the SCL GPIO pin for Wii Classic controller")
     set(WIIPAD_I2C "i2c1" CACHE STRING "Select the I2C bus for Wii Classic controller")
-    set(UART_ENABLED 0 CACHE STRING "Enable UART output") # Disable UART output for Pimoroni Pico DV Demo Base
+    set(UART_ENABLED 1 CACHE STRING "Enable UART output") # Disable UART output for Pimoroni Pico DV Demo Base
     set(USE_I2S_AUDIO "PICO_AUDIO_I2S_DRIVER_PCM5000A" CACHE STRING "Enable I2S audio output") # Enable I2S audio output for Pimoroni Pico DV Demo Base
     set(PICO_AUDIO_I2S_DATA_PIN 26 CACHE STRING "Select the GPIO pin for I2S data")
     set(PICO_AUDIO_I2S_CLOCK_PIN_BASE 27 CACHE STRING "Select the GPIO pin for I2S clock")
