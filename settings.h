@@ -57,7 +57,8 @@ namespace FrensSettings
         SMS = 1,
         GAMEBOY = 2,
         GENESIS = 3,
-        MULTI = 4
+        MULTI = 4,
+        PCE = 5
     } emulators;
     static emulators emulatorType = NES;
     void initSettings(emulators emu) ;
@@ -77,5 +78,6 @@ extern int8_t g_settings_visibility_nes[];
 extern const int8_t g_settings_visibility_gb[];
 extern const int8_t g_settings_visibility_sms[];
 extern const int8_t g_settings_visibility_md[];
+extern const int8_t g_settings_visibility_pce[];
 extern const int8_t g_settings_visibility_main[];
 #endif
