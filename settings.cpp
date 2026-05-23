@@ -7,7 +7,7 @@ struct settings settings;
 namespace FrensSettings
 {
     #define SETTINGSFILE "/settings_%s.dat" // File to store settings
-    static const char *emulatorstrings[6] = { "NES", "SMS", "GB", "MD", "MUL", "PCE" };
+    static const char *emulatorstrings[7] = { "NES", "SMS", "GB", "MD", "MUL", "PCE", "O2E" };
     static char settingsFileName[21] = {};
     static emulators emulatorTypeForSettings = emulators::MULTI;
     char *getSettingsFileName()
@@ -133,14 +133,19 @@ namespace FrensSettings
     void savesettings()
     {
         // Save settings to file
-        FIL fil;
+        // FIL is ~600 bytes - allocate on heap to avoid stack overflow
+        FIL *fil = (FIL *)Frens::f_malloc(sizeof(FIL));
+        if (!fil) {
+            printf("savesettings: failed to allocate FIL\n");
+            return;
+        }
         UINT bw;
         FRESULT fr;
         printf("Saving settings to %s\n", getSettingsFileName());
-        fr = f_open(&fil, getSettingsFileName(), FA_WRITE | FA_CREATE_ALWAYS);
+        fr = f_open(fil, getSettingsFileName(), FA_WRITE | FA_CREATE_ALWAYS);
         if (fr == FR_OK)
         {
-            fr = f_write(&fil, &settings, sizeof(settings), &bw);
+            fr = f_write(fil, &settings, sizeof(settings), &bw);
             if (fr)
             {
                 printf("Error writing %s: %d\n", getSettingsFileName(), fr);
@@ -149,12 +154,13 @@ namespace FrensSettings
             {
                 printf("Wrote %d bytes to %s\n", bw, getSettingsFileName());
             }
-            f_close(&fil);
+            f_close(fil);
         }
         else
         {
             printf("Error opening %s: %d\n", getSettingsFileName(), fr);
         }
+        Frens::f_free(fil);
         printsettings();
 #if HSTX
         printf("Setting HDMI DVI mode to %d\n", settings.flags.useDVIModeForHDMI);
@@ -165,19 +171,28 @@ namespace FrensSettings
 
     void loadsettings()
     {
-        FIL fil;
+        // FIL ~600 bytes, DIR ~80 bytes, FILINFO ~280 bytes - put on heap
+        FIL *fil = (FIL *)Frens::f_malloc(sizeof(FIL));
+        DIR *dir = (DIR *)Frens::f_malloc(sizeof(DIR));
+        FILINFO *fno = (FILINFO *)Frens::f_malloc(sizeof(FILINFO));
+        if (!fil || !dir || !fno) {
+            printf("loadsettings: failed to allocate FatFS structs\n");
+            if (fil) Frens::f_free(fil);
+            if (dir) Frens::f_free(dir);
+            if (fno) Frens::f_free(fno);
+            resetsettings();
+            return;
+        }
         UINT br;
         FRESULT fr;
-        DIR dir;
-        FILINFO fno;
         // Load settings from file
         printf("Loading settings\n");
         // determine size of settings file
-        fr = f_stat(getSettingsFileName(), &fno);
+        fr = f_stat(getSettingsFileName(), fno);
         if (fr == FR_OK)
         {
-            printf("Size of %s: %lu bytes\n", getSettingsFileName(), fno.fsize);
-            if (fno.fsize != sizeof(settings))
+            printf("Size of %s: %lu bytes\n", getSettingsFileName(), fno->fsize);
+            if (fno->fsize != sizeof(settings))
             {
                 printf("Size of %s is not %d bytes, resetting settings\n", getSettingsFileName(), sizeof(settings));
                 resetsettings();
@@ -185,10 +200,10 @@ namespace FrensSettings
             }
             else
             {
-                fr = f_open(&fil, getSettingsFileName(), FA_READ);
+                fr = f_open(fil, getSettingsFileName(), FA_READ);
                 if (fr == FR_OK)
                 {
-                    fr = f_read(&fil, &settings, sizeof(settings), &br);
+                    fr = f_read(fil, &settings, sizeof(settings), &br);
                     if (fr)
                     {
                         printf("Error reading %s: %d\n", getSettingsFileName(), fr);
@@ -212,7 +227,7 @@ namespace FrensSettings
                             printf("Read %d bytes from %s\n", br, getSettingsFileName());
                         }
                     }
-                    f_close(&fil);
+                    f_close(fil);
                 }
                 else
                 {
@@ -229,7 +244,7 @@ namespace FrensSettings
                 }
 
                 // if settings.currentDir is no valid directory, reset settings to default
-                if (f_opendir(&dir, settings.currentDir) != FR_OK)
+                if (f_opendir(dir, settings.currentDir) != FR_OK)
                 {
                     printf("Directory %s does not exist\n", settings.currentDir);
                     resetsettings();
@@ -241,6 +256,9 @@ namespace FrensSettings
             printf("Settings file not found %s: %d\n", getSettingsFileName(), fr);
             resetsettings();
         }
+        Frens::f_free(fil);
+        Frens::f_free(dir);
+        Frens::f_free(fno);
         printsettings();
     }
     // Get the current emulator type, this may be different from emulatorTypeForSettings when in multi-emulator mode
