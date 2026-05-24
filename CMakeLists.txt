@@ -21,8 +21,15 @@ wavplayer.cpp
 FlashParams.cpp
 #PicoPlusPsram.cpp
 )
-add_subdirectory(drivers/pico_fatfs)     
-add_subdirectory(drivers/pico_audio_i2s)
+add_subdirectory(drivers/pico_fatfs)
+add_subdirectory(drivers/tlv320dac3100)
+
+option(USE_PICO_EXTRAS_I2S "Use the pico-extras based I2S audio driver instead of the custom one" OFF)
+if (USE_PICO_EXTRAS_I2S)
+    add_subdirectory(drivers/pico_audio_i2s_pe)
+else()
+    add_subdirectory(drivers/pico_audio_i2s)
+endif()
 add_subdirectory(drivers/lwmem)
 # add_subdirectory(drivers/pico_hstx)
 # add_subdirectory(drivers/pico_audio_mcp4822) # SPI Audio using MCP4822 DAC. Works but not used

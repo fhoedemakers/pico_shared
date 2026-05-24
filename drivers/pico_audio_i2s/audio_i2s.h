@@ -3,7 +3,7 @@
 #ifndef _PICO_AUDIO_I2S_PIO_H
 #define _PICO_AUDIO_I2S_PIO_H
 
-#include "audio_i2s.h"
+#include "tlv320dac3100.h"
 #include "pico/stdlib.h"
 #include "hardware/pio.h"
 #include "hardware/clocks.h"
@@ -25,10 +25,8 @@ extern "C" {
 #define PICO_AUDIO_I2S_DEBUG 0 // Set to 1 to enable debug output
 #endif
 
-// Reset pin, when using TLV320 codec
-#ifndef PICO_AUDIO_I2S_RESET_PIN
-#define PICO_AUDIO_I2S_RESET_PIN 7
-#endif
+// Note: PICO_AUDIO_I2S_RESET_PIN, PICO_AUDIO_I2S_INTERRUPT_PIN, and
+// PICO_AUDIO_I2S_INTERRUPT_IS_BUTTON are defined in tlv320dac3100.h.
 // Data pin, DIN or SDATA
 #ifndef PICO_AUDIO_I2S_DATA_PIN
 #define PICO_AUDIO_I2S_DATA_PIN 26
@@ -46,18 +44,6 @@ extern "C" {
 #endif
 #ifndef PICO_AUDIO_I2S_PIO
 #define PICO_AUDIO_I2S_PIO 0
-#endif
-
-// headphone detect pin, when using TLV320 codec
-// #ifndef PICO_AUDIO_I2S_HP_DETECT_PIN
-// #define PICO_AUDIO_I2S_HP_DETECT_PIN -1
-// #endif
-
-#ifndef PICO_AUDIO_I2S_INTERRUPT_PIN
-#define PICO_AUDIO_I2S_INTERRUPT_PIN -1
-#endif
-#ifndef PICO_AUDIO_I2S_INTERRUPT_IS_BUTTON
-#define PICO_AUDIO_I2S_INTERRUPT_IS_BUTTON 0
 #endif
 
 // Compensation for DC offset in PCM5000A driver
@@ -79,11 +65,7 @@ typedef struct {
     PIO pio;     // PIO instance (e.g., pio0 or pio1)
     int dma_chan; // DMA channel for audio transfer
 } audio_i2s_hw_t;
-enum headphone_toggle_t {
-    HP_TOGGLE_NONE = 0,
-    HP_TOGGLE_CONNECT = 1,
-    HP_TOGGLE_DISCONNECT = 2
-};
+// enum headphone_toggle_t is defined in tlv320dac3100.h
 audio_i2s_hw_t *audio_i2s_setup(int driver, int freqHZ, int dmachan);
 void audio_i2s_update_pio_frequency(uint32_t sample_freq);
 void audio_i2s_out_32(uint32_t sample32);
