@@ -26,8 +26,10 @@ add_subdirectory(drivers/tlv320dac3100)
 
 option(USE_PICO_EXTRAS_I2S "Use the pico-extras based I2S audio driver instead of the custom one" OFF)
 if (USE_PICO_EXTRAS_I2S)
+    message(STATUS "Using pico-extras I2S audio driver")
     add_subdirectory(drivers/pico_audio_i2s_pe)
 else()
+    message(STATUS "Using legacy I2S audio driver")
     add_subdirectory(drivers/pico_audio_i2s)
 endif()
 add_subdirectory(drivers/lwmem)
@@ -39,8 +41,9 @@ add_subdirectory(drivers/pico_hdmi)
 target_include_directories(pico_shared INTERFACE
         .
 )
-target_compile_definitions(pico_shared INTERFACE 
+target_compile_definitions(pico_shared INTERFACE
  NOHSTXCLOCK=1 # Do not set the hstx clock in the pico_hdmi driver, as it is already set FrensHelpers.cpp
+ USE_PICO_EXTRAS_I2S=$<BOOL:${USE_PICO_EXTRAS_I2S}>
 )
 pico_generate_pio_header(${projectname} ${CMAKE_CURRENT_LIST_DIR}/ws2812.pio)
 target_link_libraries(pico_shared 

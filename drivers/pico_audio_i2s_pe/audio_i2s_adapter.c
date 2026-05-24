@@ -16,10 +16,13 @@
 #include "pico/stdlib.h"
 #include "pico/audio.h"
 #include "hardware/dma.h"
+#include "hardware/pio.h"
 #include "hardware/clocks.h"
 
 #include <stdio.h>
 #include <string.h>
+
+#define ADAPTER_AUDIO_PIO __CONCAT(pio, PICO_AUDIO_I2S_PIO)
 
 /* Rename the colliding symbol BEFORE pulling in the upstream header. The same
  * rename is applied to pico_extras/audio_i2s.c via pe_audio_i2s_wrapper.c, so
@@ -86,13 +89,21 @@ audio_i2s_hw_t *audio_i2s_setup(int driver, int freqHZ, int dmachan)
         return NULL;
     }
 
+    /* Pick a free state machine on the target PIO. Upstream's pe_audio_i2s_setup
+     * calls pio_sm_claim() which panics if the SM is already taken; HW_CONFIG=1
+     * (Pimoroni Pico DV) for example reserves PIO1 SM0 for the NES controller.
+     * Mirror the DMA dance: claim to discover a free one, then immediately
+     * unclaim so upstream can re-claim. */
+    int free_sm = pio_claim_unused_sm(ADAPTER_AUDIO_PIO, true);
+    pio_sm_unclaim(ADAPTER_AUDIO_PIO, free_sm);
+
     audio_i2s_config_t cfg = {
         .data_pin = PICO_AUDIO_I2S_DATA_PIN,
         .clock_pin_base = PICO_AUDIO_I2S_CLOCK_PIN_BASE,
         .dma_channel = (uint8_t)dmachan,
-        .pio_sm = 0,
+        .pio_sm = (uint8_t)free_sm,
     };
-    s_pio_sm = 0;
+    s_pio_sm = free_sm;
 
     const audio_format_t *got = pe_audio_i2s_setup(&s_audio_format, &cfg);
     if (!got) {

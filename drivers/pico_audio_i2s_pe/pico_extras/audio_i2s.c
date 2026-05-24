@@ -47,6 +47,8 @@ static void __isr __time_critical_func(audio_i2s_dma_irq_handler)();
 
 const audio_format_t *audio_i2s_setup(const audio_format_t *intended_audio_format,
                                                const audio_i2s_config_t *config) {
+    printf("Setting up pico_extras I2S audio with data pin %d, clock pin base %d, PIO state machine %d, DMA channel %d\n",
+           config->data_pin, config->clock_pin_base, config->pio_sm, config->dma_channel);
     uint func = GPIO_FUNC_PIOx;
     gpio_set_function(config->data_pin, func);
     gpio_set_function(config->clock_pin_base, func);

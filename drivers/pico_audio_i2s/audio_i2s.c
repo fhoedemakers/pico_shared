@@ -121,6 +121,7 @@ void __isr dma_handler()
  */
 audio_i2s_hw_t *audio_i2s_setup(int driver, int freqHZ, int dmachan)
 {
+	printf("Setting up legacy I2S audio with driver %d, frequency %d Hz, DMA channel %d\n", driver, freqHZ, dmachan);
 	_driver = driver; // Store the selected driver globally
 	if (_driver == PICO_AUDIO_I2S_DRIVER_NONE)
 	{

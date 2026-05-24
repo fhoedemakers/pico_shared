@@ -647,7 +647,11 @@ void DrawScreen(int selectedRow, int w = 0, int h = 0, uint16_t *imagebuffer = n
             }
         }
         putText(SCREEN_COLS / 2 - strlen(tmpstr) / 2, SCREEN_ROWS - 1, tmpstr, CBLUE, CWHITE);
-        snprintf(s, sizeof(s), "%c%dK %c", Frens::isPsramEnabled() ? 'P' : 'F', maxRomSize / 1024, WIIPAD_IS_CONNECTED() ? 'W' : ' ');
+        snprintf(s, sizeof(s), "%c%dK %c%c",
+                 Frens::isPsramEnabled() ? 'P' : 'F',
+                 maxRomSize / 1024,
+                 WIIPAD_IS_CONNECTED() ? 'W' : ' ',
+                 EXT_AUDIO_IS_ENABLED ? (USE_PICO_EXTRAS_I2S ? 'E' : 'L') : ' ');
         putText(1, SCREEN_ROWS - 1, s, settings.fgcolor, settings.bgcolor);
         snprintf(s, sizeof(s), "%s:Open %s:Back", buttonLabel1, buttonLabel2);
 
