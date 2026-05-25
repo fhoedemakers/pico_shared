@@ -139,25 +139,19 @@ void audio_i2s_out_32(uint32_t sample32)
 }
 
 #if I2S_AUDIO_COMPENSATE_DC_OFFSET
-static int32_t dc_xL = 0, dc_yL = 0;
-static int32_t dc_xR = 0, dc_yR = 0;
-
-static inline int16_t dc_block_channel(int16_t x, int32_t *prev_x, int32_t *prev_y)
-{
-    int32_t y = (int32_t)x - *prev_x + ((*prev_y * 255) >> 8);
-    *prev_x = (int32_t)x;
-    *prev_y = y;
-    if (y > 32767) y = 32767;
-    else if (y < -32768) y = -32768;
-    return (int16_t)y;
-}
+static int32_t dc_avg_l = 0;
+static int32_t dc_avg_r = 0;
 
 static inline uint32_t __not_in_flash_func(dc_block_sample)(uint32_t sample32)
 {
-    int16_t l = (int16_t)(sample32 >> 16);
-    int16_t r = (int16_t)(sample32 & 0xFFFF);
-    l = dc_block_channel(l, &dc_xL, &dc_yL);
-    r = dc_block_channel(r, &dc_xR, &dc_yR);
+    int32_t l = (int16_t)(sample32 >> 16);
+    int32_t r = (int16_t)(sample32 & 0xFFFF);
+    dc_avg_l += (l - dc_avg_l) >> I2S_DC_FILTER_SHIFT;
+    dc_avg_r += (r - dc_avg_r) >> I2S_DC_FILTER_SHIFT;
+    l -= dc_avg_l;
+    r -= dc_avg_r;
+    if (l > 32767) l = 32767; else if (l < -32768) l = -32768;
+    if (r > 32767) r = 32767; else if (r < -32768) r = -32768;
     return ((uint32_t)(uint16_t)l << 16) | (uint16_t)r;
 }
 #endif

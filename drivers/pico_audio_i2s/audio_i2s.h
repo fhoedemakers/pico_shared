@@ -46,9 +46,15 @@ extern "C" {
 #define PICO_AUDIO_I2S_PIO 0
 #endif
 
-// Compensation for DC offset in PCM5000A driver
+// DC blocking filter: removes DC offset so DACs without built-in DC blocking
+// (e.g. PCM5102A) output a properly centered AC waveform.
+// Uses a leaky integrator to track and subtract the running average.
+// Shift 10 ≈ 7 Hz cutoff at 44100 Hz. Higher = more bass preserved, slower response.
 #ifndef I2S_AUDIO_COMPENSATE_DC_OFFSET
-#define I2S_AUDIO_COMPENSATE_DC_OFFSET 1 // Set to 1 to enable
+#define I2S_AUDIO_COMPENSATE_DC_OFFSET 1
+#endif
+#ifndef I2S_DC_FILTER_SHIFT
+#define I2S_DC_FILTER_SHIFT 10
 #endif
 #ifndef I2S_AUDIO_RING_SIZE
 #define I2S_AUDIO_RING_SIZE (1024) // size of the audio ring buffer (must be a multiple of DMA_BLOCK_SIZE)

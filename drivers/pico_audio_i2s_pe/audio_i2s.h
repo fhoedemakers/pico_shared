@@ -49,8 +49,15 @@ extern "C" {
 #define PICO_AUDIO_I2S_PIO 0
 #endif
 
+// DC blocking filter: removes DC offset so DACs without built-in DC blocking
+// (e.g. PCM5102A) output a properly centered AC waveform.
+// Uses a leaky integrator to track and subtract the running average.
+// Shift 10 ≈ 7 Hz cutoff at 44100 Hz. Higher = more bass preserved, slower response.
 #ifndef I2S_AUDIO_COMPENSATE_DC_OFFSET
 #define I2S_AUDIO_COMPENSATE_DC_OFFSET 1
+#endif
+#ifndef I2S_DC_FILTER_SHIFT
+#define I2S_DC_FILTER_SHIFT 10
 #endif
 
 /* Buffer-pool sizing for the producer side. Total RAM = COUNT * SAMPLES * 4
