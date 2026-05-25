@@ -48,7 +48,7 @@ extern "C" {
 
 // Compensation for DC offset in PCM5000A driver
 #ifndef I2S_AUDIO_COMPENSATE_DC_OFFSET
-#define I2S_AUDIO_COMPENSATE_DC_OFFSET 0 // Set to 1 to enable
+#define I2S_AUDIO_COMPENSATE_DC_OFFSET 1 // Set to 1 to enable
 #endif
 #ifndef I2S_AUDIO_RING_SIZE
 #define I2S_AUDIO_RING_SIZE (1024) // size of the audio ring buffer (must be a multiple of DMA_BLOCK_SIZE)

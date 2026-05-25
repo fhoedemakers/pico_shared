@@ -50,7 +50,7 @@ extern "C" {
 #endif
 
 #ifndef I2S_AUDIO_COMPENSATE_DC_OFFSET
-#define I2S_AUDIO_COMPENSATE_DC_OFFSET 0
+#define I2S_AUDIO_COMPENSATE_DC_OFFSET 1
 #endif
 
 /* Buffer-pool sizing for the producer side. Total RAM = COUNT * SAMPLES * 4

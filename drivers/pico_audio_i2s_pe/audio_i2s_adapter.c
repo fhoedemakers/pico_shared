@@ -138,6 +138,30 @@ void audio_i2s_out_32(uint32_t sample32)
     audio_i2s_enqueue_sample(sample32);
 }
 
+#if I2S_AUDIO_COMPENSATE_DC_OFFSET
+static int32_t dc_xL = 0, dc_yL = 0;
+static int32_t dc_xR = 0, dc_yR = 0;
+
+static inline int16_t dc_block_channel(int16_t x, int32_t *prev_x, int32_t *prev_y)
+{
+    int32_t y = (int32_t)x - *prev_x + ((*prev_y * 255) >> 8);
+    *prev_x = (int32_t)x;
+    *prev_y = y;
+    if (y > 32767) y = 32767;
+    else if (y < -32768) y = -32768;
+    return (int16_t)y;
+}
+
+static inline uint32_t __not_in_flash_func(dc_block_sample)(uint32_t sample32)
+{
+    int16_t l = (int16_t)(sample32 >> 16);
+    int16_t r = (int16_t)(sample32 & 0xFFFF);
+    l = dc_block_channel(l, &dc_xL, &dc_yL);
+    r = dc_block_channel(r, &dc_xR, &dc_yR);
+    return ((uint32_t)(uint16_t)l << 16) | (uint16_t)r;
+}
+#endif
+
 void __not_in_flash_func(audio_i2s_enqueue_sample)(uint32_t sample32)
 {
     if (!s_producer_pool) return;
@@ -147,7 +171,10 @@ void __not_in_flash_func(audio_i2s_enqueue_sample)(uint32_t sample32)
         if (!s_current_buffer) return; /* pool full → drop sample */
         s_current_offset = 0;
     }
-
+#if I2S_AUDIO_COMPENSATE_DC_OFFSET
+    //if (s_driver == PICO_AUDIO_I2S_DRIVER_PCM5000A)
+        sample32 = dc_block_sample(sample32);
+#endif
     int16_t *out = (int16_t *)s_current_buffer->buffer->bytes;
     out[s_current_offset * 2 + 0] = (int16_t)(sample32 >> 16);
     out[s_current_offset * 2 + 1] = (int16_t)(sample32 & 0xffff);
