@@ -12,11 +12,17 @@ namespace io
     namespace
     {
         GamePadState currentGamePad_[2];
+        KeyboardState currentKeyboard_ = {};
     }
 
     GamePadState &getCurrentGamePadState(int i)
     {
         return currentGamePad_[i];
+    }
+
+    const KeyboardState &getCurrentKeyboardState()
+    {
+        return currentKeyboard_;
     }
 
     void
