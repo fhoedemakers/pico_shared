@@ -3786,9 +3786,10 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
     // Frens::f_free(buffer);
 
     FrensSettings::savesettings();
-#if !HSTX
+     // Reset the screen mode to the original settings
     scaleMode8_7_ = Frens::applyScreenMode(settings.screenMode);
-    // Reset the screen mode to the original settings
+#if !HSTX
+   
     // Do not reset the margins when framebuffer is used, this will lock up the display driver
     // Margins will be handled by the framebuffer.
     if (!Frens::isFrameBufferUsed())
