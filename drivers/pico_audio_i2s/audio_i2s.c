@@ -214,6 +214,7 @@ audio_i2s_hw_t *audio_i2s_setup(int driver, int freqHZ, int dmachan)
 	return &audio_i2s;
 }
 
+#if I2S_AUDIO_COMPENSATE_DC_OFFSET
 static int32_t dc_avg_l = 0;
 static int32_t dc_avg_r = 0;
 
@@ -229,6 +230,7 @@ static inline uint32_t __not_in_flash_func(dc_block_sample)(uint32_t sample32)
 	if (r > 32767) r = 32767; else if (r < -32768) r = -32768;
 	return ((uint32_t)(uint16_t)l << 16) | (uint16_t)r;
 }
+#endif
 
 /**
  * @brief Enqueues a 32-bit audio sample into the ring buffer for I2S output.
