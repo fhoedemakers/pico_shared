@@ -10,6 +10,12 @@
 #define USE_SPI_AUDIO 0
 #endif
 
+// Driver selection between the legacy custom I2S driver and the pico-extras
+// based one. Set via -DUSE_PICO_EXTRAS_I2S=ON when configuring; default off.
+#ifndef USE_PICO_EXTRAS_I2S
+#define USE_PICO_EXTRAS_I2S 0
+#endif
+
 // generete a compiler error if both USE_I2S_AUDIO and USE_SPI_AUDIO are defined
 #if USE_I2S_AUDIO > 0 && USE_SPI_AUDIO == 1
 #error "Both USE_I2S_AUDIO and USE_SPI_AUDIO cannot be defined at the same time. Please define only one."
