@@ -51,7 +51,7 @@ extern "C" {
 // Uses a leaky integrator to track and subtract the running average.
 // Shift 10 ≈ 7 Hz cutoff at 44100 Hz. Higher = more bass preserved, slower response.
 #ifndef I2S_AUDIO_COMPENSATE_DC_OFFSET
-#define I2S_AUDIO_COMPENSATE_DC_OFFSET 1
+#define I2S_AUDIO_COMPENSATE_DC_OFFSET 0
 #endif
 #ifndef I2S_DC_FILTER_SHIFT
 #define I2S_DC_FILTER_SHIFT 10
