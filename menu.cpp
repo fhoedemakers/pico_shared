@@ -191,7 +191,7 @@ static bool isArtWorkEnabled()
     {
     case FrensSettings::emulators::NES:
 
-        snprintf(PATH, sizeof(PATH), "/Metadata/%s/Images/320/D/D0E96F6B.444", emulator);
+        snprintf(PATH, sizeof(PATH), "/Metadata/%s/Images/160/D/D0E96F6B.444", emulator);
         break;
     case FrensSettings::emulators::SMS:
         snprintf(PATH, sizeof(PATH), "/Metadata/%s/Images/160/6/6A5A1E39.444", emulator);
