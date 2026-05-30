@@ -202,6 +202,9 @@ static bool isArtWorkEnabled()
     case FrensSettings::emulators::GAMEBOY:
         snprintf(PATH, sizeof(PATH), "/Metadata/%s/Images/160/0/00A9001E.444", emulator);
         break;
+    case FrensSettings::emulators::PCE:
+        snprintf(PATH, sizeof(PATH), "/Metadata/%s/Images/160/5/599EAD9B.444", emulator);
+        break;
     default:
         return false;
     }
@@ -3786,9 +3789,10 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
     // Frens::f_free(buffer);
 
     FrensSettings::savesettings();
-#if !HSTX
+     // Reset the screen mode to the original settings
     scaleMode8_7_ = Frens::applyScreenMode(settings.screenMode);
-    // Reset the screen mode to the original settings
+#if !HSTX
+   
     // Do not reset the margins when framebuffer is used, this will lock up the display driver
     // Margins will be handled by the framebuffer.
     if (!Frens::isFrameBufferUsed())

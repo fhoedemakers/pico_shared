@@ -263,7 +263,7 @@ void __not_in_flash_func(hstx_push_audio_sample)(const int left, const int right
         acc_count = 0;
     }
 }
-
+static uint32_t core1_stack[1024] __attribute__((aligned(8)));
 void hstx_init(bool dviOnly)
 {
     video_output_set_dvi_mode(dviOnly);
@@ -272,7 +272,7 @@ void hstx_init(bool dviOnly)
     video_output_init(640, 480);
     pico_hdmi_set_audio_sample_rate(44100);
     video_output_set_scanline_callback(scanline_callbackfunc);
-    multicore_launch_core1(video_output_core1_run);
+    multicore_launch_core1_with_stack(video_output_core1_run, core1_stack, sizeof(core1_stack));
     printf("Pico HDMI initialized.\n");
 }
 #endif
