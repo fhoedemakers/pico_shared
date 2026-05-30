@@ -154,6 +154,16 @@ namespace Frens
         return psRamEnabled;
     }
 
+    void updatePsramTiming()
+    {
+#if PICO_RP2350 && PSRAM_CS_PIN
+        if (psRamEnabled)
+        {
+            UpdatePsramTiming();
+        }
+#endif
+    }
+
     bool __not_in_flash_func(isFrameBufferUsed)()
     {
 #if !HSTX
@@ -1473,6 +1483,7 @@ namespace Frens
     // Set HSTX clock to 126 MHz if HSTX is used so the HSTX display driver can output at no more than 60Hz
     void setClocksAndStartStdio(uint32_t cpuFreqKHz, vreg_voltage voltage)
     {
+        initPsram();
         // Set voltage and clock frequency
 
         vreg_disable_voltage_limit();
@@ -1556,6 +1567,7 @@ namespace Frens
                             sys_hz);
         }
 #endif
+        updatePsramTiming();
 
         stdio_init_all();
         sleep_ms(50); // wait for UART to settle

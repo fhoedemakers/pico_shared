@@ -3,6 +3,7 @@
 #include "lwmem/lwmem.h"
 extern "C" {
   int32_t SetupPsram(int psramCS);
+  void UpdatePsramTiming(void);
 }
 class PicoPlusPsram
 {

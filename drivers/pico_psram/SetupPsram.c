@@ -76,6 +76,7 @@ int32_t __no_inline_not_in_flash_func(SetupPsram)(int psramCS)
     }
     // Disable direct csr.
     qmi_hw->direct_csr &= ~(QMI_DIRECT_CSR_ASSERT_CS1N_BITS | QMI_DIRECT_CSR_EN_BITS);
+    busy_wait_us(10);
 
     if (kgd != 0x5D)
     {
@@ -115,14 +116,12 @@ int32_t __no_inline_not_in_flash_func(SetupPsram)(int psramCS)
         {
         }
         qmi_hw->direct_csr &= ~(QMI_DIRECT_CSR_ASSERT_CS1N_BITS);
-        for (size_t j = 0; j < 20; j++)
-        {
-            asm("nop");
-        }
+        busy_wait_us(5);
         (void)qmi_hw->direct_rx;
     }
     // Disable direct csr.
     qmi_hw->direct_csr &= ~(QMI_DIRECT_CSR_ASSERT_CS1N_BITS | QMI_DIRECT_CSR_EN_BITS);
+    busy_wait_us(10);
 
     // qmi_hw->m[1].timing =
     //     QMI_M0_TIMING_PAGEBREAK_VALUE_1024 << QMI_M0_TIMING_PAGEBREAK_LSB | // Break between pages.
@@ -156,6 +155,7 @@ int32_t __no_inline_not_in_flash_func(SetupPsram)(int psramCS)
     const int min_deselect = (18 * 1000000 + (clock_period_fs - 1)) / clock_period_fs - (divisor + 1) / 2;
 
     qmi_hw->m[1].timing = 1 << QMI_M1_TIMING_COOLDOWN_LSB |
+                          1 << QMI_M1_TIMING_SELECT_HOLD_LSB |
                           QMI_M1_TIMING_PAGEBREAK_VALUE_1024 << QMI_M1_TIMING_PAGEBREAK_LSB |
                           max_select << QMI_M1_TIMING_MAX_SELECT_LSB |
                           min_deselect << QMI_M1_TIMING_MIN_DESELECT_LSB |
@@ -214,5 +214,32 @@ int32_t __no_inline_not_in_flash_func(SetupPsram)(int psramCS)
         return 0;
     }
     return _psram_size;
+}
+
+void __no_inline_not_in_flash_func(UpdatePsramTiming)(void)
+{
+    const int max_psram_freq = 133000000;
+    const int clock_hz = clock_get_hz(clk_sys);
+    int divisor = (clock_hz + max_psram_freq - 1) / max_psram_freq;
+    if (divisor == 1 && clock_hz > 100000000)
+    {
+        divisor = 2;
+    }
+    int rxdelay = divisor;
+    if (clock_hz / divisor > 100000000)
+    {
+        rxdelay += 1;
+    }
+    const int clock_period_fs = 1000000000000000ll / clock_hz;
+    const int max_select = (125 * 1000000) / clock_period_fs;
+    const int min_deselect = (18 * 1000000 + (clock_period_fs - 1)) / clock_period_fs - (divisor + 1) / 2;
+
+    qmi_hw->m[1].timing = 1 << QMI_M1_TIMING_COOLDOWN_LSB |
+                          1 << QMI_M1_TIMING_SELECT_HOLD_LSB |
+                          QMI_M1_TIMING_PAGEBREAK_VALUE_1024 << QMI_M1_TIMING_PAGEBREAK_LSB |
+                          max_select << QMI_M1_TIMING_MAX_SELECT_LSB |
+                          min_deselect << QMI_M1_TIMING_MIN_DESELECT_LSB |
+                          rxdelay << QMI_M1_TIMING_RXDELAY_LSB |
+                          divisor << QMI_M1_TIMING_CLKDIV_LSB;
 }
 #endif // PICO_RP2350
