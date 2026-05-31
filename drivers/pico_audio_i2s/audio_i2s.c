@@ -271,6 +271,14 @@ int audio_i2s_get_freebuffer_size()
 	return (read_index - write_index - 1) & AUDIO_RING_MASK;
 }
 
+// Current fill level of the I2S ring in permille (0..1000), for audio-clock
+// frame pacing (lets the caller treat the I2S buffer like the HDMI ring).
+int audio_i2s_get_fill_permille()
+{
+	size_t used = (write_index - read_index) & AUDIO_RING_MASK;
+	return (int)(used * 1000u / I2S_AUDIO_RING_SIZE);
+}
+
 void audio_i2s_disable()
 {
 	printf("Disabling I2S audio and release resources\n");

@@ -78,6 +78,7 @@ void audio_i2s_out_32(uint32_t sample32);
 void audio_i2s_enqueue_sample(uint32_t sample32);
 enum headphone_toggle_t audio_i2s_poll_headphone_status();
 int audio_i2s_get_freebuffer_size();
+int audio_i2s_get_fill_permille();
 void audio_i2s_disable() ;
 bool audio_i2s_dacError();
 void audio_i2s_muteInternalSpeaker(bool mute);

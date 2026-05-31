@@ -45,6 +45,11 @@
 std::unique_ptr<dvi::DVI> dvi_;
 util::ExclusiveProc exclProc_;
 static volatile bool vsync = false;
+static void (*vsyncWaitTask)(void) = nullptr;
+// Returns the active audio output buffer's fill level in permille (0..1000).
+// When set, PaceFrames locks the frame rate to that buffer draining to ~half,
+// i.e. to the audio-consumption clock. nullptr → fall back to timer pacing.
+static int (*audioFillQuery)(void) = nullptr;
 #endif
 char ErrorMessage[ERRORMESSAGESIZE];
 bool scaleMode8_7_ = true;
@@ -176,8 +181,18 @@ namespace Frens
 
         return 1 << rxbuf[3];
     }
-
+#if !HSTX
     /// @brief Wait for vertical sync
+    void setVSyncWaitTask(void (*task)(void))
+    {
+        vsyncWaitTask = task;
+    }
+
+    void setAudioPaceQuery(int (*query)(void))
+    {
+        audioFillQuery = query;
+    }
+#endif
     void waitForVSync()
     {
 #if !HSTX
@@ -201,10 +216,52 @@ namespace Frens
 #if !HSTX
         if (Frens::isFrameBufferUsed())
         {
-            while (vsync == false)
+            // CD games prefetch a sector every frame, regardless of which
+            // pacing path runs below, so the CD audio ring never starves.
+            if (vsyncWaitTask)
+                vsyncWaitTask();
+
+            if (audioFillQuery)
             {
-                // busy wait
-                tight_loop_contents();
+                // Pace to the audio-consumption clock: wait until the active
+                // output buffer (HDMI ring or I2S ring — the caller's query
+                // abstracts which) drains back to ~half full. This locks the
+                // emulator to the exact 60.00fps audio rate so production
+                // matches consumption with no drift (a fixed 16667us timer is
+                // 59.998fps, which slowly drained the buffer and caused
+                // periodic refill-burst artifacts). The half-full buffer
+                // cushions brief sub-60fps dips; the >60fps catch-up refills it.
+                while (audioFillQuery() > 500)
+                {
+                    if (vsyncWaitTask)
+                        vsyncWaitTask();
+                    else
+                        tight_loop_contents();
+                }
+            }
+            else
+            {
+                // Menu / non-CD: slack-aware timer pacing (no continuous audio
+                // stream to lock onto). Resync on overrun so a slow frame can't
+                // harmonic-lock the loop to 30fps.
+                static absolute_time_t next_frame;
+                if (init)
+                    next_frame = make_timeout_time_us(16667); // 1/60s
+                if (time_reached(next_frame))
+                {
+                    next_frame = make_timeout_time_us(16667);
+                }
+                else
+                {
+                    while (!time_reached(next_frame))
+                    {
+                        if (vsyncWaitTask)
+                            vsyncWaitTask(); // keep prefetching CD audio
+                        else
+                            tight_loop_contents();
+                    }
+                    next_frame = delayed_by_us(next_frame, 16667);
+                }
             }
         }
 #else
