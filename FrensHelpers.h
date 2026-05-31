@@ -138,7 +138,7 @@ namespace Frens
 #endif
     bool isPsramEnabled();
     void *flashromtoPsram(char *selectdRom, bool swapbytes, uint32_t &crc, int crcOffset);
-    void PaceFrames60fps(bool init);
+    void PaceFrames60fps(bool init, bool usePicoDVIvsyncWait = false);
     // Optional task run repeatedly while PaceFrames60fps is waiting out slack
     // before the next frame (framebuffer DVI path only). Lets the otherwise
     // idle wait do useful work — e.g. prefetch CD audio sectors from SD — so it

@@ -50,6 +50,7 @@ static void (*vsyncWaitTask)(void) = nullptr;
 // When set, PaceFrames locks the frame rate to that buffer draining to ~half,
 // i.e. to the audio-consumption clock. nullptr → fall back to timer pacing.
 static int (*audioFillQuery)(void) = nullptr;
+static bool paceTimerInited = false;
 #endif
 char ErrorMessage[ERRORMESSAGESIZE];
 bool scaleMode8_7_ = true;
@@ -191,6 +192,7 @@ namespace Frens
     void setAudioPaceQuery(int (*query)(void))
     {
         audioFillQuery = query;
+        paceTimerInited = false;
     }
 #endif
     void waitForVSync()
@@ -211,7 +213,7 @@ namespace Frens
 #if 1
     /// @brief Poor way to pace frames to 60fps
     /// @param init
-    void PaceFrames60fps(bool init)
+    void PaceFrames60fps(bool init, bool usePicoDVIvsyncWait)
     {
 #if !HSTX
 #if USE_PCE_FRAMEBUFFER_PACING
@@ -220,6 +222,17 @@ namespace Frens
         // Caused some line artifacts in pico-infonesPlus
         if (Frens::isFrameBufferUsed())
         {
+            // must be set to true when called from menu
+            // otherwise sreensaver will run too fast.
+            if (usePicoDVIvsyncWait)
+            {
+                while (vsync == false)
+                {
+                    // busy wait
+                    tight_loop_contents();
+                }
+                return;
+            }
             // CD games prefetch a sector every frame, regardless of which
             // pacing path runs below, so the CD audio ring never starves.
             if (vsyncWaitTask)
@@ -249,11 +262,10 @@ namespace Frens
                 // stream to lock onto). Resync on overrun so a slow frame can't
                 // harmonic-lock the loop to 30fps.
                 static absolute_time_t next_frame;
-                static bool timer_inited = false;
-                if (init || !timer_inited)
+                if (init || !paceTimerInited)
                 {
                     next_frame = make_timeout_time_us(16667); // 1/60s
-                    timer_inited = true;
+                    paceTimerInited = true;
                 }
                 if (time_reached(next_frame))
                 {
