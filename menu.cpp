@@ -222,7 +222,7 @@ static bool isArtWorkEnabled()
 int Menu_LoadFrame()
 {
     //Frens::waitForVSync();
-    Frens::PaceFrames60fps(false);
+    Frens::PaceFrames60fps(false, true);
 #if NES_PIN_CLK != -1
     nespad_read_start();
 #endif
@@ -2193,7 +2193,7 @@ bool showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
         dvi_->getBlankSettings().bottom = marginbottom;
     }
 #endif
-    Frens::PaceFrames60fps(true);
+    Frens::PaceFrames60fps(true, true);
     //Frens::waitForVSync();
     printf("Exiting save state menu.\n");
     Frens::f_free(screenBuffer);
@@ -3205,7 +3205,7 @@ int showSettingsMenu(bool calledFromGame)
         // Speaker can be muted/unmuted from settings menu
         //EXT_AUDIO_MUTE_INTERNAL_SPEAKER(settings.flags.fruitJamEnableInternalSpeaker == 0);
         EXT_AUDIO_SETVOLUME(settings.fruitjamVolumeLevel);
-        Frens::PaceFrames60fps(true);
+        Frens::PaceFrames60fps(true, true);
         //Frens::waitForVSync();
     }
 #if USE_I2S_AUDIO == PICO_AUDIO_I2S_DRIVER_TLV320
@@ -3250,7 +3250,7 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
 #endif
     scaleMode8_7_ = Frens::applyScreenMode(ScreenMode::NOSCANLINE_1_1);
     abSwapped = 1; // Swap A and B buttons, so menu is consistent across different emulators
-    Frens::PaceFrames60fps(true);
+    Frens::PaceFrames60fps(true, true);
     //Frens::waitForVSync();
     //
     menutitle = (char *)title;
@@ -3822,6 +3822,6 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
         // Never return
     }
     Frens::restoreScanlines();
-    Frens::PaceFrames60fps(true); // reset frame pacing
+    Frens::PaceFrames60fps(true, true); // reset frame pacing
     //Frens::waitForVSync();
 }
