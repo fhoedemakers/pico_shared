@@ -214,6 +214,10 @@ namespace Frens
     void PaceFrames60fps(bool init)
     {
 #if !HSTX
+#if USE_PCE_FRAMEBUFFER_PACING
+        // Buffer pacing for pico-pcePlus
+        // Not used in other emulators for now.
+        // Caused some line artifacts in pico-infonesPlus
         if (Frens::isFrameBufferUsed())
         {
             // CD games prefetch a sector every frame, regardless of which
@@ -265,30 +269,17 @@ namespace Frens
             }
         }
 #else
-        //static int resync_count = 0;
-        hstx_paceFrame(init);
-        // int current_resync_count = get_video_output_resync_count();
-        // if (current_resync_count != resync_count)
-        // {
-        //     printf("Video output resync count: %d\n", current_resync_count);
-        //     resync_count = current_resync_count;
-        // }
-#if 0
-        static absolute_time_t next_frame_time = {0};
-        if (init)
+        if (Frens::isFrameBufferUsed())
         {
-            next_frame_time = make_timeout_time_us(0); // Reset frame time to 0
+            while (vsync == false)
+            {
+                // busy wait
+                tight_loop_contents();
+            }
         }
-        // Adjust to about 60fps
-        if (to_us_since_boot(next_frame_time) == 0)
-        {
-            next_frame_time = make_timeout_time_us(0);
-        }
-        // Pace to 60fps
-        sleep_until(next_frame_time);
-        next_frame_time = delayed_by_us(next_frame_time, 16666); // 1/60s = 16666us
-
 #endif
+#else
+        hstx_paceFrame(init);
 #endif
     }
 #endif
