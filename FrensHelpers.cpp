@@ -249,8 +249,12 @@ namespace Frens
                 // stream to lock onto). Resync on overrun so a slow frame can't
                 // harmonic-lock the loop to 30fps.
                 static absolute_time_t next_frame;
-                if (init)
+                static bool timer_inited = false;
+                if (init || !timer_inited)
+                {
                     next_frame = make_timeout_time_us(16667); // 1/60s
+                    timer_inited = true;
+                }
                 if (time_reached(next_frame))
                 {
                     next_frame = make_timeout_time_us(16667);
