@@ -182,6 +182,45 @@ namespace Frens
 			}
 		}
 		f_closedir(pDir);
+
+		// PCE CD-ROM: a .cue in this folder means it's a CD game folder; any
+		// .pce file here is presumed a per-game BIOS (loaded by LoadDisc as a
+		// per-game override over /bios/), not a HuCard. Hide it from the menu
+		// so it can't be picked accidentally. No-op for folders without a
+		// .cue (other emulators / HuCard-only folders) so it's safe to apply
+		// universally.
+		{
+			bool hasCue = false;
+			for (size_t i = 0; i < numberOfEntries; i++) {
+				if (entries[i].IsDirectory) continue;
+				char ext[10];
+				Frens::getextensionfromfilename(entries[i].Path, ext, sizeof(ext));
+				if (strcasecmp(ext, ".cue") == 0) { hasCue = true; break; }
+			}
+			if (hasCue) {
+				size_t write = 0;
+				size_t hidden = 0;
+				for (size_t read = 0; read < numberOfEntries; read++) {
+					if (!entries[read].IsDirectory) {
+						char ext[10];
+						Frens::getextensionfromfilename(entries[read].Path, ext, sizeof(ext));
+						if (strcasecmp(ext, ".pce") == 0) {
+							hidden++;
+							continue;
+						}
+					}
+					if (write != read) entries[write] = entries[read];
+					write++;
+				}
+				numberOfEntries = write;
+				if (hidden > 0) {
+					printf("RomLister: hiding %u .pce file(s) in CD folder %s "
+					       "(presumed BIOS)\n",
+					       (unsigned)hidden, directoryname);
+				}
+			}
+		}
+
 		// Sort: directories first (case-insensitive), then files (case-insensitive)
 		if (numberOfEntries > 1)
 		{
