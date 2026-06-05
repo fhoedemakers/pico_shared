@@ -1570,18 +1570,34 @@ namespace Frens
         sleep_ms(100);
         set_sys_clock_khz(cpuFreqKHz, true);
         sleep_ms(100);
-        // Reconfigure HSTX clock to 126 Mhz, so display can run at 60Hz.
+        // Reconfigure HSTX clock to 126 MHz, so display can run at 60Hz.
+        //
+        // SGX-at-378 MHz path only: *force* the PLL_USB-sourced HSTX route
+        // even for clk_sys values that are integer multiples of 126. Reason:
+        // deriving clk_hstx from clk_sys propagates PLL_SYS jitter into the
+        // TMDS bit clock at 378 MHz, producing dots / short dotted lines on
+        // strict HDMI receivers (eye-pattern closure). PLL_USB at a fixed
+        // 126 MHz keeps the TMDS clock decoupled from CPU clock.
+        //
+        // Only safe to reconfigure PLL_USB when the build uses PIO-USB for
+        // gamepads (CFG_TUH_RPI_PIO_USB=1). On TinyUSB-native-USB builds
+        // PLL_USB MUST stay at 48 MHz for USB hardware, so we keep the
+        // original clk_sys-derived HSTX path. Those builds should either
+        // stay at 252 MHz for SGX (no artifacts) or accept the dots at
+        // 378 MHz — the chip has no third clean PLL to use for HSTX.
         bool hstx_ok = true;
-        if ((cpuFreqKHz / 1000) % 126 != 0)
+#if SGX && CFG_TUH_RPI_PIO_USB
+        const bool force_pll_usb_hstx = true;
+#else
+        const bool force_pll_usb_hstx = false;
+#endif
+        if (force_pll_usb_hstx || ((cpuFreqKHz / 1000) % 126 != 0))
         {
-            // (Re)configure PLL_USB for 126 MHz HSTX source, so that we can get a 60Hz display output.
-            // This will break tinyusb, but PIO USB will still work.
-            // Used by Pico-GenesisPlus when set at 340Mhz.
+            // (Re)configure PLL_USB for 126 MHz HSTX source.
             pll_deinit(pll_usb);
             pll_init(pll_usb, 1, 756000000, 6, 1); // 756 / (6*1) = 126 MHz
 
             const uint32_t target_hstx_hz = 126000000u;
-            uint32_t chosen_hstx_hz = target_hstx_hz;
             hstx_ok = clock_configure(
                 clk_hstx,
                 0,
@@ -1589,12 +1605,17 @@ namespace Frens
                 target_hstx_hz,
                 target_hstx_hz);
 
-            // configure clk_peri to be same as clk_sys. This makes stdio over UART work correctly.
+            // Keep clk_peri sourced from PLL_SYS at sys_hz — same as the
+            // previous non-SGX path that the user has confirmed boots at
+            // 378 MHz. Re-routing clk_peri during clock init (which the
+            // earlier revision did) caused a boot loop. Peripheral drivers
+            // read clock_get_hz(clk_peri) for their own dividers, so they
+            // adapt to whatever clk_peri ends up at.
             clock_configure(clk_peri,
-                            0, // no GLMUX
+                            0,
                             CLOCKS_CLK_PERI_CTRL_AUXSRC_VALUE_CLKSRC_PLL_SYS,
-                            cpuFreqKHz * 1000,  // input freq (PLL SYS)
-                            cpuFreqKHz * 1000); // target clk_peri
+                            cpuFreqKHz * 1000,
+                            cpuFreqKHz * 1000);
         }
         else
         {

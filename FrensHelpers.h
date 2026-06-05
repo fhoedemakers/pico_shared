@@ -75,6 +75,9 @@ enum class ScanlineType : uint8_t
 #ifndef RETROJAM
 #define RETROJAM 0
 #endif
+#ifndef SGX
+#define SGX 0
+#endif
 
 #ifndef ENABLEDVI
 #define ENABLEDVI 0 

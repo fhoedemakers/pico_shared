@@ -3320,6 +3320,43 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
             isWav = false;
         }
 #endif
+// SGX auto-clock-switch is only safe on builds using PIO-USB. On
+// TinyUSB-native-USB builds PLL_USB must stay at 48 MHz, so we can't decouple
+// clk_hstx from clk_sys at 378 MHz — running there would produce visible TMDS
+// artifacts. Skip the auto-switch in that case; the .sgx ROM still loads and
+// runs at the build's default 252 MHz (slower on the heavier titles but clean).
+#if (HSTX && SGX && CFG_TUH_RPI_PIO_USB)
+        if (selectedRomOrFolder && entries[index].IsDirectory == false && oldIndex != index)
+        {        
+            oldIndex = index;
+            if ( strncasecmp(fileExt, ".sgx", 4) == 0)
+            {
+                if (clockFreq != FLASHPARAM_MAX_FREQ_KHZ)
+                {
+                    char message[40];
+                    snprintf(message, sizeof(message), "Setting clock to  %dMHZ for SGX", FLASHPARAM_MAX_FREQ_KHZ /1000);
+                    showLoadingScreen(message, 60);
+                    FrensSettings::savesettings(); // save current settings before changing clock
+                    if (Frens::writeFlashParamsToFlash(FLASHPARAM_MAX_FREQ_KHZ, FLASHPARAM_MAX_VOLTAGE) == false)
+                    {
+                        printf("Failed to write flash params for high clock\n");
+                    }
+                }
+            } else {
+                if (clockFreq != FLASHPARAM_MIN_FREQ_KHZ)
+                {
+                    char message[40];
+                    snprintf(message, sizeof(message), "Setting clock to  %dMHZ", FLASHPARAM_MIN_FREQ_KHZ /1000);
+                    showLoadingScreen(message, 60);
+                    FrensSettings::savesettings(); // save current settings before changing clock
+                    if (Frens::writeFlashParamsToFlash(FLASHPARAM_MIN_FREQ_KHZ, FLASHPARAM_MIN_VOLTAGE) == false)
+                    {
+                        printf("Failed to write flash params for low clock\n");
+                    }
+                }
+            }
+        }
+#endif
 #if RETROJAM
         // retroJam: adjust clock speed and crc offset based on selected ROM type
         if (selectedRomOrFolder && entries[index].IsDirectory == false && oldIndex != index)
