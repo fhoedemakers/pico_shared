@@ -1138,6 +1138,7 @@ namespace Frens
     }
 
     static WORD *buffer;
+
     /// @brief Render function in core1 to render the framebuffers
     /// @param
     /// @return
@@ -1465,18 +1466,20 @@ namespace Frens
         tusb_init();
 #endif
 #if !HSTX
+        // Add a small stack for core1
+        static uint32_t core1_stack[512 / sizeof(uint32_t)];
 #if FRAMEBUFFERISPOSSIBLE
+      
         if (usingFramebuffer)
-        {
-
-            multicore_launch_core1(coreFB_main);
+        {   
+            multicore_launch_core1_with_stack(coreFB_main,  core1_stack, sizeof(core1_stack));
         }
         else
         {
-            multicore_launch_core1(core1_main);
+            multicore_launch_core1_with_stack(core1_main,  core1_stack, sizeof(core1_stack));
         }
 #else
-        multicore_launch_core1(core1_main);
+        multicore_launch_core1_with_stack(core1_main,  core1_stack, sizeof(core1_stack));
 #endif
 #endif // DVI
         initVintageControllers(CPUFreqKHz);
