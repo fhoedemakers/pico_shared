@@ -1864,4 +1864,14 @@ extern "C"
     {
         Frens::f_free(ptr);
     }
+
+    void *frens_f_realloc(void *ptr, size_t newSize)
+    {
+        // Frens::f_realloc returns nullptr / panics when ptr is null, so handle
+        // the malloc/free degenerate cases here for C callers that expect
+        // standard realloc semantics.
+        if (!ptr) return Frens::f_malloc(newSize);
+        if (newSize == 0) { Frens::f_free(ptr); return nullptr; }
+        return Frens::f_realloc(ptr, newSize);
+    }
 }
