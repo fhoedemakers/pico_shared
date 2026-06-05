@@ -134,7 +134,8 @@ namespace Frens
 					strcasecmp(pFile->fname, "SAVES") == 0 ||
 					strcasecmp(pFile->fname, "EDFC") == 0 ||
 					strcasecmp(pFile->fname, "Metadata") == 0 ||
-					strcasecmp(pFile->fname, "SAVESTATES") == 0)
+					strcasecmp(pFile->fname, "SAVESTATES") == 0 ||
+					strcasecmp(pFile->fname, "BIOS") == 0)
 				{
 					continue;
 				}
