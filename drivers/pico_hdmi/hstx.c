@@ -264,15 +264,50 @@ void __not_in_flash_func(hstx_push_audio_sample)(const int left, const int right
     }
 }
 static uint32_t core1_stack[1024] __attribute__((aligned(8)));
+static bool s_hstx_dvi_mode = false;
+
+void *hstx_default_core1_stack(size_t *out_bytes)
+{
+    if (out_bytes) *out_bytes = sizeof(core1_stack);
+    return core1_stack;
+}
+
 void hstx_init(bool dviOnly)
 {
+    s_hstx_dvi_mode = dviOnly;
     video_output_set_dvi_mode(dviOnly);
     hstx_di_queue_init();
-    video_output_set_vsync_callback(hstx_vsync_callbackfunc);   
+    video_output_set_vsync_callback(hstx_vsync_callbackfunc);
     video_output_init(640, 480);
     pico_hdmi_set_audio_sample_rate(44100);
     video_output_set_scanline_callback(scanline_callbackfunc);
     multicore_launch_core1_with_stack(video_output_core1_run, core1_stack, sizeof(core1_stack));
     printf("Pico HDMI initialized.\n");
+}
+
+// Tear HSTX + core1 down and relaunch core1 with a different stack buffer.
+// Used by pico-pcePlus to grow core1's stack to ~8 KB only when a CHD CD
+// game is mounted — libchdr's chd_read uses ~6-10 KB and overflows the
+// default 4 KB into adjacent SRAM otherwise. The caller owns new_stack
+// (must be 8-byte aligned) and is responsible for freeing it once hstx is
+// restarted onto a different stack again. Passing the pointer returned by
+// hstx_default_core1_stack() restores the boot-time stack.
+void hstx_restart_core1(uint32_t *new_stack, size_t new_stack_bytes)
+{
+    video_output_stop();
+    multicore_reset_core1();
+
+    // Repeat the init steps that video_output_stop undid. The scanline /
+    // vsync callbacks set via the setters are not cleared by stop, but
+    // hstx_di_queue / video_output_init reprogram the parts that were
+    // physically torn down.
+    video_output_set_dvi_mode(s_hstx_dvi_mode);
+    hstx_di_queue_init();
+    video_output_set_vsync_callback(hstx_vsync_callbackfunc);
+    video_output_init(640, 480);
+    pico_hdmi_set_audio_sample_rate(44100);
+    video_output_set_scanline_callback(scanline_callbackfunc);
+
+    multicore_launch_core1_with_stack(video_output_core1_run, new_stack, new_stack_bytes);
 }
 #endif

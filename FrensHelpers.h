@@ -78,7 +78,9 @@ enum class ScanlineType : uint8_t
 #ifndef SGX
 #define SGX 0
 #endif
-
+#ifndef F_MALLOC_DEBUG
+#define F_MALLOC_DEBUG 0
+#endif
 #ifndef ENABLEDVI
 #define ENABLEDVI 0 
 #endif

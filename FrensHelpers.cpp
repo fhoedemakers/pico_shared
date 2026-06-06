@@ -757,13 +757,17 @@ namespace Frens
             {
                 panic("[f_malloc] Cannot allocate %zu bytes in PSRAM\n", size);
             }
+#if F_MALLOC_DEBUG
             printf("[f_malloc] Allocated %zu bytes in PSRAM at %p\n", size, pMem);
+#endif
             return pMem;
         }
 #endif
         // PSRAM not enabled, use malloc
         void *pMem = malloc(size); // panics if unavailable
+#if F_MALLOC_DEBUG
         printf("[f_malloc] Allocated %zu bytes in RAM at %p\n", size, pMem);
+#endif
         return pMem;
     }
 
@@ -780,7 +784,9 @@ namespace Frens
         {
             PicoPlusPsram &psram_ = PicoPlusPsram::getInstance();
             size_t uFreeing = psram_.GetSize(pMem);
+#if F_MALLOC_DEBUG
             printf("[f_malloc] Freeing %zu bytes from PSRAM at %p\n", uFreeing, pMem);
+#endif
             psram_.Free(pMem);
             return;
         }
@@ -788,7 +794,9 @@ namespace Frens
         // PSRAM not enabled, use free
         if (pMem)
         {
+#if F_MALLOC_DEBUG
             printf("[f_malloc] Freeing memory at %p\n", pMem);
+#endif
             free(pMem);
         }
     }
@@ -809,13 +817,17 @@ namespace Frens
             {
                 panic("Cannot allocate %zu bytes in PSRAM\n", newSize);
             }
+#if F_MALLOC_DEBUG
             printf("[f_malloc] Re-Allocated %zu bytes in PSRAM at %p\n", newSize, newMem);
+#endif
             return newMem;
         }
 #endif
         // PSRAM not enabled, use realloc
         newMem = realloc(pMem, newSize);
+#if F_MALLOC_DEBUG
         printf("[f_malloc] Re-Allocated memory at %p to %zu bytes\n", pMem, newSize);
+#endif
         return newMem;
     }
 
@@ -859,6 +871,36 @@ namespace Frens
             return nullptr;
         }
         FSIZE_t filesize = f_size(&fil);
+
+        // Large-disc-image fast path: when the file is bigger than what fits
+        // in available PSRAM (the .chd images for CD games can be hundreds
+        // of MB), we can't preload it. Instead read the first 4 KB into a
+        // stack buffer, CRC that as a stable savestate-folder key, and
+        // return without allocating. The caller (main.cpp) detects this
+        // via ROM_FILE_ADDR == 0 and routes straight to the disc-image
+        // opener (LoadDisc) which streams the file from SD.
+        {
+            uint availMem = Frens::GetAvailableMemory();
+            // Leave ~512 KB margin for libchdr / FS buffers / lwmem overhead.
+            const FSIZE_t margin = 512 * 1024;
+            if (availMem > margin && filesize > (availMem - margin))
+            {
+                uint8_t head[4096];
+                UINT br = 0;
+                f_read(&fil, head, sizeof(head), &br);
+                f_close(&fil);
+                if (br > 0)
+                {
+                    crc = compute_crc32_buffer(head, br, 0);
+                    crcOfRom = crc;
+                }
+                printf("Skipping PSRAM preload (file %llu bytes > avail %u): "
+                       "CRC of first %u bytes = 0x%08X\n",
+                       (unsigned long long)filesize, availMem, (unsigned)br, crc);
+                return nullptr;
+            }
+        }
+
         void *pMem = Frens::f_malloc(filesize);
         if (!pMem)
         {

@@ -532,6 +532,45 @@ void video_output_init(uint16_t width, uint16_t height)
     memcpy(vblank_di_pong, vblank_di_ping, sizeof(vblank_di_ping));
 }
 
+// Tear-down counterpart to video_output_init / video_output_core1_run.
+// Disables and releases everything those two install so the same hardware
+// can be brought back up by a fresh init pair. Required when the caller
+// wants to reset core1 with a different stack at runtime — the SDK's
+// dma_channel_claim and irq_set_exclusive_handler both panic on the second
+// install if the previous claim / handler wasn't released.
+//
+// Call ordering: caller must already have stopped feeding the audio path
+// (background_task = NULL) and be on core0 — core1 will be reset by the
+// caller after this returns.
+void video_output_stop(void)
+{
+    // Quiet the IRQ first so the DMA abort that follows can't trigger a
+    // half-state in dma_irq_handler.
+    irq_set_enabled(DMA_IRQ_0, false);
+
+    // Disable the DMA channels' EN bit before aborting (matches the safe
+    // pattern used by hstx_resync above).
+    hw_clear_bits(&dma_hw->ch[DMACH_PING].al1_ctrl, DMA_CH0_CTRL_TRIG_EN_BITS);
+    hw_clear_bits(&dma_hw->ch[DMACH_PONG].al1_ctrl, DMA_CH0_CTRL_TRIG_EN_BITS);
+    dma_channel_abort(DMACH_PING);
+    dma_channel_abort(DMACH_PONG);
+    dma_hw->ints0 = (1U << DMACH_PING) | (1U << DMACH_PONG);
+    dma_hw->inte0 &= ~((1U << DMACH_PING) | (1U << DMACH_PONG));
+
+    // Park HSTX. video_output_core1_run will re-program CSR on the re-launch.
+    hstx_ctrl_hw->csr &= ~HSTX_CTRL_CSR_EN_BITS;
+
+    // Hand the channels and IRQ back to the SDK so the next init can
+    // re-claim them without panicking.
+    irq_remove_handler(DMA_IRQ_0, dma_irq_handler);
+    dma_channel_unclaim(DMACH_PING);
+    dma_channel_unclaim(DMACH_PONG);
+
+    // Reset latched state in our own driver layer that the next init may
+    // consult on the way back up.
+    resync_requested = false;
+}
+
 void video_output_set_background_task(video_output_task_fn task)
 {
     background_task = task;

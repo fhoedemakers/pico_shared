@@ -2,6 +2,7 @@
 #if PICO_RP2350
 #include <stdbool.h>
 #include <stdint.h>
+#include <stddef.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -26,6 +27,17 @@ uint16_t *hstx_getlineFromFramebuffer(int scanline);
 void hstx_init(bool dviOnly);
 void video_output_core1_run(void);
 void hstx_push_audio_sample(const int left, const int right);
+
+// Tear HSTX + core1 down and re-launch core1 with the supplied stack
+// buffer. Used by pico-pcePlus to grow core1's stack at runtime when a
+// CHD CD game is mounted (libchdr decompression needs ~8 KB). The caller
+// must keep `new_stack` allocated until the next restart.
+void hstx_restart_core1(uint32_t *new_stack, size_t new_stack_bytes);
+
+// Return the boot-time static core1 stack pointer + size (in bytes via
+// *out_bytes). Pass these back to hstx_restart_core1 to restore the
+// default stack after the CHD game exits.
+void *hstx_default_core1_stack(size_t *out_bytes);
 #ifdef __cplusplus
 }
 #endif

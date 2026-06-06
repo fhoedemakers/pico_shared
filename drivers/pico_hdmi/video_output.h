@@ -91,6 +91,14 @@ typedef void (*video_output_scanline_cb_t)(uint32_t v_scanline, uint32_t active_
 void video_output_init(uint16_t width, uint16_t height);
 
 /**
+ * Tear down the HSTX video output. Disables and unclaims the DMA channels
+ * + IRQ that video_output_init / video_output_core1_run installed so a
+ * subsequent re-init can reclaim them. Must be called from core0 only,
+ * after core1's loop has been stopped or is about to be reset.
+ */
+void video_output_stop(void);
+
+/**
  * Register the scanline callback.
  */
 void video_output_set_scanline_callback(video_output_scanline_cb_t cb);
