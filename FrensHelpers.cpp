@@ -885,9 +885,28 @@ namespace Frens
             const FSIZE_t margin = 512 * 1024;
             if (availMem > margin && filesize > (availMem - margin))
             {
-                uint8_t head[4096];
+                // 4 KB scratch lives in PSRAM via f_malloc + f_free,
+                // NOT on the stack. The menu → loadRomInPsRam →
+                // flashromtoPsram → f_read → disk_read → rcvr_datablock
+                // → rcvr_spi_multi call chain already runs close to
+                // PICO_STACK_SIZE (3 KB); a 4 KB local array overflowed
+                // into adjacent .bss / framebuffer state. Observed
+                // symptom: PicoDVI core1 hardfault in the TMDS encoder
+                // while core0 was deep in SD I/O on game select. PSRAM
+                // is the right place — it's a one-shot read+CRC and the
+                // buffer is freed before we return.
+                uint8_t *head = (uint8_t *)Frens::f_malloc(4096);
+                if (!head)
+                {
+                    // PSRAM exhausted (extreme; the size guard above
+                    // already implies we're tight). Bail and let the
+                    // caller report no rom loaded.
+                    f_close(&fil);
+                    selectdRom[0] = 0;
+                    return nullptr;
+                }
                 UINT br = 0;
-                f_read(&fil, head, sizeof(head), &br);
+                f_read(&fil, head, 4096, &br);
                 f_close(&fil);
                 if (br > 0)
                 {
@@ -897,6 +916,7 @@ namespace Frens
                 printf("Skipping PSRAM preload (file %llu bytes > avail %u): "
                        "CRC of first %u bytes = 0x%08X\n",
                        (unsigned long long)filesize, availMem, (unsigned)br, crc);
+                Frens::f_free(head);
                 return nullptr;
             }
         }
