@@ -818,6 +818,12 @@ extern "C"
                 case HID_USAGE_DESKTOP_KEYBOARD:
                 {
                     auto r = reinterpret_cast<const hid_keyboard_report_t *>(report);
+                    // Expose the raw HID report for emulators that emulate a
+                    // real keyboard (e.g. O2 / G7400). The gamepad mapping
+                    // below stays in place for joystick-style use.
+                    auto &kb = const_cast<io::KeyboardState &>(io::getCurrentKeyboardState());
+                    kb.modifier = r->modifier;
+                    memcpy(kb.keycode, r->keycode, sizeof(kb.keycode));
                     auto &gp = io::getCurrentGamePadState(player);
                     gp.GamePadName = "Keyboard";
                     gp.GamePadShortName = "KB";

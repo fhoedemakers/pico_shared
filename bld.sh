@@ -13,7 +13,7 @@ APP=${PROJECT}
 function usage() {
 	echo "Build script for the ${PROJECT} project"
 	echo  ""
-	echo "Usage: $0 [-d] [-2 | -r] [-w] [-u] [-m] [-D] [-t path to toolchain] [ -p nprocessors] [-c <hwconfig>]"
+	echo "Usage: $0 [-d] [-2 | -r] [-w] [-u] [-m] [-D] [-e] [-t path to toolchain] [ -p nprocessors] [-c <hwconfig>]"
 	echo "Options:"
 	echo "  -d: build in DEBUG configuration"
 	echo "  -2: build for Pico 2 board (RP2350)"
@@ -41,6 +41,7 @@ function usage() {
 	echo "     13: Murmulator M2 (rp2350 only)"
 	echo "     14: Adafruit Feather RP2350 with TLV320DAC3100 I2S DAC and sdcard breakout board and PIO USB."
 	echo "  -m: Run cmake only, do not build the project"
+	echo "  -e: use the pico-extras based I2S audio driver (default: legacy custom driver)"
 	echo "  -h: display this help"
 	echo ""
 	echo "To install the RISC-V toolchain:"
@@ -87,7 +88,8 @@ USEPIOUSB=0
 CMAKEONLY=0
 USESIMPLEFILENAMES=0
 FORCEDVI=0
-while getopts "muwhd2rc:t:p:iD" opt; do
+USEEXTRASI2S=0
+while getopts "muwhd2rc:t:p:iDe" opt; do
   case $opt in
     p)
 	  BUILDPROC=$OPTARG
@@ -139,6 +141,8 @@ while getopts "muwhd2rc:t:p:iD" opt; do
 	w) USEPICOW=1 
 	  ;;
 	D) FORCEDVI=1
+	  ;;
+	e) USEEXTRASI2S=1
 	  ;;
     \?)
       #echo "Invalid option: -$OPTARG" >&2
@@ -329,25 +333,34 @@ fi
 PIOUSB=
 if [ $USEPIOUSB -eq 1 ] ; then
 	PIOUSB="_piousb"
-fi	
+fi
+PEI2S=
+if [ $USEEXTRASI2S -eq 1 ] ; then
+	PEI2S="_pe"
+fi
 # Only when SIMPLEFILENAMES=0
 if [ $USESIMPLEFILENAMES -eq 0 ] ; then
 	if [ "$PICO_PLATFORM" = "rp2350-riscv" ] ; then
-		UF2="${UF2}_${PICO_BOARD}_riscv${PIOUSB}"
+		UF2="${UF2}_${PICO_BOARD}_riscv${PIOUSB}${PEI2S}"
 	else
-		UF2="${UF2}_${PICO_BOARD}_arm${PIOUSB}"
+		UF2="${UF2}_${PICO_BOARD}_arm${PIOUSB}${PEI2S}"
 	fi
 else
 	if [ "$PICO_PLATFORM" = "rp2350-riscv" ] ; then
-		UF2="${UF2}_riscv${PIOUSB}"
+		UF2="${UF2}_riscv${PIOUSB}${PEI2S}"
 	else
-		UF2="${UF2}_arm${PIOUSB}"
+		UF2="${UF2}_arm${PIOUSB}${PEI2S}"
 	fi
 fi
 UF2="${APP}_${UF2}.uf2"
 echo "Building $PROJECT"
 echo "Using Pico SDK version: $SDKVERSION"
 echo "Building for $PICO_BOARD, platform $PICO_PLATFORM with $BUILD configuration and HWCONFIG=$HWCONFIG"
+if [ $USEEXTRASI2S -eq 1 ] ; then
+	echo "Using pico-extras based I2S audio driver"
+else
+	echo "Using legacy custom I2S audio driver"
+fi
 [ ! -z "$TOOLCHAIN_PATH" ]  && echo "Toolchain path: $TOOLCHAIN_PATH"
 echo "UF2 file: $UF2"
 
@@ -363,9 +376,9 @@ if [ $FORCEDVI -eq 1 ] ; then
 	FORCEDVIOPT="-DFORCE_DVI=1"
 fi
 if [ -z "$TOOLCHAIN_PATH" ] ; then
-	cmake -DCMAKE_BUILD_TYPE=$BUILD -DPICO_BOARD=$PICO_BOARD -DHW_CONFIG=$HWCONFIG -DPICO_PLATFORM=$PICO_PLATFORM -DENABLE_PIO_USB=$USEPIOUSB $FORCEDVIOPT .. || exit 1
+	cmake -DCMAKE_BUILD_TYPE=$BUILD -DPICO_BOARD=$PICO_BOARD -DHW_CONFIG=$HWCONFIG -DPICO_PLATFORM=$PICO_PLATFORM -DENABLE_PIO_USB=$USEPIOUSB -DUSE_PICO_EXTRAS_I2S=$USEEXTRASI2S $FORCEDVIOPT .. || exit 1
 else
-	cmake -DCMAKE_BUILD_TYPE=$BUILD -DPICO_BOARD=$PICO_BOARD -DHW_CONFIG=$HWCONFIG -DPICO_PLATFORM=$PICO_PLATFORM -DENABLE_PIO_USB=$USEPIOUSB -DPICO_TOOLCHAIN_PATH=$TOOLCHAIN_PATH $FORCEDVIOPT .. ||  exit 1
+	cmake -DCMAKE_BUILD_TYPE=$BUILD -DPICO_BOARD=$PICO_BOARD -DHW_CONFIG=$HWCONFIG -DPICO_PLATFORM=$PICO_PLATFORM -DENABLE_PIO_USB=$USEPIOUSB -DUSE_PICO_EXTRAS_I2S=$USEEXTRASI2S -DPICO_TOOLCHAIN_PATH=$TOOLCHAIN_PATH $FORCEDVIOPT .. ||  exit 1
 fi
 if [ $CMAKEONLY -eq 1 ] ; then
 	echo "CMake configuration done, exiting as requested."

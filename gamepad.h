@@ -58,6 +58,18 @@ namespace io
     };
 
     GamePadState &getCurrentGamePadState(int i);
+
+    // Raw HID keyboard state. Populated by hid_app.cpp from the most recent
+    // boot-protocol keyboard report. modifier matches HID_KEYBOARD_MODIFIER_*
+    // and keycode[] holds the up to 6 currently-pressed HID usage codes
+    // (HID_KEY_*). Emulators that emulate a real keyboard (e.g. O2 / G7400)
+    // should read this in addition to the GamePadState mapping.
+    struct KeyboardState
+    {
+        uint8_t modifier;
+        uint8_t keycode[6];
+    };
+    const KeyboardState &getCurrentKeyboardState();
 }
 
 #endif /* _510036F3_0134_6411_4376_A918ACA8AC4C */

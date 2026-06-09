@@ -75,7 +75,12 @@ enum class ScanlineType : uint8_t
 #ifndef RETROJAM
 #define RETROJAM 0
 #endif
-
+#ifndef SGX
+#define SGX 0
+#endif
+#ifndef F_MALLOC_DEBUG
+#define F_MALLOC_DEBUG 0
+#endif
 #ifndef ENABLEDVI
 #define ENABLEDVI 0 
 #endif
@@ -138,7 +143,18 @@ namespace Frens
 #endif
     bool isPsramEnabled();
     void *flashromtoPsram(char *selectdRom, bool swapbytes, uint32_t &crc, int crcOffset);
-    void PaceFrames60fps(bool init);
+    void PaceFrames60fps(bool init, bool usePicoDVIvsyncWait = false);
+    // Optional task run repeatedly while PaceFrames60fps is waiting out slack
+    // before the next frame (framebuffer DVI path only). Lets the otherwise
+    // idle wait do useful work — e.g. prefetch CD audio sectors from SD — so it
+    // overlaps the wait instead of adding to frame time. Pass nullptr to clear.
+    void setVSyncWaitTask(void (*task)(void));
+    // Audio-clock pacing (framebuffer DVI path). The query returns the active
+    // audio output buffer's fill in permille (0..1000); PaceFrames waits until
+    // it drains below ~half, locking the frame rate to audio consumption. This
+    // is output-agnostic — the caller's query picks HDMI ring vs I2S ring.
+    // Pass nullptr to fall back to plain timer pacing.
+    void setAudioPaceQuery(int (*query)(void));
     void toggleScanLines();
     void restoreScanlines();
     void *f_malloc(size_t size);

@@ -45,6 +45,12 @@
 std::unique_ptr<dvi::DVI> dvi_;
 util::ExclusiveProc exclProc_;
 static volatile bool vsync = false;
+static void (*vsyncWaitTask)(void) = nullptr;
+// Returns the active audio output buffer's fill level in permille (0..1000).
+// When set, PaceFrames locks the frame rate to that buffer draining to ~half,
+// i.e. to the audio-consumption clock. nullptr → fall back to timer pacing.
+static int (*audioFillQuery)(void) = nullptr;
+static bool paceTimerInited = false;
 #endif
 char ErrorMessage[ERRORMESSAGESIZE];
 bool scaleMode8_7_ = true;
@@ -176,8 +182,19 @@ namespace Frens
 
         return 1 << rxbuf[3];
     }
-
+#if !HSTX
     /// @brief Wait for vertical sync
+    void setVSyncWaitTask(void (*task)(void))
+    {
+        vsyncWaitTask = task;
+    }
+
+    void setAudioPaceQuery(int (*query)(void))
+    {
+        audioFillQuery = query;
+        paceTimerInited = false;
+    }
+#endif
     void waitForVSync()
     {
 #if !HSTX
@@ -196,9 +213,78 @@ namespace Frens
 #if 1
     /// @brief Poor way to pace frames to 60fps
     /// @param init
-    void PaceFrames60fps(bool init)
+    void PaceFrames60fps(bool init, bool usePicoDVIvsyncWait)
     {
 #if !HSTX
+#if USE_PCE_FRAMEBUFFER_PACING
+        // Buffer pacing for pico-pcePlus
+        // Not used in other emulators for now.
+        // Caused some line artifacts in pico-infonesPlus
+        if (Frens::isFrameBufferUsed())
+        {
+            // must be set to true when called from menu
+            // otherwise sreensaver will run too fast.
+            if (usePicoDVIvsyncWait)
+            {
+                while (vsync == false)
+                {
+                    // busy wait
+                    tight_loop_contents();
+                }
+                return;
+            }
+            // CD games prefetch a sector every frame, regardless of which
+            // pacing path runs below, so the CD audio ring never starves.
+            if (vsyncWaitTask)
+                vsyncWaitTask();
+
+            if (audioFillQuery)
+            {
+                // Pace to the audio-consumption clock: wait until the active
+                // output buffer (HDMI ring or I2S ring — the caller's query
+                // abstracts which) drains back to ~half full. This locks the
+                // emulator to the exact 60.00fps audio rate so production
+                // matches consumption with no drift (a fixed 16667us timer is
+                // 59.998fps, which slowly drained the buffer and caused
+                // periodic refill-burst artifacts). The half-full buffer
+                // cushions brief sub-60fps dips; the >60fps catch-up refills it.
+                while (audioFillQuery() > 500)
+                {
+                    if (vsyncWaitTask)
+                        vsyncWaitTask();
+                    else
+                        tight_loop_contents();
+                }
+            }
+            else
+            {
+                // Menu / non-CD: slack-aware timer pacing (no continuous audio
+                // stream to lock onto). Resync on overrun so a slow frame can't
+                // harmonic-lock the loop to 30fps.
+                static absolute_time_t next_frame;
+                if (init || !paceTimerInited)
+                {
+                    next_frame = make_timeout_time_us(16667); // 1/60s
+                    paceTimerInited = true;
+                }
+                if (time_reached(next_frame))
+                {
+                    next_frame = make_timeout_time_us(16667);
+                }
+                else
+                {
+                    while (!time_reached(next_frame))
+                    {
+                        if (vsyncWaitTask)
+                            vsyncWaitTask(); // keep prefetching CD audio
+                        else
+                            tight_loop_contents();
+                    }
+                    next_frame = delayed_by_us(next_frame, 16667);
+                }
+            }
+        }
+#else
         if (Frens::isFrameBufferUsed())
         {
             while (vsync == false)
@@ -207,31 +293,9 @@ namespace Frens
                 tight_loop_contents();
             }
         }
-#else
-        //static int resync_count = 0;
-        hstx_paceFrame(init);
-        // int current_resync_count = get_video_output_resync_count();
-        // if (current_resync_count != resync_count)
-        // {
-        //     printf("Video output resync count: %d\n", current_resync_count);
-        //     resync_count = current_resync_count;
-        // }
-#if 0
-        static absolute_time_t next_frame_time = {0};
-        if (init)
-        {
-            next_frame_time = make_timeout_time_us(0); // Reset frame time to 0
-        }
-        // Adjust to about 60fps
-        if (to_us_since_boot(next_frame_time) == 0)
-        {
-            next_frame_time = make_timeout_time_us(0);
-        }
-        // Pace to 60fps
-        sleep_until(next_frame_time);
-        next_frame_time = delayed_by_us(next_frame_time, 16666); // 1/60s = 16666us
-
 #endif
+#else
+        hstx_paceFrame(init);
 #endif
     }
 #endif
@@ -693,13 +757,17 @@ namespace Frens
             {
                 panic("[f_malloc] Cannot allocate %zu bytes in PSRAM\n", size);
             }
+#if F_MALLOC_DEBUG
             printf("[f_malloc] Allocated %zu bytes in PSRAM at %p\n", size, pMem);
+#endif
             return pMem;
         }
 #endif
         // PSRAM not enabled, use malloc
         void *pMem = malloc(size); // panics if unavailable
+#if F_MALLOC_DEBUG
         printf("[f_malloc] Allocated %zu bytes in RAM at %p\n", size, pMem);
+#endif
         return pMem;
     }
 
@@ -716,7 +784,9 @@ namespace Frens
         {
             PicoPlusPsram &psram_ = PicoPlusPsram::getInstance();
             size_t uFreeing = psram_.GetSize(pMem);
+#if F_MALLOC_DEBUG
             printf("[f_malloc] Freeing %zu bytes from PSRAM at %p\n", uFreeing, pMem);
+#endif
             psram_.Free(pMem);
             return;
         }
@@ -724,7 +794,9 @@ namespace Frens
         // PSRAM not enabled, use free
         if (pMem)
         {
+#if F_MALLOC_DEBUG
             printf("[f_malloc] Freeing memory at %p\n", pMem);
+#endif
             free(pMem);
         }
     }
@@ -745,13 +817,17 @@ namespace Frens
             {
                 panic("Cannot allocate %zu bytes in PSRAM\n", newSize);
             }
+#if F_MALLOC_DEBUG
             printf("[f_malloc] Re-Allocated %zu bytes in PSRAM at %p\n", newSize, newMem);
+#endif
             return newMem;
         }
 #endif
         // PSRAM not enabled, use realloc
         newMem = realloc(pMem, newSize);
+#if F_MALLOC_DEBUG
         printf("[f_malloc] Re-Allocated memory at %p to %zu bytes\n", pMem, newSize);
+#endif
         return newMem;
     }
 
@@ -795,6 +871,56 @@ namespace Frens
             return nullptr;
         }
         FSIZE_t filesize = f_size(&fil);
+
+        // Large-disc-image fast path: when the file is bigger than what fits
+        // in available PSRAM (the .chd images for CD games can be hundreds
+        // of MB), we can't preload it. Instead read the first 4 KB into a
+        // stack buffer, CRC that as a stable savestate-folder key, and
+        // return without allocating. The caller (main.cpp) detects this
+        // via ROM_FILE_ADDR == 0 and routes straight to the disc-image
+        // opener (LoadDisc) which streams the file from SD.
+        {
+            uint availMem = Frens::GetAvailableMemory();
+            // Leave ~512 KB margin for libchdr / FS buffers / lwmem overhead.
+            const FSIZE_t margin = 512 * 1024;
+            if (availMem > margin && filesize > (availMem - margin))
+            {
+                // 4 KB scratch lives in PSRAM via f_malloc + f_free,
+                // NOT on the stack. The menu → loadRomInPsRam →
+                // flashromtoPsram → f_read → disk_read → rcvr_datablock
+                // → rcvr_spi_multi call chain already runs close to
+                // PICO_STACK_SIZE (3 KB); a 4 KB local array overflowed
+                // into adjacent .bss / framebuffer state. Observed
+                // symptom: PicoDVI core1 hardfault in the TMDS encoder
+                // while core0 was deep in SD I/O on game select. PSRAM
+                // is the right place — it's a one-shot read+CRC and the
+                // buffer is freed before we return.
+                uint8_t *head = (uint8_t *)Frens::f_malloc(4096);
+                if (!head)
+                {
+                    // PSRAM exhausted (extreme; the size guard above
+                    // already implies we're tight). Bail and let the
+                    // caller report no rom loaded.
+                    f_close(&fil);
+                    selectdRom[0] = 0;
+                    return nullptr;
+                }
+                UINT br = 0;
+                f_read(&fil, head, 4096, &br);
+                f_close(&fil);
+                if (br > 0)
+                {
+                    crc = compute_crc32_buffer(head, br, 0);
+                    crcOfRom = crc;
+                }
+                printf("Skipping PSRAM preload (file %llu bytes > avail %u): "
+                       "CRC of first %u bytes = 0x%08X\n",
+                       (unsigned long long)filesize, availMem, (unsigned)br, crc);
+                Frens::f_free(head);
+                return nullptr;
+            }
+        }
+
         void *pMem = Frens::f_malloc(filesize);
         if (!pMem)
         {
@@ -1074,6 +1200,7 @@ namespace Frens
     }
 
     static WORD *buffer;
+
     /// @brief Render function in core1 to render the framebuffers
     /// @param
     /// @return
@@ -1401,18 +1528,20 @@ namespace Frens
         tusb_init();
 #endif
 #if !HSTX
+        // Add a small stack for core1
+        static uint32_t core1_stack[512 / sizeof(uint32_t)];
 #if FRAMEBUFFERISPOSSIBLE
+      
         if (usingFramebuffer)
-        {
-
-            multicore_launch_core1(coreFB_main);
+        {   
+            multicore_launch_core1_with_stack(coreFB_main,  core1_stack, sizeof(core1_stack));
         }
         else
         {
-            multicore_launch_core1(core1_main);
+            multicore_launch_core1_with_stack(core1_main,  core1_stack, sizeof(core1_stack));
         }
 #else
-        multicore_launch_core1(core1_main);
+        multicore_launch_core1_with_stack(core1_main,  core1_stack, sizeof(core1_stack));
 #endif
 #endif // DVI
         initVintageControllers(CPUFreqKHz);
@@ -1506,18 +1635,34 @@ namespace Frens
         sleep_ms(100);
         set_sys_clock_khz(cpuFreqKHz, true);
         sleep_ms(100);
-        // Reconfigure HSTX clock to 126 Mhz, so display can run at 60Hz.
+        // Reconfigure HSTX clock to 126 MHz, so display can run at 60Hz.
+        //
+        // SGX-at-378 MHz path only: *force* the PLL_USB-sourced HSTX route
+        // even for clk_sys values that are integer multiples of 126. Reason:
+        // deriving clk_hstx from clk_sys propagates PLL_SYS jitter into the
+        // TMDS bit clock at 378 MHz, producing dots / short dotted lines on
+        // strict HDMI receivers (eye-pattern closure). PLL_USB at a fixed
+        // 126 MHz keeps the TMDS clock decoupled from CPU clock.
+        //
+        // Only safe to reconfigure PLL_USB when the build uses PIO-USB for
+        // gamepads (CFG_TUH_RPI_PIO_USB=1). On TinyUSB-native-USB builds
+        // PLL_USB MUST stay at 48 MHz for USB hardware, so we keep the
+        // original clk_sys-derived HSTX path. Those builds should either
+        // stay at 252 MHz for SGX (no artifacts) or accept the dots at
+        // 378 MHz — the chip has no third clean PLL to use for HSTX.
         bool hstx_ok = true;
-        if ((cpuFreqKHz / 1000) % 126 != 0)
+#if SGX && CFG_TUH_RPI_PIO_USB
+        const bool force_pll_usb_hstx = true;
+#else
+        const bool force_pll_usb_hstx = false;
+#endif
+        if (force_pll_usb_hstx || ((cpuFreqKHz / 1000) % 126 != 0))
         {
-            // (Re)configure PLL_USB for 126 MHz HSTX source, so that we can get a 60Hz display output.
-            // This will break tinyusb, but PIO USB will still work.
-            // Used by Pico-GenesisPlus when set at 340Mhz.
+            // (Re)configure PLL_USB for 126 MHz HSTX source.
             pll_deinit(pll_usb);
             pll_init(pll_usb, 1, 756000000, 6, 1); // 756 / (6*1) = 126 MHz
 
             const uint32_t target_hstx_hz = 126000000u;
-            uint32_t chosen_hstx_hz = target_hstx_hz;
             hstx_ok = clock_configure(
                 clk_hstx,
                 0,
@@ -1525,12 +1670,17 @@ namespace Frens
                 target_hstx_hz,
                 target_hstx_hz);
 
-            // configure clk_peri to be same as clk_sys. This makes stdio over UART work correctly.
+            // Keep clk_peri sourced from PLL_SYS at sys_hz — same as the
+            // previous non-SGX path that the user has confirmed boots at
+            // 378 MHz. Re-routing clk_peri during clock init (which the
+            // earlier revision did) caused a boot loop. Peripheral drivers
+            // read clock_get_hz(clk_peri) for their own dividers, so they
+            // adapt to whatever clk_peri ends up at.
             clock_configure(clk_peri,
-                            0, // no GLMUX
+                            0,
                             CLOCKS_CLK_PERI_CTRL_AUXSRC_VALUE_CLKSRC_PLL_SYS,
-                            cpuFreqKHz * 1000,  // input freq (PLL SYS)
-                            cpuFreqKHz * 1000); // target clk_peri
+                            cpuFreqKHz * 1000,
+                            cpuFreqKHz * 1000);
         }
         else
         {
@@ -1775,5 +1925,15 @@ extern "C"
     void frens_f_free(void *ptr)
     {
         Frens::f_free(ptr);
+    }
+
+    void *frens_f_realloc(void *ptr, size_t newSize)
+    {
+        // Frens::f_realloc returns nullptr / panics when ptr is null, so handle
+        // the malloc/free degenerate cases here for C callers that expect
+        // standard realloc semantics.
+        if (!ptr) return Frens::f_malloc(newSize);
+        if (newSize == 0) { Frens::f_free(ptr); return nullptr; }
+        return Frens::f_realloc(ptr, newSize);
     }
 }

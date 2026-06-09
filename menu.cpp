@@ -191,7 +191,7 @@ static bool isArtWorkEnabled()
     {
     case FrensSettings::emulators::NES:
 
-        snprintf(PATH, sizeof(PATH), "/Metadata/%s/Images/320/D/D0E96F6B.444", emulator);
+        snprintf(PATH, sizeof(PATH), "/Metadata/%s/Images/160/D/D0E96F6B.444", emulator);
         break;
     case FrensSettings::emulators::SMS:
         snprintf(PATH, sizeof(PATH), "/Metadata/%s/Images/160/6/6A5A1E39.444", emulator);
@@ -201,6 +201,9 @@ static bool isArtWorkEnabled()
         break;
     case FrensSettings::emulators::GAMEBOY:
         snprintf(PATH, sizeof(PATH), "/Metadata/%s/Images/160/0/00A9001E.444", emulator);
+        break;
+    case FrensSettings::emulators::PCE:
+        snprintf(PATH, sizeof(PATH), "/Metadata/%s/Images/160/5/599EAD9B.444", emulator);
         break;
     default:
         return false;
@@ -219,7 +222,7 @@ static bool isArtWorkEnabled()
 int Menu_LoadFrame()
 {
     //Frens::waitForVSync();
-    Frens::PaceFrames60fps(false);
+    Frens::PaceFrames60fps(false, true);
 #if NES_PIN_CLK != -1
     nespad_read_start();
 #endif
@@ -647,7 +650,11 @@ void DrawScreen(int selectedRow, int w = 0, int h = 0, uint16_t *imagebuffer = n
             }
         }
         putText(SCREEN_COLS / 2 - strlen(tmpstr) / 2, SCREEN_ROWS - 1, tmpstr, CBLUE, CWHITE);
-        snprintf(s, sizeof(s), "%c%dK %c", Frens::isPsramEnabled() ? 'P' : 'F', maxRomSize / 1024, WIIPAD_IS_CONNECTED() ? 'W' : ' ');
+        snprintf(s, sizeof(s), "%c%dK %c%c",
+                 Frens::isPsramEnabled() ? 'P' : 'F',
+                 maxRomSize / 1024,
+                 WIIPAD_IS_CONNECTED() ? 'W' : ' ',
+                 EXT_AUDIO_IS_ENABLED ? (USE_PICO_EXTRAS_I2S ? 'E' : 'L') : ' ');
         putText(1, SCREEN_ROWS - 1, s, settings.fgcolor, settings.bgcolor);
         snprintf(s, sizeof(s), "%s:Open %s:Back", buttonLabel1, buttonLabel2);
 
@@ -2186,7 +2193,7 @@ bool showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
         dvi_->getBlankSettings().bottom = marginbottom;
     }
 #endif
-    Frens::PaceFrames60fps(true);
+    Frens::PaceFrames60fps(true, true);
     //Frens::waitForVSync();
     printf("Exiting save state menu.\n");
     Frens::f_free(screenBuffer);
@@ -3198,7 +3205,7 @@ int showSettingsMenu(bool calledFromGame)
         // Speaker can be muted/unmuted from settings menu
         //EXT_AUDIO_MUTE_INTERNAL_SPEAKER(settings.flags.fruitJamEnableInternalSpeaker == 0);
         EXT_AUDIO_SETVOLUME(settings.fruitjamVolumeLevel);
-        Frens::PaceFrames60fps(true);
+        Frens::PaceFrames60fps(true, true);
         //Frens::waitForVSync();
     }
 #if USE_I2S_AUDIO == PICO_AUDIO_I2S_DRIVER_TLV320
@@ -3243,7 +3250,7 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
 #endif
     scaleMode8_7_ = Frens::applyScreenMode(ScreenMode::NOSCANLINE_1_1);
     abSwapped = 1; // Swap A and B buttons, so menu is consistent across different emulators
-    Frens::PaceFrames60fps(true);
+    Frens::PaceFrames60fps(true, true);
     //Frens::waitForVSync();
     //
     menutitle = (char *)title;
@@ -3311,6 +3318,43 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
             isWav = (strcasecmp(fileExt, ".wav") == 0);
         } else {
             isWav = false;
+        }
+#endif
+// SGX auto-clock-switch is only safe on builds using PIO-USB. On
+// TinyUSB-native-USB builds PLL_USB must stay at 48 MHz, so we can't decouple
+// clk_hstx from clk_sys at 378 MHz — running there would produce visible TMDS
+// artifacts. Skip the auto-switch in that case; the .sgx ROM still loads and
+// runs at the build's default 252 MHz (slower on the heavier titles but clean).
+#if (HSTX && SGX && CFG_TUH_RPI_PIO_USB)
+        if (selectedRomOrFolder && entries[index].IsDirectory == false && oldIndex != index)
+        {        
+            oldIndex = index;
+            if ( strncasecmp(fileExt, ".sgx", 4) == 0)
+            {
+                if (clockFreq != FLASHPARAM_MAX_FREQ_KHZ)
+                {
+                    char message[40];
+                    snprintf(message, sizeof(message), "Setting clock to  %dMHZ for SGX", FLASHPARAM_MAX_FREQ_KHZ /1000);
+                    showLoadingScreen(message, 60);
+                    FrensSettings::savesettings(); // save current settings before changing clock
+                    if (Frens::writeFlashParamsToFlash(FLASHPARAM_MAX_FREQ_KHZ, FLASHPARAM_MAX_VOLTAGE) == false)
+                    {
+                        printf("Failed to write flash params for high clock\n");
+                    }
+                }
+            } else {
+                if (clockFreq != FLASHPARAM_MIN_FREQ_KHZ)
+                {
+                    char message[40];
+                    snprintf(message, sizeof(message), "Setting clock to  %dMHZ", FLASHPARAM_MIN_FREQ_KHZ /1000);
+                    showLoadingScreen(message, 60);
+                    FrensSettings::savesettings(); // save current settings before changing clock
+                    if (Frens::writeFlashParamsToFlash(FLASHPARAM_MIN_FREQ_KHZ, FLASHPARAM_MIN_VOLTAGE) == false)
+                    {
+                        printf("Failed to write flash params for low clock\n");
+                    }
+                }
+            }
         }
 #endif
 #if RETROJAM
@@ -3782,9 +3826,10 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
     // Frens::f_free(buffer);
 
     FrensSettings::savesettings();
-#if !HSTX
+     // Reset the screen mode to the original settings
     scaleMode8_7_ = Frens::applyScreenMode(settings.screenMode);
-    // Reset the screen mode to the original settings
+#if !HSTX
+   
     // Do not reset the margins when framebuffer is used, this will lock up the display driver
     // Margins will be handled by the framebuffer.
     if (!Frens::isFrameBufferUsed())
@@ -3814,6 +3859,6 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
         // Never return
     }
     Frens::restoreScanlines();
-    Frens::PaceFrames60fps(true); // reset frame pacing
+    Frens::PaceFrames60fps(true, true); // reset frame pacing
     //Frens::waitForVSync();
 }

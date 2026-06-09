@@ -134,7 +134,8 @@ namespace Frens
 					strcasecmp(pFile->fname, "SAVES") == 0 ||
 					strcasecmp(pFile->fname, "EDFC") == 0 ||
 					strcasecmp(pFile->fname, "Metadata") == 0 ||
-					strcasecmp(pFile->fname, "SAVESTATES") == 0)
+					strcasecmp(pFile->fname, "SAVESTATES") == 0 ||
+					strcasecmp(pFile->fname, "BIOS") == 0)
 				{
 					continue;
 				}
@@ -147,8 +148,18 @@ namespace Frens
 					{
 						if (IsextensionAllowed(romInfo.Path))
 						{
-							// availMem already computed earlier (unchanged)
-							if (pFile->fsize < availMem)
+							// Streamed CD-image extensions (.cue/.chd) are
+							// read sector-by-sector from SD by the CD-ROM
+							// emulator, never preloaded — exempt them from
+							// the size check, which compares the file size
+							// against available PSRAM and would otherwise
+							// reject hundreds-of-MB CHDs that fit on SD fine.
+							char ext[10];
+							Frens::getextensionfromfilename(romInfo.Path, ext, sizeof(ext));
+							const bool streamedExt =
+								(strcasecmp(ext, ".cue") == 0) ||
+								(strcasecmp(ext, ".chd") == 0);
+							if (streamedExt || pFile->fsize < availMem)
 							{
 								entries[numberOfEntries++] = romInfo;
 							}
@@ -182,6 +193,50 @@ namespace Frens
 			}
 		}
 		f_closedir(pDir);
+
+		// PCE CD-ROM: a .cue or .chd in this folder means it's a CD game
+		// folder; any .pce file here is presumed a per-game BIOS (loaded by
+		// LoadDisc as a per-game override over /bios/), not a HuCard. Hide
+		// it from the menu so it can't be picked accidentally. No-op for
+		// folders without a CD image (other emulators / HuCard-only folders)
+		// so it's safe to apply universally.
+		{
+			bool hasCue = false;
+			for (size_t i = 0; i < numberOfEntries; i++) {
+				if (entries[i].IsDirectory) continue;
+				char ext[10];
+				Frens::getextensionfromfilename(entries[i].Path, ext, sizeof(ext));
+				if (strcasecmp(ext, ".cue") == 0 ||
+				    strcasecmp(ext, ".chd") == 0) { hasCue = true; break; }
+			}
+			if (hasCue) {
+				size_t write = 0;
+				size_t hidden = 0;
+				for (size_t read = 0; read < numberOfEntries; read++) {
+					if (!entries[read].IsDirectory) {
+						char ext[10];
+						Frens::getextensionfromfilename(entries[read].Path, ext, sizeof(ext));
+						// Hide both naming conventions for PC Engine system
+						// BIOS files dropped alongside CD images: .pce ROM
+						// dumps and the common "cd_bios.rom" name.
+						if (strcasecmp(ext, ".pce") == 0 ||
+						    strcasecmp(entries[read].Path, "cd_bios.rom") == 0) {
+							hidden++;
+							continue;
+						}
+					}
+					if (write != read) entries[write] = entries[read];
+					write++;
+				}
+				numberOfEntries = write;
+				if (hidden > 0) {
+					printf("RomLister: hiding %u .pce file(s) in CD folder %s "
+					       "(presumed BIOS)\n",
+					       (unsigned)hidden, directoryname);
+				}
+			}
+		}
+
 		// Sort: directories first (case-insensitive), then files (case-insensitive)
 		if (numberOfEntries > 1)
 		{
