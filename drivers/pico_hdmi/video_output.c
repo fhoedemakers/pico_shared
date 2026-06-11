@@ -203,7 +203,9 @@ static void __not_in_flash_func(hstx_resync)(void)
 // Internal Helpers
 // ============================================================================
 
-static uint32_t build_line_with_di(uint32_t *buf, const uint32_t *di_words, bool vsync, bool active)
+// __not_in_flash_func: called from the scanline DMA IRQ; must not fetch from
+// flash while the QMI may be saturated (CHD decompress, PSRAM traffic).
+static uint32_t __not_in_flash_func(build_line_with_di)(uint32_t *buf, const uint32_t *di_words, bool vsync, bool active)
 {
     uint32_t *p = buf;
     uint32_t sync_h0 = vsync ? SYNC_V0_H0 : SYNC_V1_H0;

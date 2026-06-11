@@ -45,7 +45,9 @@ void hstx_paceFrame(bool init)
     uint32_t current = video_frame_count;
     if ((int32_t)(current - target_frame) < 0)
     {
-        while (video_frame_count != target_frame)
+        // Signed comparison, not !=: robust even if the counter ever steps
+        // past target_frame between checks (a != loop would spin until wrap).
+        while ((int32_t)(video_frame_count - target_frame) < 0)
         {
             tight_loop_contents();
         }
@@ -155,9 +157,15 @@ void __not_in_flash_func(scanline_callbackfunc)(uint32_t v_scanline, uint32_t ac
         const uint16_t *sp = (const uint16_t *)&DisplayBuf[Line_dup * MODE_H_ACTIVE_PIXELS] + 34;
         uint32_t *dp = buff;
 
-        // 32 px left black border (16 uint32_t words)
+        // 32 px left black border (16 uint32_t words). Volatile stores so GCC
+        // cannot replace the loop with a call to flash-resident memset: this
+        // runs in the scanline DMA IRQ, and a flash fetch here can stall
+        // behind QMI traffic (e.g. a CHD hunk decompress hammering PSRAM),
+        // blowing the line-fill deadline and scanning out a corrupt line.
+        volatile uint32_t *bp = dp;
         for (int i = 0; i < 16; i++)
-            *dp++ = 0;
+            bp[i] = 0;
+        dp += 16;
 
         if (stype == 1) {
             for (int g = 0; g < 36; g++) {
@@ -194,9 +202,11 @@ void __not_in_flash_func(scanline_callbackfunc)(uint32_t v_scanline, uint32_t ac
             }
         }
 
-        // 32 px right black border
+        // 32 px right black border (volatile: see left border above)
+        bp = dp;
         for (int i = 0; i < 16; i++)
-            *dp++ = 0;
+            bp[i] = 0;
+        dp += 16;
     } else {
         const uint32_t *src = (const uint32_t *)&DisplayBuf[Line_dup * MODE_H_ACTIVE_PIXELS];
         uint32_t *dst = buff;
