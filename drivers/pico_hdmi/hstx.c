@@ -32,30 +32,51 @@ void hstx_waitForVSync(void)
 
 void hstx_paceFrame(bool init)
 {
-    // Slack-aware 60fps pacing. Waits for the next vsync only if we haven't
-    // already passed our target frame. If the caller overran a frame, resync
-    // to the current counter instead of stalling another ~16.6ms, which would
-    // otherwise harmonic-lock the loop to 30fps.
+    // Slack-aware pacing to true PCE NTSC rate (59.8261 Hz), not the HDMI
+    // signal's 60 Hz. video_frame_count ticks at 60 Hz, so on average we wait
+    // 60/59.8261 ≈ 1.00291 vsyncs per emulator frame: most calls advance by 1,
+    // and roughly once every 344 frames (~5.7s) we advance by 2 — invisible to
+    // the eye but it brings game-side per-vsync logic (music tempo, bullet
+    // velocity) into agreement with native PCE timing.
+    //
+    // If the caller overran a frame, resync to the current counter instead of
+    // stalling, which would otherwise harmonic-lock the loop to 30fps.
     static uint32_t target_frame = 0;
+    static uint32_t pace_accum = 0;   // scaled by 10000
     if (init)
     {
         target_frame = video_frame_count;
+        pace_accum = 0;
     }
-    target_frame++;
-    uint32_t current = video_frame_count;
-    if ((int32_t)(current - target_frame) < 0)
+    // accum += 60.0 / 59.8261, both scaled by 10000.
+    pace_accum += 600000u;
+    uint32_t step = pace_accum / 598261u;   // 1 or 2
+    pace_accum -= step * 598261u;
+    target_frame += step;
+    int32_t lag = (int32_t)(video_frame_count - target_frame);
+    if (lag < 0)
     {
-        // Signed comparison, not !=: robust even if the counter ever steps
-        // past target_frame between checks (a != loop would spin until wrap).
+        // On schedule: wait for the target tick. Signed comparison, not !=:
+        // robust even if the counter ever steps past target_frame between
+        // checks (a != loop would spin until wrap).
         while ((int32_t)(video_frame_count - target_frame) < 0)
         {
             tight_loop_contents();
         }
     }
-    else
+    else if (lag > 0)
     {
-        target_frame = current;
+        // More than one full frame behind: drop the missed frames.
+        target_frame = video_frame_count;
     }
+    // lag == 0 — a vsync tick landed inside this frame's execution. Do NOT
+    // resync: that forgets the tick phase, and in heavy scenes (frame time
+    // close to the tick period) nearly every frame spans a tick, so the
+    // resync path would let the loop free-run at raw emulation speed
+    // (observed: 62/63 fps in Aero Blasters gameplay). Leaving target_frame
+    // alone means this frame consumed exactly its one tick and the next call
+    // waits as usual — overspeed is impossible, and a genuinely slow frame
+    // still passes through without stalling (no 30fps harmonic lock).
 }
 uint8_t *hstx_getframebuffer(void)
 {

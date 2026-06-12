@@ -262,14 +262,15 @@ namespace Frens
                 // stream to lock onto). Resync on overrun so a slow frame can't
                 // harmonic-lock the loop to 30fps.
                 static absolute_time_t next_frame;
+                // True PCE NTSC frame period: 1/59.826 ≈ 16715 µs (not 60 Hz).
                 if (init || !paceTimerInited)
                 {
-                    next_frame = make_timeout_time_us(16667); // 1/60s
+                    next_frame = make_timeout_time_us(16715);
                     paceTimerInited = true;
                 }
                 if (time_reached(next_frame))
                 {
-                    next_frame = make_timeout_time_us(16667);
+                    next_frame = make_timeout_time_us(16715);
                 }
                 else
                 {
@@ -280,7 +281,7 @@ namespace Frens
                         else
                             tight_loop_contents();
                     }
-                    next_frame = delayed_by_us(next_frame, 16667);
+                    next_frame = delayed_by_us(next_frame, 16715);
                 }
             }
         }
