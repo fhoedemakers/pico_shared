@@ -51,6 +51,16 @@ static void (*vsyncWaitTask)(void) = nullptr;
 // i.e. to the audio-consumption clock. nullptr → fall back to timer pacing.
 static int (*audioFillQuery)(void) = nullptr;
 static bool paceTimerInited = false;
+// Opt-in line-stream mode (see FrensHelpers.h). When lineStreamFill_ is set,
+// core1 reads each line via the callback into lineStreamScratch_ and streams it
+// to the DMA instead of consuming the validLineQueue. lineStreamActive_ lets
+// the producer know core1 is in the callback loop before it tears down the
+// source buffer. Default null → unchanged queue behaviour (menu, other ports).
+// The scratch line is allocated on demand by setLineStreamFill() so projects
+// that never use line-streaming pay no SRAM for it.
+static volatile Frens::LineStreamFillFn lineStreamFill_ = nullptr;
+static volatile bool lineStreamActive_ = false;
+static uint16_t *lineStreamScratch_ = nullptr;
 #endif
 char ErrorMessage[ERRORMESSAGESIZE];
 bool scaleMode8_7_ = true;
@@ -198,7 +208,9 @@ namespace Frens
     void waitForVSync()
     {
 #if !HSTX
-        if (Frens::isFrameBufferUsed())
+        // Framebuffer path and line-stream path both drive `vsync` from core1
+        // at frame boundaries; wait for it so core0 stays frame-locked.
+        if (Frens::isFrameBufferUsed() || lineStreamActive_)
         {
             while (vsync == false)
             {
@@ -1173,13 +1185,36 @@ namespace Frens
         while (true)
         {
             dvi_->registerIRQThisCore();
-            dvi_->waitForValidLine();
+            // Line-stream mode has no producer queue to wait on; only the
+            // default queue model needs a first valid line before starting.
+            if (!lineStreamFill_)
+                dvi_->waitForValidLine();
 
             dvi_->start();
             while (!exclProc_.isExist())
             {
-                if (scaleMode8_7_)
+                Frens::LineStreamFillFn fn = lineStreamFill_;
+                if (fn)
                 {
+                    // Line-stream mode: read each line via the callback into the
+                    // scratch buffer and stream it straight to the DMA. The
+                    // convertScanBuffer12bpp(line,...) call blocks on the free
+                    // TMDS queue, so this loop is paced to the DMA's 60Hz.
+                    // Raise vsync at frame start so the producer (core0) can
+                    // phase-lock its render to this read pass (waitForVSync) and
+                    // stay ahead of the read -> no crawling tear seam.
+                    lineStreamActive_ = true;
+                    vsync = false;
+                    for (int line = 0; line < SCREENHEIGHT; ++line)
+                    {
+                        fn(line, lineStreamScratch_);
+                        dvi_->convertScanBuffer12bpp(line, lineStreamScratch_, 640);
+                    }
+                    vsync = true;
+                }
+                else if (scaleMode8_7_)
+                {
+                    lineStreamActive_ = false;
                     // Default
                     dvi_->convertScanBuffer12bppScaled16_7(34, 32, 288 * 2);
                     // dvi_->convertScanBuffer12bppScaled16_7(0,0 , 320 * 2);
@@ -1188,6 +1223,7 @@ namespace Frens
                 }
                 else
                 {
+                    lineStreamActive_ = false;
                     //
                     dvi_->convertScanBuffer12bpp();
                 }
@@ -1198,6 +1234,25 @@ namespace Frens
 
             exclProc_.processOrWaitIfExist();
         }
+    }
+
+    void setLineStreamFill(LineStreamFillFn fn)
+    {
+        if (fn && !lineStreamScratch_)
+        {
+            // Allocate the per-line scratch (SRAM, for fast core1 reads) on
+            // first use. Kept allocated and reused across games — not freed on
+            // unregister, which would race core1 still finishing a frame.
+            lineStreamScratch_ = (uint16_t *)malloc(640 * sizeof(uint16_t));
+        }
+        if (fn && !lineStreamScratch_)
+            return; // allocation failed: stay in queue mode rather than deref null
+        lineStreamFill_ = fn;
+    }
+
+    bool lineStreamActive()
+    {
+        return lineStreamActive_;
     }
 
     static WORD *buffer;

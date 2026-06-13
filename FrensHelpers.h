@@ -123,6 +123,16 @@ namespace Frens
     bool screenMode(int incr);
     void flashrom(char *selectedRom);
     void __not_in_flash_func(core1_main)();
+    // Opt-in line-stream mode for core1 (RP2040 DVI, no framebuffer). When a
+    // fill callback is registered, core1 continuously reads a source one line
+    // at a time via the callback (filling dst with RGB565) and streams it to
+    // the DMA, instead of consuming the validLineQueue. Pass nullptr to return
+    // to the default queue model. lineStreamActive() reports whether core1 is
+    // currently running the callback loop — used to safely tear down the source
+    // buffer before freeing it.
+    typedef void (*LineStreamFillFn)(int line, uint16_t *dst);
+    void setLineStreamFill(LineStreamFillFn fn);
+    bool lineStreamActive();
     int initLed();
     void initVintageControllers(uint32_t CPUFreqKHz);
     void initDVandAudio(int marginTop, int marginBottom);
