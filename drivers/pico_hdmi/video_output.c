@@ -700,8 +700,11 @@ void video_output_core1_run(void)
     }
 
     // Set GPIO 12-19 to HSTX function (function 0 on RP2350)
-    for (int i = 12; i <= 19; ++i)
+    for (int i = 12; i <= 19; ++i) {
         gpio_set_function(i, 0);
+        gpio_set_slew_rate(i, GPIO_SLEW_RATE_FAST);
+        gpio_set_drive_strength(i, GPIO_DRIVE_STRENGTH_12MA);
+    }
 
     // DMA Setup
     dma_channel_config c = dma_channel_get_default_config(DMACH_PING);
