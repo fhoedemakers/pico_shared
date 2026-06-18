@@ -49,18 +49,23 @@ void hstx_di_queue_set_sample_rate(uint32_t sample_rate)
     samples_per_line_fp = (samples_per_frame << 16) / MODE_V_TOTAL_LINES;
 }
 
-bool hstx_di_queue_push(const hstx_data_island_t *island)
+bool __not_in_flash_func(hstx_di_queue_push)(const hstx_data_island_t *island)
 {
     uint32_t next_head = (di_ring_head + 1) % DI_RING_BUFFER_SIZE;
     if (next_head == di_ring_tail)
         return false;
 
-    di_ring_buffer[di_ring_head] = *island;
+    // Volatile word copy instead of struct assignment: keeps the copy inline
+    // so this SRAM function never calls the flash-resident libc memcpy.
+    volatile uint32_t *dst = di_ring_buffer[di_ring_head].words;
+    const uint32_t *src = island->words;
+    for (size_t i = 0; i < count_of(island->words); i++)
+        dst[i] = src[i];
     di_ring_head = next_head;
     return true;
 }
 
-uint32_t hstx_di_queue_get_level(void)
+uint32_t __not_in_flash_func(hstx_di_queue_get_level)(void)
 {
     uint32_t head = di_ring_head;
     uint32_t tail = di_ring_tail;

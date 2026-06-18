@@ -140,6 +140,14 @@ static uint32_t vactive_di_len, vactive_di_null_len;
 static uint32_t vblank_di_ping[128], vblank_di_pong[128], vblank_di_null[128];
 static uint32_t vblank_di_len, vblank_di_null_len;
 
+// DVI-mode null-DI cmdlist for VSYNC-active blanking lines. The other
+// null-DI buffers above are pre-built with vsync=false; we need a vsync=true
+// variant so DVI mode can emit the same HDMI-structured cmdlist (data-island
+// period + video preamble + guard band) on every line of the frame, including
+// the 2-line vertical sync pulse. See video_output_init().
+static uint32_t vblank_di_null_vsync_on[128];
+static uint32_t vblank_di_null_vsync_on_len;
+
 static uint32_t vblank_acr_vsync_on[64], vblank_acr_vsync_on_len;
 static uint32_t vblank_acr_vsync_off[64], vblank_acr_vsync_off_len;
 static uint32_t vblank_infoframe_vsync_on[64], vblank_infoframe_vsync_on_len;
@@ -203,7 +211,9 @@ static void __not_in_flash_func(hstx_resync)(void)
 // Internal Helpers
 // ============================================================================
 
-static uint32_t build_line_with_di(uint32_t *buf, const uint32_t *di_words, bool vsync, bool active)
+// __not_in_flash_func: called from the scanline DMA IRQ; must not fetch from
+// flash while the QMI may be saturated (CHD decompress, PSRAM traffic).
+static uint32_t __not_in_flash_func(build_line_with_di)(uint32_t *buf, const uint32_t *di_words, bool vsync, bool active)
 {
     uint32_t *p = buf;
     uint32_t sync_h0 = vsync ? SYNC_V0_H0 : SYNC_V1_H0;
@@ -285,14 +295,20 @@ static inline void __not_in_flash_func(get_scanline_state)(uint32_t v_scanline, 
 static inline void __not_in_flash_func(video_output_handle_vsync)(dma_channel_hw_t *ch, uint32_t v_scanline)
 {
     if (dvi_mode) {
-        // Pure DVI: simple vsync line without Data Islands
-        ch->read_addr = (uintptr_t)vblank_line_vsync_on;
-        ch->transfer_count = count_of(vblank_line_vsync_on);
+        // DVI mode: use the same HDMI-structured cmdlist (data-island period
+        // + video preamble + guard band) as HDMI mode, but with a null DI
+        // packet so no audio / AVI / ACR data is actually transmitted. The
+        // longer cmdlist produces a much richer control-period before each
+        // active region, which several sinks (notably the Murmulator M2's
+        // monitor) need to maintain TMDS lock — the bare 9-word DVI cmdlist
+        // caused frequent lock loss and watchdog resyncs.
+        ch->read_addr = (uintptr_t)vblank_di_null_vsync_on;
+        ch->transfer_count = vblank_di_null_vsync_on_len;
         if (v_scanline == MODE_V_FRONT_PORCH) {
             video_frame_count++;
             if (vsync_callback)
                 vsync_callback();
-        } 
+        }
     } else {
         if (v_scanline == MODE_V_FRONT_PORCH) {
             ch->read_addr = (uintptr_t)vblank_acr_vsync_on;
@@ -315,8 +331,11 @@ static inline void __not_in_flash_func(video_output_handle_active_start)(dma_cha
     //    even if the scanline callback below overruns, the cmdlist chain is
     //    safe and HSTX keeps emitting valid sync.
     if (dvi_mode) {
-        ch->read_addr = (uintptr_t)vactive_line_dvi;
-        ch->transfer_count = count_of(vactive_line_dvi);
+        // DVI mode: share HDMI's active-line cmdlist (with null DI) so the
+        // sink sees the same control-period structure on every line. See
+        // video_output_handle_vsync for rationale.
+        ch->read_addr = (uintptr_t)vactive_di_null;
+        ch->transfer_count = vactive_di_null_len;
     } else {
         uint32_t *buf = dma_pong ? vactive_di_ping : vactive_di_pong;
         const uint32_t *di_words = hstx_di_queue_get_audio_packet();
@@ -355,12 +374,14 @@ static inline void __not_in_flash_func(video_output_handle_active_start)(dma_cha
 static inline void __not_in_flash_func(video_output_handle_blanking)(dma_channel_hw_t *ch, uint32_t v_scanline, bool send_acr, bool dma_pong)
 {
     if (dvi_mode) {
-        // Pure DVI: simple blanking line without Data Islands
+        // DVI mode: HDMI-structured blanking cmdlist with a null DI packet
+        // (no audio / no ACR / no AVI InfoFrame). See video_output_handle_vsync
+        // for why the cmdlist shape is shared with HDMI mode.
         (void)send_acr;
         (void)dma_pong;
         (void)v_scanline;
-        ch->read_addr = (uintptr_t)vblank_line_vsync_off;
-        ch->transfer_count = count_of(vblank_line_vsync_off);
+        ch->read_addr = (uintptr_t)vblank_di_null;
+        ch->transfer_count = vblank_di_null_len;
     } else {
         if (send_acr) {
             ch->read_addr = (uintptr_t)vblank_acr_vsync_off;
@@ -528,6 +549,12 @@ void video_output_init(uint16_t width, uint16_t height)
     vblank_di_null_len = build_line_with_di(vblank_di_null, hstx_get_null_data_island(false, true), false, false);
     vactive_di_null_len = build_line_with_di(vactive_di_null, hstx_get_null_data_island(false, true), false, true);
 
+    // Vsync-active variant for DVI mode's two vsync lines (HDMI mode uses
+    // the ACR/InfoFrame cmdlists instead). Built with vsync=true so the sync
+    // symbols carry VSYNC asserted, and the embedded null DI also has its
+    // vsync-active TERC4 encoding.
+    vblank_di_null_vsync_on_len = build_line_with_di(vblank_di_null_vsync_on, hstx_get_null_data_island(true, true), true, false);
+
     vblank_di_len = build_line_with_di(vblank_di_ping, hstx_get_null_data_island(false, true), false, false);
     memcpy(vblank_di_pong, vblank_di_ping, sizeof(vblank_di_ping));
 }
@@ -673,8 +700,11 @@ void video_output_core1_run(void)
     }
 
     // Set GPIO 12-19 to HSTX function (function 0 on RP2350)
-    for (int i = 12; i <= 19; ++i)
+    for (int i = 12; i <= 19; ++i) {
         gpio_set_function(i, 0);
+        gpio_set_slew_rate(i, GPIO_SLEW_RATE_FAST);
+        gpio_set_drive_strength(i, GPIO_DRIVE_STRENGTH_12MA);
+    }
 
     // DMA Setup
     dma_channel_config c = dma_channel_get_default_config(DMACH_PING);

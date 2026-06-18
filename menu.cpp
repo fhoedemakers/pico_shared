@@ -205,6 +205,9 @@ static bool isArtWorkEnabled()
     case FrensSettings::emulators::PCE:
         snprintf(PATH, sizeof(PATH), "/Metadata/%s/Images/160/5/599EAD9B.444", emulator);
         break;
+    case FrensSettings::emulators::O2EM:
+        snprintf(PATH, sizeof(PATH), "/Metadata/%s/Images/160/0/084EE035.444", emulator);
+        break;
     default:
         return false;
     }
