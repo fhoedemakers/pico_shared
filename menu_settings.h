@@ -27,8 +27,9 @@ enum MenuSettingsIndex {
     MOPT_RAPID_FIRE_ON_B,
     MOPT_AUTO_INSERT_FDS_DISK_A, // Auto-insert disk side A at boot (On) or wait for user A press (Off)
     MOPT_AUTO_SWAP_FDS_DISK, // New menu option for automatically swapping FDS disk sides when loading a .fds file
-    MOPT_ENTER_BOOTSEL_MODE,
     MOPT_FDS_DISK_SWAP,
+    MOPT_OVERCLOCK,
+    MOPT_ENTER_BOOTSEL_MODE, // Keep last so BOOTSEL is the final entry in the settings list
     MOPT_COUNT
 };
 // Create and initialize an array which explains each option in a short description of max 40 characters
@@ -55,8 +56,9 @@ const char* const g_settings_descriptions[MOPT_COUNT] = {
     "Enable rapid fire for this button",
     "Insert disk at boot or stay in BIOS",
     "Auto swap disk side when game asks",
-    "Reboot to BOOTSEL mode for flashing",
-    "Eject / insert FDS disk side"
+    "Eject / insert FDS disk side",
+    "Run CPU at high clock (reboots to apply)",
+    "Reboot to BOOTSEL mode for flashing"
 };
 
 extern const int8_t *g_settings_visibility; // Visibility configuration for options menu

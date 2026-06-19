@@ -2519,6 +2519,12 @@ int showSettingsMenu(bool calledFromGame)
                 value = working.flags.enableVUMeter ? "ON" : "OFF";
                 break;
             }
+            case MenuSettingsIndex::MOPT_OVERCLOCK:
+            {
+                label = "Overclock";
+                value = working.flags.overclock ? "ON" : "OFF";
+                break;
+            }
             // case MenuSettingsIndex::MOPT_FRUITJAM_INTERNAL_SPEAKER:
             // {
             //     label = "Fruit Jam Internal Speaker";
@@ -3048,6 +3054,9 @@ int showSettingsMenu(bool calledFromGame)
                     case MOPT_FRUITJAM_VUMETER:
                         working.flags.enableVUMeter = !working.flags.enableVUMeter;
                         break;
+                    case MOPT_OVERCLOCK:
+                        working.flags.overclock = !working.flags.overclock;
+                        break;
                     case MOPT_DMG_PALETTE:
                     {
                         if (right)
@@ -3215,6 +3224,18 @@ int showSettingsMenu(bool calledFromGame)
         settings = working;
         FrensSettings::savesettings();
         if (rval == 0) rval = 1;
+
+        // If the overclock toggle disagrees with the live clock, rewrite
+        // FlashParams and reboot. writeFlashParamsToFlash arms the watchdog
+        // and never returns.
+        uint32_t liveKHz   = clock_get_hz(clk_sys) / 1000;
+        uint32_t targetKHz = settings.flags.overclock ? FLASHPARAM_MAX_FREQ_KHZ : FLASHPARAM_MIN_FREQ_KHZ;
+        vreg_voltage targetV = settings.flags.overclock ? FLASHPARAM_MAX_VOLTAGE : FLASHPARAM_MIN_VOLTAGE;
+        if (liveKHz != targetKHz)
+        {
+            showLoadingScreen(settings.flags.overclock ? "Enabling overclock" : "Disabling overclock", 60);
+            Frens::writeFlashParamsToFlash(targetKHz, targetV);
+        }
     }
     Frens::f_free(workingDyn);
     // restore contents of swap file back to altScreenbuffer when not nullptr
@@ -3361,8 +3382,10 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
 // artifacts. Skip the auto-switch in that case; the .sgx ROM still loads and
 // runs at the build's default 252 MHz (slower on the heavier titles but clean).
 #if (HSTX && SGX && CFG_TUH_RPI_PIO_USB)
-        if (selectedRomOrFolder && entries[index].IsDirectory == false && oldIndex != index)
-        {        
+        // Skip per-ROM auto-switch when user explicitly locked overclock on:
+        // the system stays at FLASHPARAM_MAX_FREQ_KHZ for every ROM.
+        if (!settings.flags.overclock && selectedRomOrFolder && entries[index].IsDirectory == false && oldIndex != index)
+        {
             oldIndex = index;
             if ( strncasecmp(fileExt, ".sgx", 4) == 0)
             {
@@ -3408,8 +3431,8 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
             // printf(" Current clock freq: %d kHz\n", (unsigned int)clockFreq);
             if (FrensSettings::getEmulatorType() == FrensSettings::emulators::GENESIS && !isWav)
             {
-
-                if (clockFreq != FLASHPARAM_MAX_FREQ_KHZ)
+                // Skip clock switch when user locked overclock on (stay at MAX).
+                if (!settings.flags.overclock && clockFreq != FLASHPARAM_MAX_FREQ_KHZ)
                 {
                     char message[40];
                     snprintf(message, sizeof(message), "Setting clock to  %dMHZ", FLASHPARAM_MAX_FREQ_KHZ /1000);
@@ -3423,7 +3446,8 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
             }
             else
             {
-                if (clockFreq != FLASHPARAM_MIN_FREQ_KHZ)
+                // Skip clock switch when user locked overclock on (stay at MAX).
+                if (!settings.flags.overclock && clockFreq != FLASHPARAM_MIN_FREQ_KHZ)
                 {
                     char message[40];
                     snprintf(message, sizeof(message), "Setting clock to  %dMHZ", FLASHPARAM_MIN_FREQ_KHZ /1000);

@@ -96,6 +96,7 @@ namespace FrensSettings
         printf("useDVIModeForHDMI: %d\n", settings.flags.useDVIModeForHDMI);
         printf("autoSwapFDS: %d\n", settings.flags.autoSwapFDS);
         printf("autoInsertDiskA: %d\n", settings.flags.autoInsertDiskA);
+        printf("overclock: %d\n", settings.flags.overclock);
         printf("\n");
     }
     void resetsettings(struct settings *settingsPtr)
@@ -125,8 +126,7 @@ namespace FrensSettings
         settings.version = SETTINGS_VERSION;
         settings.flags.autoSwapFDS = 0;
         settings.flags.autoInsertDiskA = 1; // default: disk side A pre-inserted at boot
-        // clear all the reserved settings
-        settings.flags.reserved = 0;
+        settings.flags.overclock = 0; // default: run at FLASHPARAM_MIN_FREQ_KHZ
         strcpy(settings.currentDir, "/");
     }
 
