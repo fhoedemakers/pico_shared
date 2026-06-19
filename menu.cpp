@@ -2333,7 +2333,7 @@ int showSettingsMenu(bool calledFromGame)
     //   helpRowScreen (option description),
     //   ... free ...,
     //   bottom-anchored hint lines at SCREEN_ROWS-3 .. SCREEN_ROWS-1.
-    const int optionWindowSize  = 10;
+    const int optionWindowSize  = 12;
     const int rowStartOptions   = 3;
     const int upIndicatorRow    = rowStartOptions - 1;
     const int downIndicatorRow  = rowStartOptions + optionWindowSize;
