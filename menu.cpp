@@ -2320,24 +2320,31 @@ int showSettingsMenu(bool calledFromGame)
             }
         }
     }
-    // Layout rows:
-    // 0: title
-    // 1: blank spacer after title
-    // 2 .. 2+visibleCount-1 : options
-    // spacerAfterOptionsRow (blank)
-    // paletteStartRow .. paletteStartRow+3 : 4 rows of 16 color blocks (64 colors total)
-    // paletteInfoRow: textual FG/BG info using working colors
-    // SAVE
-    // CANCEL
-    // DEFAULT
-    const int rowStartOptions = 2;
-    const int spacerAfterOptionsRow = rowStartOptions + visibleCount; // first spacer (blank)
-    const int actionRowScreen = spacerAfterOptionsRow + 1;         // single row for SAVE / CANCEL / DEFAULT
-    const int paletteStartRow = actionRowScreen + 2;              // +2 = blank spacer between action row and palette
-    const int paletteRowCount = 4;                                // 4 x 16 = 64
-    const int helpRowScreen = paletteStartRow + paletteRowCount + 1; // extra spacer before help line
-    int selectedRowLocal = rowStartOptions;         // first selectable option row
-    int actionSubSelect = 0;                        // 0=SAVE, 1=CANCEL, 2=DEFAULT
+    // Layout rows (option list is a scrollable window of optionWindowSize rows):
+    //   title, blank,
+    //   upIndicatorRow,
+    //   rowStartOptions .. rowStartOptions+optionWindowSize-1 (option slots),
+    //   downIndicatorRow,
+    //   blank,
+    //   actionRowScreen (SAVE / CANCEL / DEFAULT, fixed),
+    //   blank,
+    //   paletteStartRow .. paletteStartRow+3 (4x16 palette),
+    //   blank,
+    //   helpRowScreen (option description),
+    //   ... free ...,
+    //   bottom-anchored hint lines at SCREEN_ROWS-3 .. SCREEN_ROWS-1.
+    const int optionWindowSize  = 10;
+    const int rowStartOptions   = 3;
+    const int upIndicatorRow    = rowStartOptions - 1;
+    const int downIndicatorRow  = rowStartOptions + optionWindowSize;
+    const int actionRowScreen   = downIndicatorRow + 2;
+    const int paletteStartRow   = actionRowScreen + 2;
+    const int paletteRowCount   = 4;
+    const int helpRowScreen     = paletteStartRow + paletteRowCount + 1;
+    int  selectedOptionIndex = 0;                   // logical 0..visibleCount-1
+    int  firstVisibleOption  = 0;                   // scroll offset
+    bool onActionRow         = (visibleCount == 0); // no options -> start on action row
+    int  actionSubSelect     = 0;                   // 0=SAVE, 1=CANCEL, 2=DEFAULT
     exitMenu = false;
     bool applySettings = false; // true when SAVE, false when CANCEL
     // lambda to redraw the entire menu
@@ -2356,8 +2363,15 @@ int showSettingsMenu(bool calledFromGame)
         putText(titleCol, row++, "-- Settings --", CBLACK, CWHITE);
         // Blank spacer line
         putText(0, row++, "", CBLACK, CWHITE);
-        // Render each visible option
-        for (int vi = 0; vi < visibleCount; ++vi)
+        // Up-scroll indicator (centered): shown when there are options above the window
+        putText(SCREEN_COLS / 2, upIndicatorRow,
+                (firstVisibleOption > 0) ? "^" : " ", CBLACK, CWHITE);
+        // Render the visible option window (up to optionWindowSize entries)
+        row = rowStartOptions;
+        const int lastVi = (firstVisibleOption + optionWindowSize < visibleCount)
+                               ? firstVisibleOption + optionWindowSize
+                               : visibleCount;
+        for (int vi = firstVisibleOption; vi < lastVi; ++vi)
         {
             int optIndex = visibleIndices[vi];
             const char *label = "";
@@ -2646,9 +2660,11 @@ int showSettingsMenu(bool calledFromGame)
             snprintf(line, sizeof(line), "%s%s%s", label, (optIndex == MOPT_EXIT_GAME || optIndex == MOPT_SAVE_RESTORE_STATE || optIndex == MOPT_ENTER_BOOTSEL_MODE || optIndex == MOPT_RESET_GAME) ? "" : ": ", value);
             putText(0, row++, line, CBLACK, CWHITE);
         }
-        // Blank spacer after last option
-        putText(0, row++, "", CBLACK, CWHITE);
-        // Render SAVE / CANCEL / DEFAULT on a single row with per-word highlighting
+        // Down-scroll indicator (centered): shown when there are options below the window
+        putText(SCREEN_COLS / 2, downIndicatorRow,
+                (firstVisibleOption + optionWindowSize < visibleCount) ? "v" : " ", CBLACK, CWHITE);
+        // Render SAVE / CANCEL / DEFAULT at a fixed row, with per-word highlighting
+        row = actionRowScreen;
         {
             const char *saveLabel  = settingsChanged ? "SAVE*" : "SAVE";
             const char *labels[3]  = { saveLabel, "CANCEL", "DEFAULT" };
@@ -2658,7 +2674,6 @@ int showSettingsMenu(bool calledFromGame)
             int startCol           = (SCREEN_COLS - totalLen) / 2;
             if (startCol < 0) startCol = 0;
             int col3 = startCol;
-            bool onActionRow = (selectedRowLocal == actionRowScreen);
             for (int ai = 0; ai < 3; ++ai)
             {
                 int fg = (onActionRow && actionSubSelect == ai) ? CWHITE : CBLACK;
@@ -2668,9 +2683,8 @@ int showSettingsMenu(bool calledFromGame)
             }
             row++;
         }
-        // Blank spacer after action row
-        putText(0, row++, "", CBLACK, CWHITE);
         // 64-color palette grid (4 rows x 16 columns). Each block is a space with fg=bg=colorIndex
+        row = paletteStartRow;
         int blocksPerRow = 16;
         int blockRows = paletteRowCount;
         int gridWidth = blocksPerRow; // one char per block
@@ -2706,12 +2720,13 @@ int showSettingsMenu(bool calledFromGame)
         }
         // Help text (dynamic button labels)
 
-        if (selectedRowLocal < actionRowScreen)
+        if (!onActionRow && visibleCount > 0)
         {
-            if (visibleIndices[selectedRowLocal - rowStartOptions] == MOPT_EXIT_GAME ||
-                visibleIndices[selectedRowLocal - rowStartOptions] == MOPT_SAVE_RESTORE_STATE ||
-                visibleIndices[selectedRowLocal - rowStartOptions] == MOPT_ENTER_BOOTSEL_MODE ||
-                visibleIndices[selectedRowLocal - rowStartOptions] == MOPT_RESET_GAME)
+            int curOpt = visibleIndices[selectedOptionIndex];
+            if (curOpt == MOPT_EXIT_GAME ||
+                curOpt == MOPT_SAVE_RESTORE_STATE ||
+                curOpt == MOPT_ENTER_BOOTSEL_MODE ||
+                curOpt == MOPT_RESET_GAME)
             {
                 snprintf(line, sizeof(line), "UP/DOWN: Move, %s: select", buttonLabel1);
             }
@@ -2733,7 +2748,7 @@ int showSettingsMenu(bool calledFromGame)
         if (col < 0)
             col = 0;
         putText(col, row++, line, CBLACK, CWHITE);
-        if (selectedRowLocal == actionRowScreen)
+        if (onActionRow)
         {
             const char *actionHints[3] = { "Confirm changes", "Discard changes", "Restore defaults" };
             snprintf(line, sizeof(line), "%s: %s", buttonLabel1, actionHints[actionSubSelect]);
@@ -2743,9 +2758,9 @@ int showSettingsMenu(bool calledFromGame)
             strcpy(line, ""); // no second line
         }
         // display helptext
-        if (selectedRowLocal >= rowStartOptions && selectedRowLocal < rowStartOptions + visibleCount)
+        if (!onActionRow && visibleCount > 0)
         {
-            putText(0, helpRowScreen, g_settings_descriptions[visibleIndices[selectedRowLocal - rowStartOptions]], CBLACK, CWHITE);
+            putText(0, helpRowScreen, g_settings_descriptions[visibleIndices[selectedOptionIndex]], CBLACK, CWHITE);
         }
         else
         {
@@ -2770,8 +2785,11 @@ int showSettingsMenu(bool calledFromGame)
         putText(1, helpRowScreen + 4, "SD:", CBLACK, CWHITE);
         putText(5, helpRowScreen + 4, line, CBLACK, CWHITE);
 #endif
-        // Suppress row-level highlight for action row; per-word colors handle it
-        int displayRow = (selectedRowLocal == actionRowScreen) ? -1 : selectedRowLocal;
+        // Suppress row-level highlight for action row; per-word colors handle it.
+        // Selected screen row is derived from the logical option index + scroll offset.
+        int displayRow = onActionRow
+                             ? -1
+                             : rowStartOptions + (selectedOptionIndex - firstVisibleOption);
         drawAllLines(displayRow);
     }; // redraw lambda
     // for volume control option: initialize audio stream
@@ -2812,9 +2830,9 @@ int showSettingsMenu(bool calledFromGame)
         }
         bool pushed = pad != 0;
         int optIndex = -1;
-        if (selectedRowLocal >= rowStartOptions && selectedRowLocal < rowStartOptions + visibleCount)
+        if (!onActionRow && selectedOptionIndex >= 0 && selectedOptionIndex < visibleCount)
         {
-            optIndex = visibleIndices[selectedRowLocal - rowStartOptions]; // map screen row to option index
+            optIndex = visibleIndices[selectedOptionIndex];
         }
 #if USE_I2S_AUDIO == PICO_AUDIO_I2S_DRIVER_TLV320 && PICO_RP2350
         if (optIndex == MOPT_FRUITJAM_VOLUME_CONTROL)
@@ -2843,42 +2861,57 @@ int showSettingsMenu(bool calledFromGame)
 
             if (pad & UP)
             {
-                if (selectedRowLocal > rowStartOptions)
+                const int maxFirst = (visibleCount > optionWindowSize)
+                                         ? visibleCount - optionWindowSize
+                                         : 0;
+                if (onActionRow)
                 {
-                    do
+                    // re-enter list at the bottom; scroll so last option is visible
+                    if (visibleCount > 0)
                     {
-                        selectedRowLocal--;
-                        // printf("Selected row: %d\n", selectedRowLocal);
-                    } while (
-                        selectedRowLocal == spacerAfterOptionsRow ||
-                        (selectedRowLocal >= paletteStartRow && selectedRowLocal < paletteStartRow + paletteRowCount));
+                        onActionRow = false;
+                        selectedOptionIndex = visibleCount - 1;
+                        firstVisibleOption = maxFirst;
+                    }
+                }
+                else if (selectedOptionIndex == 0)
+                {
+                    onActionRow = true; // wrap to action row
                 }
                 else
                 {
-                    selectedRowLocal = actionRowScreen; // wrap
+                    selectedOptionIndex--;
+                    if (selectedOptionIndex < firstVisibleOption)
+                        firstVisibleOption = selectedOptionIndex; // scroll up
                 }
             }
             else if (pad & DOWN)
             {
-                if (selectedRowLocal < actionRowScreen)
+                if (onActionRow)
                 {
-                    do
+                    // re-enter list at the top
+                    if (visibleCount > 0)
                     {
-                        selectedRowLocal++;
-                        // printf("Selected row: %d\n", selectedRowLocal);
-                    } while (
-                        selectedRowLocal == spacerAfterOptionsRow ||
-                        (selectedRowLocal >= paletteStartRow && selectedRowLocal < paletteStartRow + paletteRowCount));
+                        onActionRow = false;
+                        selectedOptionIndex = 0;
+                        firstVisibleOption = 0;
+                    }
+                }
+                else if (selectedOptionIndex == visibleCount - 1)
+                {
+                    onActionRow = true; // wrap to action row
                 }
                 else
                 {
-                    selectedRowLocal = rowStartOptions; // wrap
+                    selectedOptionIndex++;
+                    if (selectedOptionIndex >= firstVisibleOption + optionWindowSize)
+                        firstVisibleOption = selectedOptionIndex - optionWindowSize + 1; // scroll down
                 }
             }
             else if (pad & LEFT || pad & RIGHT || ((pad & A) && (optIndex == MOPT_EXIT_GAME || optIndex == MOPT_SAVE_RESTORE_STATE || optIndex == MOPT_ENTER_BOOTSEL_MODE || optIndex == MOPT_RESET_GAME || optIndex == MOPT_FDS_DISK_SWAP)))
             {
                 // LEFT/RIGHT on the action row cycles sub-selection
-                if (selectedRowLocal == actionRowScreen && (pad & (LEFT | RIGHT)))
+                if (onActionRow && (pad & (LEFT | RIGHT)))
                 {
                     if (pad & RIGHT)
                         actionSubSelect = (actionSubSelect + 1) % 3;
@@ -2891,7 +2924,6 @@ int showSettingsMenu(bool calledFromGame)
                     {
                        reset_usb_boot(0, 0);
                     }
-                    // int optIndex = visibleIndices[selectedRowLocal - rowStartOptions]; // map screen row to option index
                     bool right = pad & RIGHT;
                     switch (optIndex)
                     {
@@ -3140,7 +3172,7 @@ int showSettingsMenu(bool calledFromGame)
             }
             else if (pad & A)
             {
-                if (selectedRowLocal == actionRowScreen)
+                if (onActionRow)
                 {
                     switch (actionSubSelect)
                     {
