@@ -33,9 +33,21 @@ set(FRENS_XIP_BASE        "0x10000000" CACHE STRING "RP2350 XIP flash base")
 set(FRENS_BOOTLOADER_SIZE "0x100000"   CACHE STRING "Bytes reserved for the resident bootloader (1 MB)")
 set(FRENS_FLASH_TOTAL     "0x1000000"  CACHE STRING "Total external flash on the board (Fruit Jam = 16 MB)")
 
+# Slot layout for the multi-slot ("hybrid") bootloader. The bootloader scans
+# slots 0..(FRENS_SLOT_COUNT-1) at boot when it detects a board with PSRAM +
+# >= 16 MB flash; on legacy boards it ignores the slot constants and the same
+# emulator UF2 (linked to slot 0 == FRENS_APP_BASE) doubles as the single live
+# partition. Constants here are also passed as compile defs to boot_config.h
+# so the C scanner and the linker agree.
+set(FRENS_SLOT_SIZE  "0x200000" CACHE STRING "Size of each pinned slot (2 MB)")
+set(FRENS_SLOT_COUNT "7"        CACHE STRING "Number of pinned slots (7 fit in 14 MB after 1 MB bootloader; top 1 MB reserved)")
+
 # Derived addresses.
 math(EXPR FRENS_APP_BASE "${FRENS_XIP_BASE} + ${FRENS_BOOTLOADER_SIZE}" OUTPUT_FORMAT HEXADECIMAL)
 math(EXPR FRENS_APP_SIZE  "${FRENS_FLASH_TOTAL} - ${FRENS_BOOTLOADER_SIZE}" OUTPUT_FORMAT HEXADECIMAL)
+# Slot 0's base is exactly FRENS_APP_BASE: same address as the legacy single
+# partition, so an emulator built with frens_offset_for_bootloader() (no slot
+# index) IS a valid slot-0 UF2 -- no rebuild needed.
 
 # ---------------------------------------------------------------------------
 # _frens_relink_flash(<target> <origin_hex> <length_hex>)
@@ -100,8 +112,27 @@ function(frens_link_as_bootloader TARGET)
     _frens_relink_flash(${TARGET} ${FRENS_XIP_BASE} ${FRENS_BOOTLOADER_SIZE})
 endfunction()
 
-# Link an emulator into the application partition (its UF2 will then target the
-# partition, and the bootloader writes it verbatim and jumps there).
+# Link an emulator into the application partition (legacy single-partition /
+# slot 0). Same address (FRENS_APP_BASE = 0x10100000); the bootloader writes
+# the resulting UF2 verbatim and either flashes-on-launch (legacy boards) or
+# treats it as pinned slot 0 (slot-mode boards).
 function(frens_offset_for_bootloader TARGET)
     _frens_relink_flash(${TARGET} ${FRENS_APP_BASE} ${FRENS_APP_SIZE})
+endfunction()
+
+# Link an emulator into a specific pinned slot (slot-mode boards only).
+# Slot N origin = FRENS_APP_BASE + N * FRENS_SLOT_SIZE; capped LENGTH so the
+# linker errors if the image overflows the slot rather than corrupting the
+# next one. Slot 0 alias-resolves to the legacy single-partition layout above
+# (so it is interchangeable with frens_offset_for_bootloader).
+function(frens_link_to_pinned_slot TARGET SLOT_INDEX)
+    if(SLOT_INDEX LESS 0 OR SLOT_INDEX GREATER_EQUAL ${FRENS_SLOT_COUNT})
+        message(FATAL_ERROR
+            "frens_link_to_pinned_slot: slot ${SLOT_INDEX} out of range "
+            "[0, ${FRENS_SLOT_COUNT})")
+    endif()
+    math(EXPR _origin
+        "${FRENS_XIP_BASE} + ${FRENS_BOOTLOADER_SIZE} + ${FRENS_SLOT_SIZE} * ${SLOT_INDEX}"
+        OUTPUT_FORMAT HEXADECIMAL)
+    _frens_relink_flash(${TARGET} ${_origin} ${FRENS_SLOT_SIZE})
 endfunction()
