@@ -2311,6 +2311,9 @@ int showSettingsMenu(bool calledFromGame)
     for (int i = 0; i < MOPT_COUNT; ++i)
     {
         if (i == MOPT_FDS_DISK_SWAP) continue; // already handled above
+        // Overclock is reachable only from the file-browser menu — applying it
+        // mid-game would reboot the box and drop unsaved emulator state.
+        if (i == MOPT_OVERCLOCK && calledFromGame) continue;
         // -1 is always hidden
         if (g_settings_visibility[i] >= 0)
         {
