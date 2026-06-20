@@ -73,8 +73,19 @@ function(_frens_relink_flash TARGET ORIGIN LENGTH)
     endif()
 
     file(READ "${_src_ld}" _ld_text)
+
+    # Newer SDKs pull the FLASH region in from a generated pico_flash_region.ld
+    # (which carries the board's full flash size). Replace that INCLUDE with an
+    # explicit, capped FLASH region so the bootloader / app partition can never
+    # overlap and the linker errors if an image overflows its slot.
+    string(REPLACE
+        "INCLUDE \"pico_flash_region.ld\""
+        "FLASH(rx) : ORIGIN = ${ORIGIN}, LENGTH = ${LENGTH}"
+        _ld_text "${_ld_text}")
+    # Older SDKs spell the region out inline; rewrite that form too (idempotent
+    # if the INCLUDE replacement above already produced this line).
     string(REGEX REPLACE
-        "FLASH\\(rx\\)[^\n]*"
+        "FLASH\\(rx\\)[ \t]*:[^\n]*"
         "FLASH(rx) : ORIGIN = ${ORIGIN}, LENGTH = ${LENGTH}"
         _ld_text "${_ld_text}")
 
