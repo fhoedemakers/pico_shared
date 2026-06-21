@@ -1707,7 +1707,7 @@ namespace Frens
         // stay at 252 MHz for SGX (no artifacts) or accept the dots at
         // 378 MHz — the chip has no third clean PLL to use for HSTX.
         bool hstx_ok = true;
-#if SGX && CFG_TUH_RPI_PIO_USB
+#if (SGX || GENESIS_OVERCLOCK_HSTX_FIX) && CFG_TUH_RPI_PIO_USB
         const bool force_pll_usb_hstx = true;
 #else
         const bool force_pll_usb_hstx = false;
