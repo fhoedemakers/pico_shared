@@ -105,6 +105,15 @@ function(_frens_relink_flash TARGET ORIGIN LENGTH)
     file(WRITE "${_out_ld}" "${_ld_text}")
     message(STATUS "BootPartition: ${TARGET} -> ORIGIN=${ORIGIN} LENGTH=${LENGTH} (from ${_src_ld})")
     pico_set_linker_script(${TARGET} "${_out_ld}")
+
+    # Override the SDK's compile-time flash-size assumption to match the actual
+    # chip. The board header (e.g. adafruit_fruit_jam.h) may set PICO_FLASH_SIZE_BYTES
+    # to a value smaller than the real flash (e.g. 8 MB on a 16 MB board), which
+    # makes hard_assert in flash_range_erase / flash_range_program panic when the
+    # bootloader or an emulator writes at higher offsets (e.g. slot 4 at 9 MB).
+    # FRENS_FLASH_TOTAL is the single source of truth here.
+    target_compile_definitions(${TARGET} PRIVATE
+        PICO_FLASH_SIZE_BYTES=${FRENS_FLASH_TOTAL})
 endfunction()
 
 # Link the bootloader into the reserved boot region at the start of flash.
