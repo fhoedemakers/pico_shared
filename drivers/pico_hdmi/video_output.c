@@ -628,7 +628,18 @@ void video_output_set_vsync_callback(video_output_vsync_cb_t cb)
     vsync_callback = cb;
 }
 
-void video_output_core1_run(void)
+// __not_in_flash_func: this function's while(1) loop runs on core1 forever.
+// When core0 calls flash_range_erase / flash_range_program, XIP is briefly
+// disabled and any core1 instruction fetch from flash stalls or returns
+// garbage. Keeping the whole function (including the one-time hardware-init
+// prologue) in SRAM costs ~700 bytes but lets the bootloader's progress bar
+// keep updating on screen while flashing a new emulator. All callees from
+// the steady-state loop (time_us_32 inline, hstx_resync, dma_irq_handler,
+// scanline_callback, etc.) are themselves __not_in_flash_func; the only
+// flash-resident calls left here (printf, irq_set_enabled) sit inside the
+// rare resync path, which is not expected to fire during a normal flash
+// write -- and would be the same risk as before this attribute was added.
+void __not_in_flash_func(video_output_core1_run)(void)
 {
 #if 0
     // HSTX Hardware Setup
