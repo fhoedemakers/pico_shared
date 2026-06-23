@@ -147,7 +147,7 @@ void resetColors(int prevfgColor, int prevbgColor)
     }
 }
 
-static void getButtonLabels(char *buttonLabel1, char *buttonLabel2)
+void getButtonLabels(char *buttonLabel1, char *buttonLabel2)
 {
     auto &gp = io::getCurrentGamePadState(0);
     if (strcmp(gp.GamePadName, "Dual Shock 4") == 0 || strcmp(gp.GamePadName, "Dual Sense") == 0 || strcmp(gp.GamePadName, "PSClassic") == 0)
