@@ -3350,8 +3350,12 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
     if (showSplash && !watchdog_enable_caused_reboot())
     {
         showSplash = false;
+#if !BOOTLOADER_BUILD
         printf("Showing splash screen\n");
         showSplashScreen();
+#else
+        printf("Bootloader build, skipping splash screen\n");
+#endif
     }
     srand(get_rand_32()); // Seed the random number generator for screensaver
     romlister.list(settings.currentDir);
