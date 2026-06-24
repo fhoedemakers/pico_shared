@@ -75,6 +75,52 @@ namespace Frens
     static DWORD totalSpace = 0;
     static DWORD freeSpace = 0;
     static bool extSpeakerEnabled = false;
+
+    // pico_emuLoader bootloader handshake. Two watchdog scratch registers
+    // carry one-direction signals between the resident bootloader and the
+    // emulator app it launched. Both survive watchdog_reboot (since
+    // watchdog_reboot(0,0,0) only clobbers scratch[4]) and are cleared by a
+    // cold reset, so the "launched from bootloader" semantic resets correctly
+    // when the user power-cycles or flashes a stand-alone image via BOOTSEL.
+    //
+    //   scratch[6]: bootloader -> emulator. Set to LOADER_LAUNCH_MAGIC by
+    //               main.cpp right before app_launch_run(). Read by
+    //               isLaunchedFromBootloader().
+    //   scratch[7]: emulator -> bootloader. Set to LOADER_RETURN_MAGIC by
+    //               rebootToBootloader() right before watchdog_reboot(). The
+    //               bootloader checks and clears it in its resume path; if
+    //               present, the resume jump is skipped and the picker is
+    //               shown instead.
+    static constexpr uint32_t LOADER_LAUNCH_MAGIC = 0xB007ED01u;
+    static constexpr uint32_t LOADER_RETURN_MAGIC = 0xB007BACEu;
+    static constexpr int LOADER_LAUNCH_SCRATCH = 6;
+    static constexpr int LOADER_RETURN_SCRATCH = 7;
+
+    bool isLaunchedFromBootloader()
+    {
+        return watchdog_hw->scratch[LOADER_LAUNCH_SCRATCH] == LOADER_LAUNCH_MAGIC;
+    }
+
+    void rebootToBootloader()
+    {
+        watchdog_hw->scratch[LOADER_RETURN_SCRATCH] = LOADER_RETURN_MAGIC;
+        watchdog_reboot(0, 0, 0);
+        for (;;) tight_loop_contents();
+    }
+
+    void markLaunchedFromBootloader()
+    {
+        watchdog_hw->scratch[LOADER_LAUNCH_SCRATCH] = LOADER_LAUNCH_MAGIC;
+    }
+
+    bool consumeReturnToBootloaderRequest()
+    {
+        if (watchdog_hw->scratch[LOADER_RETURN_SCRATCH] == LOADER_RETURN_MAGIC) {
+            watchdog_hw->scratch[LOADER_RETURN_SCRATCH] = 0;
+            return true;
+        }
+        return false;
+    }
 #if !HSTX && FRAMEBUFFERISPOSSIBLE
     // uint8_t *framebuffer1; // [320 * 240];
     // uint8_t *framebuffer2; // [320 * 240];

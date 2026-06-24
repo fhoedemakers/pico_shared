@@ -127,6 +127,7 @@ namespace FrensSettings
         settings.flags.autoSwapFDS = 0;
         settings.flags.autoInsertDiskA = 1; // default: disk side A pre-inserted at boot
         settings.flags.overclock = 0; // default: run at FLASHPARAM_MIN_FREQ_KHZ
+        settings.flags.reserved = 0;  // clear spare bits
         strcpy(settings.currentDir, "/");
     }
 

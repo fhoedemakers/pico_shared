@@ -29,7 +29,8 @@ enum MenuSettingsIndex {
     MOPT_AUTO_SWAP_FDS_DISK, // New menu option for automatically swapping FDS disk sides when loading a .fds file
     MOPT_FDS_DISK_SWAP,
     MOPT_OVERCLOCK,
-    MOPT_ENTER_BOOTSEL_MODE, // Keep last so BOOTSEL is the final entry in the settings list
+    MOPT_ENTER_BOOTSEL_MODE,
+    MOPT_REBOOT_TO_LOADER,   // Only shown when Frens::isLaunchedFromBootloader(): reboots to the emuLoader picker
     MOPT_COUNT
 };
 // Create and initialize an array which explains each option in a short description of max 40 characters
@@ -58,7 +59,8 @@ const char* const g_settings_descriptions[MOPT_COUNT] = {
     "Auto swap disk side when game asks",
     "Eject / insert FDS disk side",
     "Run CPU at high clock (reboots to apply)",
-    "Reboot to BOOTSEL mode for flashing"
+    "Reboot to BOOTSEL mode for flashing",
+    "Return to emuLoader picker menu"
 };
 
 extern const int8_t *g_settings_visibility; // Visibility configuration for options menu

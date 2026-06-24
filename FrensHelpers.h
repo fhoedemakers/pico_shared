@@ -190,7 +190,29 @@ namespace Frens
 
      void pollHeadPhoneJack();
      bool isHeadPhoneJackConnected();
-   
+
+    // pico_emuLoader bootloader<->emulator handshake (see FrensHelpers.cpp).
+    // Built on watchdog scratch registers, which survive watchdog_reboot but
+    // are cleared by cold reset -- so the "launched from bootloader" semantic
+    // resets correctly on power-cycle or after a BOOTSEL flash.
+    //
+    // Emulator side:
+    //   isLaunchedFromBootloader() -- true if this image was started by the
+    //       resident bootloader (rather than flashed standalone via BOOTSEL).
+    //   rebootToBootloader() -- ask the bootloader to skip its resume path
+    //       on the next boot (so it shows the picker) and watchdog-reboot.
+    //       Does not return on success.
+    // Bootloader side:
+    //   markLaunchedFromBootloader() -- call right before app_launch_run() so
+    //       the launched image sees isLaunchedFromBootloader() == true.
+    //   consumeReturnToBootloaderRequest() -- in the resume path: returns
+    //       true and clears the request if the emulator asked to return to
+    //       the picker; the bootloader should then skip its resume jump.
+    bool isLaunchedFromBootloader();
+    void rebootToBootloader();
+    void markLaunchedFromBootloader();
+    bool consumeReturnToBootloaderRequest();
+
 } // namespace Frens
 
 

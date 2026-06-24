@@ -2402,9 +2402,15 @@ int showSettingsMenu(bool calledFromGame)
             }
              case MenuSettingsIndex::MOPT_ENTER_BOOTSEL_MODE:
             {
-                
-                
+
+
                 label = "Enter BOOTSEL Mode";
+                value = "";
+                break;
+            }
+            case MenuSettingsIndex::MOPT_REBOOT_TO_LOADER:
+            {
+                label = "Return to emuLoader";
                 value = "";
                 break;
             }
@@ -2666,7 +2672,7 @@ int showSettingsMenu(bool calledFromGame)
                 value = "";
                 break;
             }
-            snprintf(line, sizeof(line), "%s%s%s", label, (optIndex == MOPT_EXIT_GAME || optIndex == MOPT_SAVE_RESTORE_STATE || optIndex == MOPT_ENTER_BOOTSEL_MODE || optIndex == MOPT_RESET_GAME) ? "" : ": ", value);
+            snprintf(line, sizeof(line), "%s%s%s", label, (optIndex == MOPT_EXIT_GAME || optIndex == MOPT_SAVE_RESTORE_STATE || optIndex == MOPT_ENTER_BOOTSEL_MODE || optIndex == MOPT_REBOOT_TO_LOADER || optIndex == MOPT_RESET_GAME) ? "" : ": ", value);
             putText(0, row++, line, CBLACK, CWHITE);
         }
         // Down-scroll indicator (centered): shown when there are options below the window
@@ -2735,6 +2741,7 @@ int showSettingsMenu(bool calledFromGame)
             if (curOpt == MOPT_EXIT_GAME ||
                 curOpt == MOPT_SAVE_RESTORE_STATE ||
                 curOpt == MOPT_ENTER_BOOTSEL_MODE ||
+                curOpt == MOPT_REBOOT_TO_LOADER ||
                 curOpt == MOPT_RESET_GAME)
             {
                 snprintf(line, sizeof(line), "UP/DOWN: Move, %s: select", buttonLabel1);
@@ -2917,7 +2924,7 @@ int showSettingsMenu(bool calledFromGame)
                         firstVisibleOption = selectedOptionIndex - optionWindowSize + 1; // scroll down
                 }
             }
-            else if (pad & LEFT || pad & RIGHT || ((pad & A) && (optIndex == MOPT_EXIT_GAME || optIndex == MOPT_SAVE_RESTORE_STATE || optIndex == MOPT_ENTER_BOOTSEL_MODE || optIndex == MOPT_RESET_GAME || optIndex == MOPT_FDS_DISK_SWAP)))
+            else if (pad & LEFT || pad & RIGHT || ((pad & A) && (optIndex == MOPT_EXIT_GAME || optIndex == MOPT_SAVE_RESTORE_STATE || optIndex == MOPT_ENTER_BOOTSEL_MODE || optIndex == MOPT_REBOOT_TO_LOADER || optIndex == MOPT_RESET_GAME || optIndex == MOPT_FDS_DISK_SWAP)))
             {
                 // LEFT/RIGHT on the action row cycles sub-selection
                 if (onActionRow && (pad & (LEFT | RIGHT)))
@@ -2929,9 +2936,13 @@ int showSettingsMenu(bool calledFromGame)
                 }
                 else if (optIndex != -1)
                 {
-                     if (optIndex == MOPT_ENTER_BOOTSEL_MODE && pad & A) 
+                     if (optIndex == MOPT_ENTER_BOOTSEL_MODE && pad & A)
                     {
                        reset_usb_boot(0, 0);
+                    }
+                    if (optIndex == MOPT_REBOOT_TO_LOADER && pad & A)
+                    {
+                       Frens::rebootToBootloader(); // does not return
                     }
                     bool right = pad & RIGHT;
                     switch (optIndex)
