@@ -84,6 +84,9 @@ enum class ScanlineType : uint8_t
 #ifndef ENABLEDVI
 #define ENABLEDVI 0 
 #endif
+#ifndef BOOTLOADER_BUILD
+#define BOOTLOADER_BUILD 0
+#endif
 extern uintptr_t ROM_FILE_ADDR ; //0x10090000
 extern int maxRomSize;
 extern char ErrorMessage[];
