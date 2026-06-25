@@ -7,6 +7,7 @@
 enum MenuSettingsIndex {
     MOPT_EXIT_GAME = 0,
     MOPT_RESET_GAME,
+    MOPT_REBOOT_TO_LOADER,   // Only shown when Frens::isLaunchedFromBootloader(): reboots to the emuLoader picker
     MOPT_SAVE_RESTORE_STATE,
     MOPT_SCREENMODE,
     MOPT_SCANLINES,
@@ -30,7 +31,6 @@ enum MenuSettingsIndex {
     MOPT_FDS_DISK_SWAP,
     MOPT_OVERCLOCK,
     MOPT_ENTER_BOOTSEL_MODE,
-    MOPT_REBOOT_TO_LOADER,   // Only shown when Frens::isLaunchedFromBootloader(): reboots to the emuLoader picker
     MOPT_COUNT
 };
 // Create and initialize an array which explains each option in a short description of max 40 characters
