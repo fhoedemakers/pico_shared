@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <cstring>
+#include <malloc.h>
 #include "pico.h"
 #include "pico/stdlib.h"
 #include "pico/multicore.h"
@@ -902,6 +903,38 @@ namespace Frens
         return maxRomSize; // return maxRomSize as a fallback
     }
 
+    /* Snapshot both heaps (libc SRAM + lwmem PSRAM) on one line. Cheap
+     * enough to call at phase boundaries; mallinfo() walks the freelist
+     * but the lists are short on this build. */
+    void dumpHeapStats(const char *tag)
+    {
+        struct mallinfo mi = mallinfo();
+        unsigned sram_inuse  = (unsigned)mi.uordblks;
+        unsigned sram_free   = (unsigned)mi.fordblks;
+        unsigned sram_arena  = (unsigned)mi.arena;
+        unsigned sram_keep   = (unsigned)mi.keepcost; /* largest free contig */
+#if PICO_RP2350 && PSRAM_CS_PIN
+        if (isPsramEnabled())
+        {
+            PicoPlusPsram &psram_ = PicoPlusPsram::getInstance();
+            lwmem_stats_t st;
+            lwmem_get_stats_ex(nullptr, &st);
+            printf("[heap] %-14s SRAM arena=%uK in=%uK free=%uK largest=%uK | "
+                   "PSRAM total=%uK free=%uK minEver=%uK nAlloc=%u nFree=%u\n",
+                   tag,
+                   sram_arena >> 10, sram_inuse >> 10, sram_free >> 10, sram_keep >> 10,
+                   (unsigned)(st.mem_size_bytes >> 10),
+                   (unsigned)(st.mem_available_bytes >> 10),
+                   (unsigned)(st.minimum_ever_mem_available_bytes >> 10),
+                   (unsigned)st.nr_alloc, (unsigned)st.nr_free);
+            return;
+        }
+#endif
+        printf("[heap] %-14s SRAM arena=%uK in=%uK free=%uK largest=%uK | PSRAM disabled\n",
+               tag,
+               sram_arena >> 10, sram_inuse >> 10, sram_free >> 10, sram_keep >> 10);
+    }
+
     void *flashromtoPsram(char *selectdRom, bool swapbytes, uint32_t &crc, int crcOffset)
     {
 #if PICO_RP2350 && PSRAM_CS_PIN
@@ -1542,14 +1575,17 @@ namespace Frens
     bool initAll(char *selectedRom, uint32_t CPUFreqKHz, int marginTop, int marginBottom, size_t audiobufferSize, bool swapbytes, bool useFrameBuffer)
 
     {
+        dumpHeapStats("initAll/enter");
         byteSwapped = swapbytes;
         bool ok = false;
         int rc = initLed();
+        dumpHeapStats("initAll/initLed");
         if (rc != PICO_OK)
         {
             printf("Error initializing LED: %d\n", rc);
         }
        
+        dumpHeapStats("initAll/preInitPsram");
         if (initPsram() == false)
         {
             auto flashcap = storage_get_flash_capacity();
@@ -1580,10 +1616,13 @@ namespace Frens
         // printf("Total flash size: %d bytes (%d Kbytes)\n", cap,cap/ 1024);
         // reset settings to default in case SD card could not be mounted
         FrensSettings::resetsettings();
+        dumpHeapStats("initAll/preInitSD");
         if (initSDCard())
         {
             ok = true;
+            dumpHeapStats("initAll/postInitSD");
             FrensSettings::loadsettings();
+            dumpHeapStats("initAll/postLoadSettings");
             // When a game is started from the menu, the menu will reboot the device.
             // After reboot the emulator will start the selected game.
             // The watchdog timer is used to detect if the reboot was caused by the menu.
@@ -1608,26 +1647,34 @@ namespace Frens
             marginTop = marginBottom = 0; // ignore margins when using framebuffer
         }
 #endif // DVI
+        dumpHeapStats("initAll/preDVandAudio");
         initDVandAudio(marginTop, marginBottom, audiobufferSize);
+        dumpHeapStats("initAll/postDVandAudio");
         // init USB driver
         // USB driver is initalized after display driver to prevent the display driver
         // from using the PIO state machines already claimed by the USB driver.
         // This is only needed for the PIO USB driver.
 #if CFG_TUH_RPI_PIO_USB && PICO_RP2350
         printf("Using PIO USB.\n");
+        dumpHeapStats("initAll/preUSB");
         pio_usb_board_init();
+        dumpHeapStats("initAll/postPioUsbBoard");
         tusb_rhport_init_t host_init = {
             .role = TUSB_ROLE_HOST,
             .speed = TUSB_SPEED_AUTO};
         tusb_init(BOARD_TUH_RHPORT, &host_init);
+        dumpHeapStats("initAll/postTusbInit");
 
         if (board_init_after_tusb)
         {
             board_init_after_tusb();
         }
+        dumpHeapStats("initAll/postBoardAfterTusb");
 #else
         printf("Using internal USB.\n");
+        dumpHeapStats("initAll/preUSB");
         tusb_init();
+        dumpHeapStats("initAll/postTusbInit");
 #endif
 #if !HSTX
         // Add a small stack for core1
