@@ -64,7 +64,8 @@ namespace FrensSettings
         GENESIS = 3,
         MULTI = 4,
         PCE = 5,
-        O2EM = 6
+        O2EM = 6,
+        SNES = 7
     } emulators;
     static emulators emulatorType = NES;
     void initSettings(emulators emu) ;
@@ -86,5 +87,6 @@ extern const int8_t g_settings_visibility_sms[];
 extern const int8_t g_settings_visibility_md[];
 extern const int8_t g_settings_visibility_pce[];
 extern const int8_t g_settings_visibility_o2em[];
+extern int8_t g_settings_visibility_snes[];
 extern const int8_t g_settings_visibility_main[];
 #endif
