@@ -398,9 +398,9 @@ if [ $CMAKEONLY -eq 1 ] ; then
 fi
 make -j $BUILDPROC || exit 1
 cd ..
-# echo ""
-# if [ -f build/${APP}.uf2 ] ; then
-# 	cp build/${APP}.uf2 releases/${UF2} || exit 1
-# 	picotool info releases/${UF2}
-# fi
+echo ""
+if [ -f build/${APP}.uf2 ] ; then
+	cp build/${APP}.uf2 releases/${UF2} || exit 1
+#	picotool info releases/${UF2}
+fi
 
