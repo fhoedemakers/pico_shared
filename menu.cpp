@@ -2410,7 +2410,7 @@ int showSettingsMenu(bool calledFromGame)
             }
             case MenuSettingsIndex::MOPT_REBOOT_TO_LOADER:
             {
-                label = "Return to emuLoader";
+                label = "Return to emulator selection";
                 value = "";
                 break;
             }

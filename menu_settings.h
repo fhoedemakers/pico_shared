@@ -33,34 +33,35 @@ enum MenuSettingsIndex {
     MOPT_ENTER_BOOTSEL_MODE,
     MOPT_COUNT
 };
-// Create and initialize an array which explains each option in a short description of max 40 characters
+// Short description (max 40 chars) for each option. Use designated initializers
+// so descriptions stay bound to their enum tag — reordering or inserting new
+// MOPT_* values cannot silently shift the descriptions out of alignment.
 const char* const g_settings_descriptions[MOPT_COUNT] = {
-    "Exit game and return to main menu",
-    "Reset the currently running game",
-    "Save or load emulator state",
-    "Screen scaling & scanline mode",
-    "Toggle scanlines effect",
-    "Scanline type (CRT/LCD style)",
-    "Show FPS (frame rate)",
-    "Toggle game audio",
-    "Skip frames for speed",
-    "HDMI or DVI",
-    "Play audio over audio line out jack",
-    "Menu text color (0-63)",
-    "Menu background color (0-63)",
-    "RGB LEDs show audio level (VU)",
-   // "Enable Fruit Jam internal speaker",
-    "Fruit Jam change volume (-63 to +23 dB)",
-    "Color Palette for mono / DMG games",
-    "Select border artwork",
-    "Enable rapid fire for this button",
-    "Enable rapid fire for this button",
-    "Insert disk at boot or stay in BIOS",
-    "Auto swap disk side when game asks",
-    "Eject / insert FDS disk side",
-    "Run CPU at high clock (reboots to apply)",
-    "Reboot to BOOTSEL mode for flashing",
-    "Return to emuLoader picker menu"
+    [MOPT_EXIT_GAME]                = "Exit game and return to main menu",
+    [MOPT_RESET_GAME]                = "Reset the currently running game",
+    [MOPT_REBOOT_TO_LOADER]          = "Return to emulator selection menu",
+    [MOPT_SAVE_RESTORE_STATE]        = "Save or load emulator state",
+    [MOPT_SCREENMODE]                = "Screen scaling & scanline mode",
+    [MOPT_SCANLINES]                 = "Toggle scanlines effect",
+    [MOPT_SCANLINE_TYPE]             = "Scanline type (CRT/LCD style)",
+    [MOPT_FPS_OVERLAY]               = "Show FPS (frame rate)",
+    [MOPT_AUDIO_ENABLE]              = "Toggle game audio",
+    [MOPT_FRAMESKIP]                 = "Skip frames for speed",
+    [MOPT_DISPLAY_MODE]              = "HDMI or DVI",
+    [MOPT_EXTERNAL_AUDIO]            = "Play audio over audio line out jack",
+    [MOPT_FONT_COLOR]                = "Menu text color (0-63)",
+    [MOPT_FONT_BACK_COLOR]           = "Menu background color (0-63)",
+    [MOPT_FRUITJAM_VUMETER]          = "RGB LEDs show audio level (VU)",
+    [MOPT_FRUITJAM_VOLUME_CONTROL]   = "Fruit Jam change volume (-63 to +23 dB)",
+    [MOPT_DMG_PALETTE]               = "Color Palette for mono / DMG games",
+    [MOPT_BORDER_MODE]               = "Select border artwork",
+    [MOPT_RAPID_FIRE_ON_A]           = "Enable rapid fire for this button",
+    [MOPT_RAPID_FIRE_ON_B]           = "Enable rapid fire for this button",
+    [MOPT_AUTO_INSERT_FDS_DISK_A]    = "Insert disk at boot or stay in BIOS",
+    [MOPT_AUTO_SWAP_FDS_DISK]        = "Auto swap disk side when game asks",
+    [MOPT_FDS_DISK_SWAP]             = "Eject / insert FDS disk side",
+    [MOPT_OVERCLOCK]                 = "Run CPU at high clock (reboots to apply)",
+    [MOPT_ENTER_BOOTSEL_MODE]        = "Reboot to BOOTSEL mode for flashing",
 };
 
 extern const int8_t *g_settings_visibility; // Visibility configuration for options menu
