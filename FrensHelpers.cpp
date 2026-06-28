@@ -229,16 +229,23 @@ namespace Frens
 #define STORAGE_CMD_DUMMY_BYTES 1
 #define STORAGE_CMD_DATA_BYTES 3
 #define STORAGE_CMD_TOTAL_BYTES (STORAGE_CMD_DUMMY_BYTES + STORAGE_CMD_DATA_BYTES)
-    uint storage_get_flash_capacity()
+uint __not_in_flash_func(storage_get_flash_capacity)()
+{
+    // This function needs to be called before any overclock settings are applied, 
+    // this may crash when PSRAM is also on the board.
+    static uint capacity = 0;
+    if (capacity != 0)
     {
-        uint8_t txbuf[STORAGE_CMD_TOTAL_BYTES] = {0x9f};
-        uint8_t rxbuf[STORAGE_CMD_TOTAL_BYTES] = {0};
-        auto irq = save_and_disable_interrupts();
-        flash_do_cmd(txbuf, rxbuf, STORAGE_CMD_TOTAL_BYTES);
-        restore_interrupts(irq);
-
-        return 1 << rxbuf[3];
+        return capacity;
     }
+    uint8_t txbuf[STORAGE_CMD_TOTAL_BYTES] = {0x9f};
+    uint8_t rxbuf[STORAGE_CMD_TOTAL_BYTES] = {0};
+    auto irq = save_and_disable_interrupts();
+    flash_do_cmd(txbuf, rxbuf, STORAGE_CMD_TOTAL_BYTES);
+    restore_interrupts(irq);
+    capacity = 1 << rxbuf[3];
+    return capacity;
+}
 #if !HSTX
     /// @brief Wait for vertical sync
     void setVSyncWaitTask(void (*task)(void))
@@ -1588,7 +1595,9 @@ namespace Frens
         dumpHeapStats("initAll/preInitPsram");
         if (initPsram() == false)
         {
+            printf("PSRAM not enabled, using flash for rom storage\n");
             auto flashcap = storage_get_flash_capacity();
+            printf("Flash capacity: %d bytes (%d Kbytes)\n", flashcap, flashcap / 1024);
             // Calculate the address in flash where roms will be stored
             printf("Flash binary start    : 0x%08x\n", &__flash_binary_start);
             printf("Flash binary end      : 0x%08x\n", &__flash_binary_end);
@@ -1598,8 +1607,9 @@ namespace Frens
             uint8_t *flash_end = (uint8_t *)&__flash_binary_start + flashcap - 1;
             printf("Flash end             : 0x%08x\n", flash_end);
             printf("Size program in flash :   %8d bytes (%d) Kbytes\n", &__flash_binary_end - &__flash_binary_start, (&__flash_binary_end - &__flash_binary_start) / 1024);
-            // round ROM_FILE_ADDRESS address up to 4k boundary of flash_binary_end
-            ROM_FILE_ADDR = ((uintptr_t)&__flash_binary_end + 0xFFF) & ~0xFFF;
+            // Place ROM one full flash sector above FlashParams so the sector
+            // holding FlashParams is never erased when (re)flashing a ROM.
+            ROM_FILE_ADDR = FLASHPARAM_ADDRESS + FLASH_SECTOR_SIZE;
             // ROM_FILE_ADDR =  0x1004a000;
             //  calculate max rom size
             maxRomSize = flash_end - (uint8_t *)ROM_FILE_ADDR;
@@ -1751,8 +1761,11 @@ namespace Frens
     // Set HSTX clock to 126 MHz if HSTX is used so the HSTX display driver can output at no more than 60Hz
     void setClocksAndStartStdio(uint32_t cpuFreqKHz, vreg_voltage voltage)
     {
+        // Call this function before setting the clock to a higher frequency.
+        // This will ensure that consecutive calls to   storage_get_flash_capacity();
+        // will not crash the board when the clock is set to a higher frequency than the default 125 MHz.
+        storage_get_flash_capacity();
         // Set voltage and clock frequency
-
         vreg_disable_voltage_limit();
         vreg_set_voltage(voltage);
 #if !HSTX

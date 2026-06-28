@@ -3252,11 +3252,11 @@ int showSettingsMenu(bool calledFromGame)
         // FlashParams and reboot. writeFlashParamsToFlash arms the watchdog
         // and never returns.
         uint32_t liveKHz   = clock_get_hz(clk_sys) / 1000;
-        uint32_t targetKHz = settings.flags.overclock ? FLASHPARAM_MAX_FREQ_KHZ : FLASHPARAM_MIN_FREQ_KHZ;
-        vreg_voltage targetV = settings.flags.overclock ? FLASHPARAM_MAX_VOLTAGE : FLASHPARAM_MIN_VOLTAGE;
+        uint32_t targetKHz = (settings.flags.overclock || settings.flags.useFM) ? FLASHPARAM_MAX_FREQ_KHZ : FLASHPARAM_MIN_FREQ_KHZ;
+        vreg_voltage targetV = (settings.flags.overclock || settings.flags.useFM) ? FLASHPARAM_MAX_VOLTAGE : FLASHPARAM_MIN_VOLTAGE;
         if (liveKHz != targetKHz)
         {
-            showLoadingScreen(settings.flags.overclock ? "Enabling overclock" : "Disabling overclock", 60);
+            showLoadingScreen((settings.flags.overclock || settings.flags.useFM) ? "Enabling overclock" : "Disabling overclock", 60);
             Frens::writeFlashParamsToFlash(targetKHz, targetV);
         }
     }
