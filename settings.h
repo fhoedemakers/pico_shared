@@ -43,8 +43,9 @@ struct settings
         uint32_t autoSwapFDS : 1;      // 1 = automatically swap FDS disk sides when loading a .fds file, 0 = do not auto swap (user must manually select "FDS Disk Swap" in settings menu to swap sides). Default to on, because it's less confusing for users if the correct disk side is automatically loaded.
         uint32_t autoInsertDiskA : 1;  // 1 = disk side A is pre-inserted at boot, 0 = disk starts ejected (user presses A to insert, allowing BIOS Mario/Luigi animation to play)
         uint32_t overclock : 1;        // 1 = boot/run at FLASHPARAM_MAX_FREQ_KHZ, 0 = FLASHPARAM_MIN_FREQ_KHZ
-        uint32_t reserved : 16;        // spare bits for future flags; reset to 0
-    } flags; // 16 bits used + 16 reserved = full 32-bit container
+        uint32_t useFM : 1;            // SMS-only: 1 = YM2413 FM sound on (RP2350 only); 0 = PSG only
+        uint32_t reserved : 15;        // spare bits for future flags; reset to 0
+    } flags; // 17 bits used + 15 reserved = full 32-bit container
 
 };
 namespace FrensSettings

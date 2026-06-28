@@ -2534,6 +2534,12 @@ int showSettingsMenu(bool calledFromGame)
                 value = working.flags.overclock ? "ON" : "OFF";
                 break;
             }
+            case MenuSettingsIndex::MOPT_FM_AUDIO:
+            {
+                label = "YM2413 FM";
+                value = working.flags.useFM ? "ON" : "OFF";
+                break;
+            }
             // case MenuSettingsIndex::MOPT_FRUITJAM_INTERNAL_SPEAKER:
             // {
             //     label = "Fruit Jam Internal Speaker";
@@ -3070,6 +3076,9 @@ int showSettingsMenu(bool calledFromGame)
                         break;
                     case MOPT_OVERCLOCK:
                         working.flags.overclock = !working.flags.overclock;
+                        break;
+                    case MOPT_FM_AUDIO:
+                        working.flags.useFM = !working.flags.useFM;
                         break;
                     case MOPT_DMG_PALETTE:
                     {

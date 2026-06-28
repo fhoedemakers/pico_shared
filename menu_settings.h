@@ -30,6 +30,7 @@ enum MenuSettingsIndex {
     MOPT_AUTO_SWAP_FDS_DISK, // New menu option for automatically swapping FDS disk sides when loading a .fds file
     MOPT_FDS_DISK_SWAP,
     MOPT_OVERCLOCK,
+    MOPT_FM_AUDIO,
     MOPT_ENTER_BOOTSEL_MODE,
     MOPT_COUNT
 };
@@ -61,6 +62,7 @@ const char* const g_settings_descriptions[MOPT_COUNT] = {
     [MOPT_AUTO_SWAP_FDS_DISK]        = "Auto swap disk side when game asks",
     [MOPT_FDS_DISK_SWAP]             = "Eject / insert FDS disk side",
     [MOPT_OVERCLOCK]                 = "Run CPU at high clock (reboots to apply)",
+    [MOPT_FM_AUDIO]                  = "YM2413 FM sound (SMS, RP2350 only)",
     [MOPT_ENTER_BOOTSEL_MODE]        = "Reboot to BOOTSEL mode for flashing",
 };
 
