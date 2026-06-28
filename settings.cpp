@@ -103,6 +103,7 @@ namespace FrensSettings
         printf("autoSwapFDS: %d\n", settings.flags.autoSwapFDS);
         printf("autoInsertDiskA: %d\n", settings.flags.autoInsertDiskA);
         printf("overclock: %d\n", settings.flags.overclock);
+        printf("useFM: %d\n", settings.flags.useFM);
         printf("\n");
     }
     void resetsettings(struct settings *settingsPtr)
@@ -133,6 +134,7 @@ namespace FrensSettings
         settings.flags.autoSwapFDS = 0;
         settings.flags.autoInsertDiskA = 1; // default: disk side A pre-inserted at boot
         settings.flags.overclock = 0; // default: run at FLASHPARAM_MIN_FREQ_KHZ
+        settings.flags.useFM = 0; // default: disable FM audio
         settings.flags.reserved = 0;  // clear spare bits
         snprintf(settings.currentDir, sizeof(settings.currentDir), "/roms/%s", emulatorstrings[static_cast<int>(emulatorType)]);
     }
