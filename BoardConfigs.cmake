@@ -40,6 +40,7 @@ set(BOARD pico_sdk)
 if (NOT DEFINED FORCE_DVI)
     set(FORCE_DVI 0 CACHE BOOL "Set to 1 to force DVI output instead of HSTX when available")
 endif()
+list(APPEND PICO_BOARD_HEADER_DIRS ${CMAKE_SOURCE_DIR}/pico_shared/boards)
 if ( HW_CONFIG EQUAL 1 )
 	# This default Config is for Pimoroni Pico DV Demo Base, note uart is disabled because gpio 1 is used for NES controller
 	set(DVICONFIG "dviConfig_PimoroniDemoDVSock" CACHE STRING
