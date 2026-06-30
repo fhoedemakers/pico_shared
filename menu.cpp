@@ -3251,6 +3251,7 @@ int showSettingsMenu(bool calledFromGame)
         // If the overclock toggle disagrees with the live clock, rewrite
         // FlashParams and reboot. writeFlashParamsToFlash arms the watchdog
         // and never returns.
+#if HW_CONFIG != 7
         uint32_t liveKHz   = clock_get_hz(clk_sys) / 1000;
         uint32_t targetKHz = (settings.flags.overclock || settings.flags.useFM) ? FLASHPARAM_MAX_FREQ_KHZ : FLASHPARAM_MIN_FREQ_KHZ;
         vreg_voltage targetV = (settings.flags.overclock || settings.flags.useFM) ? FLASHPARAM_MAX_VOLTAGE : FLASHPARAM_MIN_VOLTAGE;
@@ -3259,6 +3260,7 @@ int showSettingsMenu(bool calledFromGame)
             showLoadingScreen((settings.flags.overclock || settings.flags.useFM) ? "Enabling overclock" : "Disabling overclock", 60);
             Frens::writeFlashParamsToFlash(targetKHz, targetV);
         }
+#endif
     }
     Frens::f_free(workingDyn);
     // restore contents of swap file back to altScreenbuffer when not nullptr
