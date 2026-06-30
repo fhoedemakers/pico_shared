@@ -267,6 +267,7 @@ elseif ( HW_CONFIG EQUAL 7 )
     # --------------------------------------------------------------------
 	# WaveShare RP2350-PiZero
 	# --------------------------------------------------------------------
+    set(PICO_BOARD "waveshare_rp2350_pizero" CACHE STRING "Select the board type for TinyUSB")
 	set(DVICONFIG "dviConfig_WaveShareRp2350" CACHE STRING
     "Select a default pin configuration from common_dvi_pin_configs.h")
     set(LED_GPIO_PIN "-1" CACHE STRING "Select the GPIO pin for LED")  
