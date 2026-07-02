@@ -78,6 +78,12 @@ enum class ScanlineType : uint8_t
 #ifndef SGX
 #define SGX 0
 #endif
+#ifndef NES_OVERCLOCK_FIX
+#define NES_OVERCLOCK_FIX 0
+#endif
+#ifndef GENESIS_OVERCLOCK_HSTX_FIX
+#define GENESIS_OVERCLOCK_HSTX_FIX 0
+#endif
 #ifndef F_MALLOC_DEBUG
 #define F_MALLOC_DEBUG 0
 #endif
