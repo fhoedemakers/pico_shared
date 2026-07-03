@@ -108,6 +108,7 @@ elseif ( HW_CONFIG EQUAL 2 )
     set(PICO_AUDIO_I2S_CLOCK_PINS_SWAPPED 0 CACHE STRING "Set to 1 if the I2S clock pins are swapped")
     set(PICO_AUDIO_I2S_RESET_PIN -1 CACHE STRING "Select the GPIO pin for I2S reset")
     # PIO USB settings
+    # set(ENABLE_PIO_USB 1 CACHE BOOL "Enable PIO USB support")
     set(PIO_USB_USE_PIO 2 CACHE BOOL "Select the PIO used for PIO-USB")
     # connect the DP+ pin to GPIO 20, DP- will be GPIO 21
     set(PIO_DP_PLUS_PIN 20 CACHE STRING "PIO USB DP pin.")
