@@ -143,6 +143,9 @@ void video_output_core1_run(void);
  */
 void pico_hdmi_set_audio_sample_rate(uint32_t sample_rate);
 
+/// Last rate passed to pico_hdmi_set_audio_sample_rate (default 48000).
+uint32_t pico_hdmi_get_audio_sample_rate(void);
+
 /**
  * Request a full HSTX + DMA resync. The request is latched and serviced by
  * the core-1 main loop, so this is safe to call from core 0 at any time.

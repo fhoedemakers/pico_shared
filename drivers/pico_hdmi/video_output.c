@@ -490,8 +490,19 @@ static void get_acr_params(uint32_t sample_rate, uint32_t *n, uint32_t *cts)
     }
 }
 
+// Last rate handed to configure_audio_packets. Lets hstx_restart_core1
+// restore the caller-configured rate instead of resetting to 44.1 kHz
+// (pico_snesPlus runs 32 kHz).
+static uint32_t configured_audio_sample_rate = 48000;
+
+uint32_t pico_hdmi_get_audio_sample_rate(void)
+{
+    return configured_audio_sample_rate;
+}
+
 static void configure_audio_packets(uint32_t sample_rate)
 {
+    configured_audio_sample_rate = sample_rate;
     hstx_di_queue_set_sample_rate(sample_rate);
 
     hstx_packet_t packet;

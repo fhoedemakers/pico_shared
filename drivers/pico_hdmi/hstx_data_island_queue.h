@@ -41,4 +41,10 @@ void hstx_di_queue_tick(void);
  */
 const uint32_t *hstx_di_queue_get_audio_packet(void);
 
+/**
+ * Number of silence-packet fallbacks since boot (a packet was due but the
+ * queue was empty). Monotonic; diff between reads to detect underruns.
+ */
+uint32_t hstx_di_queue_get_underrun_count(void);
+
 #endif // HSTX_DATA_ISLAND_QUEUE_H
