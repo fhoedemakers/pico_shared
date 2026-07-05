@@ -41,6 +41,21 @@ void hstx_packet_set_audio_infoframe(hstx_packet_t *packet, uint32_t sample_rate
 void hstx_packet_set_avi_infoframe(hstx_packet_t *packet, uint8_t vic, uint8_t pixel_repetition);
 int hstx_packet_set_audio_samples(hstx_packet_t *packet, const audio_sample_t *samples, int num_samples,
                                   int frame_count);
+// Same as hstx_packet_set_audio_samples but also writes IEC 60958 channel
+// status bits ("consumer LPCM, copy permitted" + the sample-frequency code
+// set via hstx_packet_set_cs_sample_rate) into the L/R VUCP bytes across the
+// 192-frame block. Strict HDMI receivers (many monitors/TVs) mute streams
+// whose channel status is all-zero — "sample rate not indicated" — even when
+// the Audio InfoFrame is present; lax sinks decode them with glitches.
+// Found the hard way in fruitjam-doom (2026-07); ported from the standalone
+// pico_hdmi upstream, with the sample-frequency code made configurable.
+int hstx_packet_set_audio_samples_cs(hstx_packet_t *packet, const audio_sample_t *samples, int num_samples,
+                                     int frame_count);
+// Set the IEC 60958 channel-status sample-frequency code used by
+// hstx_packet_set_audio_samples_cs. Supported: 32000, 44100, 48000 Hz
+// (anything else falls back to the 48 kHz code). Called automatically by
+// pico_hdmi_set_audio_sample_rate via configure_audio_packets.
+void hstx_packet_set_cs_sample_rate(uint32_t sample_rate);
 void hstx_packet_set_null(hstx_packet_t *packet);
 
 // ============================================================================

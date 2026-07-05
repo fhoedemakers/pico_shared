@@ -7,10 +7,20 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include "pico.h"
+#include "hardware/sync.h"  // __dmb
 #ifndef DI_RING_BUFFER_SIZE
 #define DI_RING_BUFFER_SIZE 256
 #endif
-static hstx_data_island_t *di_ring_buffer = NULL; // [DI_RING_BUFFER_SIZE];
+// HSTX_DI_RING_ADDRESS lets the caller point the ring at a specific static
+// SRAM address. fruitjam-doom uses this to place the ring above the top of
+// its shortptr zone (SHORTPTR_BASE + 0x40000 = 0x20076000), reclaiming the
+// 36 KB the malloc path would otherwise steal from Doom's heap. When unset,
+// the driver falls back to its historical malloc-on-first-init behaviour.
+#ifdef HSTX_DI_RING_ADDRESS
+static hstx_data_island_t *const di_ring_buffer = (hstx_data_island_t *)(HSTX_DI_RING_ADDRESS);
+#else
+static hstx_data_island_t *di_ring_buffer = NULL; // [DI_RING_BUFFER_SIZE]
+#endif
 static volatile uint32_t di_ring_head = 0;
 static volatile uint32_t di_ring_tail = 0;
 
@@ -34,15 +44,24 @@ void hstx_di_queue_init(void)
     di_ring_head = 0;
     di_ring_tail = 0;
     audio_sample_accum = 0;
-    // Allocate memory for the ring buffer
+    // Allocate memory for the ring buffer (skipped when the address was
+    // pinned at compile time via HSTX_DI_RING_ADDRESS).
+#ifdef HSTX_DI_RING_ADDRESS
+    printf("HSTX DI ring buffer at fixed %p (%u bytes)\n",
+           (void *)di_ring_buffer,
+           (unsigned)(DI_RING_BUFFER_SIZE * sizeof(hstx_data_island_t)));
+#else
     if (di_ring_buffer == NULL) {
         printf("Allocating memory for HSTX DI ring buffer: %d bytes\n", DI_RING_BUFFER_SIZE * sizeof(hstx_data_island_t));
         di_ring_buffer = (hstx_data_island_t *)malloc(DI_RING_BUFFER_SIZE * sizeof(hstx_data_island_t));
     }
-    // Build a single silent audio packet with fixed B-frame flags.
+#endif
+    // Build a single silent audio packet. frame_count=4 (NOT 0): frame 0
+    // would set the IEC 60958 block-start B flag, so every underrun
+    // insertion would reset the sink's channel-status block sync mid-stream.
     hstx_packet_t packet;
     audio_sample_t samples[4] = {0};
-    (void)hstx_packet_set_audio_samples(&packet, samples, 4, 0);
+    (void)hstx_packet_set_audio_samples(&packet, samples, 4, 4);
     hstx_encode_data_island(&silence_packet, &packet, false, true);
 }
 
@@ -64,6 +83,9 @@ bool __not_in_flash_func(hstx_di_queue_push)(const hstx_data_island_t *island)
     const uint32_t *src = island->words;
     for (size_t i = 0; i < count_of(island->words); i++)
         dst[i] = src[i];
+    // Publish payload before head: the consumer (DMA IRQ on the other core)
+    // must never observe the head advance ahead of the payload words.
+    __dmb();
     di_ring_head = next_head;
     return true;
 }

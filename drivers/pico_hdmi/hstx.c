@@ -286,7 +286,11 @@ void __not_in_flash_func(hstx_push_audio_sample)(const int left, const int right
             return;
         }
         hstx_packet_t packet;
-        g_hdmi_audio_frame_counter = hstx_packet_set_audio_samples(&packet, acc_buf, 4, g_hdmi_audio_frame_counter);
+        // _cs variant: carries IEC 60958 channel status with a valid
+        // sample-frequency code. Strict HDMI sinks mute all-zero channel
+        // status even with a correct Audio InfoFrame; lax sinks (capture
+        // cards) decode it but with glitches.
+        g_hdmi_audio_frame_counter = hstx_packet_set_audio_samples_cs(&packet, acc_buf, 4, g_hdmi_audio_frame_counter);
 
         hstx_data_island_t island;
         hstx_encode_data_island(&island, &packet, false, true);
