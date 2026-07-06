@@ -504,6 +504,10 @@ static void configure_audio_packets(uint32_t sample_rate)
 {
     configured_audio_sample_rate = sample_rate;
     hstx_di_queue_set_sample_rate(sample_rate);
+    // Keep the IEC 60958 channel-status sample-frequency code in lockstep
+    // with ACR and the Audio InfoFrame — strict sinks require all three to
+    // agree with the actual stream rate.
+    hstx_packet_set_cs_sample_rate(sample_rate);
 
     hstx_packet_t packet;
     hstx_data_island_t island;
@@ -823,14 +827,16 @@ void __not_in_flash_func(video_output_core1_run)(void)
             uint32_t d_us = now - rate_last_us;
             uint32_t d_frames = current_count - rate_last_frames;
             uint32_t d_irqs = irq_count - rate_last_irqs;
-            printf("video rate: %lu frames/s, %lu irqs/s (dvi=%d) clk_sys=%lu clk_hstx=%lu csr=%08lx resync=%d\n",
+            printf("video rate: %lu frames/s, %lu irqs/s (dvi=%d) clk_sys=%lu clk_hstx=%lu csr=%08lx resync=%d di_lvl=%lu underrun=%lu\n",
                    (unsigned long)((uint64_t)d_frames * 1000000u / d_us),
                    (unsigned long)((uint64_t)d_irqs * 1000000u / d_us),
                    dvi_mode ? 1 : 0,
                    (unsigned long)clock_get_hz(clk_sys),
                    (unsigned long)clock_get_hz(clk_hstx),
                    (unsigned long)hstx_ctrl_hw->csr,
-                   resync_count);
+                   resync_count,
+                   (unsigned long)hstx_di_queue_get_level(),
+                   (unsigned long)hstx_di_queue_get_underrun_count());
             printf("  hstx_div=%08lx exp_sh=%08lx exp_tmds=%08lx ping_ctrl=%08lx pong_ctrl=%08lx\n",
                    (unsigned long)clocks_hw->clk[clk_hstx].div,
                    (unsigned long)hstx_ctrl_hw->expand_shift,
