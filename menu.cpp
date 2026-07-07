@@ -3626,9 +3626,44 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
 
                     if (strcmp(settings.currentDir, "/") != 0)
                     {
+                        // Capture the directory we're leaving so we can
+                        // re-highlight it in the parent listing.
+                        char childName[ROMLISTER_MAXPATH] = {0};
+                        const char *slash = strrchr(settings.currentDir, '/');
+                        if (slash && *(slash + 1) != '\0')
+                        {
+                            strncpy(childName, slash + 1, sizeof(childName) - 1);
+                        }
+
                         romlister.list("..");
-                        settings.firstVisibleRowINDEX = 0;
-                        settings.selectedRow = STARTROW;
+
+                        int foundIndex = -1;
+                        if (childName[0] != '\0')
+                        {
+                            auto *parentEntries = romlister.GetEntries();
+                            for (size_t i = 0; i < romlister.Count(); ++i)
+                            {
+                                if (parentEntries[i].IsDirectory &&
+                                    strcasecmp(parentEntries[i].Path, childName) == 0)
+                                {
+                                    foundIndex = (int)i;
+                                    break;
+                                }
+                            }
+                        }
+
+                        if (foundIndex >= 0)
+                        {
+                            settings.firstVisibleRowINDEX =
+                                (foundIndex / PAGESIZE) * PAGESIZE;
+                            settings.selectedRow =
+                                STARTROW + (foundIndex - settings.firstVisibleRowINDEX);
+                        }
+                        else
+                        {
+                            settings.firstVisibleRowINDEX = 0;
+                            settings.selectedRow = STARTROW;
+                        }
                         displayRoms(romlister, settings.firstVisibleRowINDEX);
                         fr = f_getcwd(settings.currentDir, FF_MAX_LFN); // f_getcwd(settings.currentDir, FF_MAX_LFN);
                         if (fr == FR_OK)
