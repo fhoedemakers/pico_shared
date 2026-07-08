@@ -15,10 +15,10 @@
 #
 #   0x10000000  +-----------------------------+  <- bootrom always boots this
 #               |   Bootloader (emuLoader)    |     image (the menu/flasher).
-#               |        1 MB                  |
-#   0x10100000  +-----------------------------+  <- FRENS_APP_BASE
+#               |        512 KB               |
+#   0x10080000  +-----------------------------+  <- FRENS_APP_BASE
 #               |   Application partition      |     emulator UF2s land here.
-#               |        15 MB                 |     the bootloader jumps here.
+#               |        15.5 MB              |     the bootloader jumps here.
 #   0x11000000  +-----------------------------+
 #
 # Override on the command line for other boards, e.g.:
@@ -30,7 +30,7 @@ endif()
 set(_FRENS_BOOTPARTITION_INCLUDED 1)
 
 set(FRENS_XIP_BASE        "0x10000000" CACHE STRING "RP2350 XIP flash base")
-set(FRENS_BOOTLOADER_SIZE "0x100000"   CACHE STRING "Bytes reserved for the resident bootloader (1 MB)")
+set(FRENS_BOOTLOADER_SIZE "0x80000"    CACHE STRING "Bytes reserved for the resident bootloader (512 KB)")
 set(FRENS_FLASH_TOTAL     "0x1000000"  CACHE STRING "Total external flash on the board (Fruit Jam = 16 MB)")
 
 # Slot layout for the multi-slot ("hybrid") bootloader. The bootloader scans
@@ -40,7 +40,7 @@ set(FRENS_FLASH_TOTAL     "0x1000000"  CACHE STRING "Total external flash on the
 # partition. Constants here are also passed as compile defs to boot_config.h
 # so the C scanner and the linker agree.
 set(FRENS_SLOT_SIZE  "0x200000" CACHE STRING "Size of each pinned slot (2 MB)")
-set(FRENS_SLOT_COUNT "7"        CACHE STRING "Number of pinned slots (7 fit in 14 MB after 1 MB bootloader; top 1 MB reserved)")
+set(FRENS_SLOT_COUNT "7"        CACHE STRING "Number of pinned slots (7 fit in 14 MB after 512 KB bootloader; top 1.5 MB reserved)")
 
 # Derived addresses.
 math(EXPR FRENS_APP_BASE "${FRENS_XIP_BASE} + ${FRENS_BOOTLOADER_SIZE}" OUTPUT_FORMAT HEXADECIMAL)
@@ -122,7 +122,7 @@ function(frens_link_as_bootloader TARGET)
 endfunction()
 
 # Link an emulator into the application partition (legacy single-partition /
-# slot 0). Same address (FRENS_APP_BASE = 0x10100000); the bootloader writes
+# slot 0). Same address (FRENS_APP_BASE = 0x10080000); the bootloader writes
 # the resulting UF2 verbatim and either flashes-on-launch (legacy boards) or
 # treats it as pinned slot 0 (slot-mode boards).
 function(frens_offset_for_bootloader TARGET)

@@ -21,7 +21,7 @@ function usage() {
 	echo "  -u: enable PIO USB support (RP2350 only) disabled by default except for Waveshare RP2350-PiZero and Adafruit Fruit Jam."
 	echo "  -w: build for Pico_w or Pico2_w"
 	echo "  -b: build for the resident emuLoader bootloader (passes -DBUILD_FOR_BOOTLOADER=ON;"
-	echo "      relinks the image to the application partition at 0x10100000 instead of 0x10000000)."
+	echo "      relinks the image to the application partition at 0x10080000 instead of 0x10000000)."
 	echo "  -t <path to riscv toolchain>: only needed for riscv, specify the path to the riscv toolchain bin folder"
 	echo "     Default is \$PICO_SDK_PATH/toolchain/RISCV_RPI_2_0_0_2/bin"
 	echo "  -p <nprocessors>: specify the number of processors to use for the build"
@@ -371,7 +371,7 @@ else
 	echo "Using legacy custom I2S audio driver"
 fi
 if [ $USEBOOTLOADER -eq 1 ] ; then
-	echo "Building for the resident emuLoader bootloader (relinked to 0x10100000)"
+	echo "Building for the resident emuLoader bootloader (relinked to 0x10080000)"
 fi
 [ ! -z "$TOOLCHAIN_PATH" ]  && echo "Toolchain path: $TOOLCHAIN_PATH"
 echo "UF2 file: $UF2"
