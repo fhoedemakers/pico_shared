@@ -15,10 +15,10 @@
 #
 #   0x10000000  +-----------------------------+  <- bootrom always boots this
 #               |   Bootloader (emuLoader)    |     image (the menu/flasher).
-#               |        1 MB                  |
-#   0x10100000  +-----------------------------+  <- FRENS_APP_BASE
+#               |        512 KB               |
+#   0x10080000  +-----------------------------+  <- FRENS_APP_BASE
 #               |   Application partition      |     emulator UF2s land here.
-#               |        15 MB                 |     the bootloader jumps here.
+#               |        15.5 MB              |     the bootloader jumps here.
 #   0x11000000  +-----------------------------+
 #
 # Override on the command line for other boards, e.g.:
@@ -30,7 +30,7 @@ endif()
 set(_FRENS_BOOTPARTITION_INCLUDED 1)
 
 set(FRENS_XIP_BASE        "0x10000000" CACHE STRING "RP2350 XIP flash base")
-set(FRENS_BOOTLOADER_SIZE "0x100000"   CACHE STRING "Bytes reserved for the resident bootloader (1 MB)")
+set(FRENS_BOOTLOADER_SIZE "0x80000"    CACHE STRING "Bytes reserved for the resident bootloader (512 KB)")
 set(FRENS_FLASH_TOTAL     "0x1000000"  CACHE STRING "Total external flash on the board (Fruit Jam = 16 MB)")
 
 # Derived addresses.
@@ -73,8 +73,19 @@ function(_frens_relink_flash TARGET ORIGIN LENGTH)
     endif()
 
     file(READ "${_src_ld}" _ld_text)
+
+    # Newer SDKs pull the FLASH region in from a generated pico_flash_region.ld
+    # (which carries the board's full flash size). Replace that INCLUDE with an
+    # explicit, capped FLASH region so the bootloader / app partition can never
+    # overlap and the linker errors if an image overflows its partition.
+    string(REPLACE
+        "INCLUDE \"pico_flash_region.ld\""
+        "FLASH(rx) : ORIGIN = ${ORIGIN}, LENGTH = ${LENGTH}"
+        _ld_text "${_ld_text}")
+    # Older SDKs spell the region out inline; rewrite that form too (idempotent
+    # if the INCLUDE replacement above already produced this line).
     string(REGEX REPLACE
-        "FLASH\\(rx\\)[^\n]*"
+        "FLASH\\(rx\\)[ \t]*:[^\n]*"
         "FLASH(rx) : ORIGIN = ${ORIGIN}, LENGTH = ${LENGTH}"
         _ld_text "${_ld_text}")
 
@@ -82,6 +93,15 @@ function(_frens_relink_flash TARGET ORIGIN LENGTH)
     file(WRITE "${_out_ld}" "${_ld_text}")
     message(STATUS "BootPartition: ${TARGET} -> ORIGIN=${ORIGIN} LENGTH=${LENGTH} (from ${_src_ld})")
     pico_set_linker_script(${TARGET} "${_out_ld}")
+
+    # Override the SDK's compile-time flash-size assumption to match the actual
+    # chip. The board header (e.g. adafruit_fruit_jam.h) may set PICO_FLASH_SIZE_BYTES
+    # to a value smaller than the real flash (e.g. 8 MB on a 16 MB board), which
+    # makes hard_assert in flash_range_erase / flash_range_program panic when the
+    # bootloader or an emulator writes at higher offsets (e.g. near the top of a
+    # 16 MB partition). FRENS_FLASH_TOTAL is the single source of truth here.
+    target_compile_definitions(${TARGET} PRIVATE
+        PICO_FLASH_SIZE_BYTES=${FRENS_FLASH_TOTAL})
 endfunction()
 
 # Link the bootloader into the reserved boot region at the start of flash.

@@ -13,13 +13,15 @@ APP=${PROJECT}
 function usage() {
 	echo "Build script for the ${PROJECT} project"
 	echo  ""
-	echo "Usage: $0 [-d] [-2 | -r] [-w] [-u] [-m] [-D] [-e] [-t path to toolchain] [ -p nprocessors] [-c <hwconfig>]"
+	echo "Usage: $0 [-d] [-2 | -r] [-w] [-u] [-m] [-D] [-e] [-b] [-t path to toolchain] [ -p nprocessors] [-c <hwconfig>]"
 	echo "Options:"
 	echo "  -d: build in DEBUG configuration"
 	echo "  -2: build for Pico 2 board (RP2350)"
 	echo "  -r: build for Pico 2 board (RP2350) with riscv core"
 	echo "  -u: enable PIO USB support (RP2350 only) disabled by default except for Waveshare RP2350-PiZero and Adafruit Fruit Jam."
 	echo "  -w: build for Pico_w or Pico2_w"
+	echo "  -b: build for the resident emuLoader bootloader (passes -DBUILD_FOR_BOOTLOADER=ON;"
+	echo "      relinks the image to the application partition at 0x10080000 instead of 0x10000000)."
 	echo "  -t <path to riscv toolchain>: only needed for riscv, specify the path to the riscv toolchain bin folder"
 	echo "     Default is \$PICO_SDK_PATH/toolchain/RISCV_RPI_2_0_0_2/bin"
 	echo "  -p <nprocessors>: specify the number of processors to use for the build"
@@ -89,7 +91,8 @@ CMAKEONLY=0
 USESIMPLEFILENAMES=0
 FORCEDVI=0
 USEEXTRASI2S=0
-while getopts "muwhd2rc:t:p:iDe" opt; do
+USEBOOTLOADER=0
+while getopts "muwhd2rc:t:p:iDeb" opt; do
   case $opt in
     p)
 	  BUILDPROC=$OPTARG
@@ -143,6 +146,8 @@ while getopts "muwhd2rc:t:p:iDe" opt; do
 	D) FORCEDVI=1
 	  ;;
 	e) USEEXTRASI2S=1
+	  ;;
+	b) USEBOOTLOADER=1
 	  ;;
     \?)
       #echo "Invalid option: -$OPTARG" >&2
@@ -338,18 +343,22 @@ PEI2S=
 if [ $USEEXTRASI2S -eq 1 ] ; then
 	PEI2S="_pe"
 fi
+BLSUFFIX=
+if [ $USEBOOTLOADER -eq 1 ] ; then
+	BLSUFFIX="_bl"
+fi
 # Only when SIMPLEFILENAMES=0
 if [ $USESIMPLEFILENAMES -eq 0 ] ; then
 	if [ "$PICO_PLATFORM" = "rp2350-riscv" ] ; then
-		UF2="${UF2}_${PICO_BOARD}_riscv${PIOUSB}${PEI2S}"
+		UF2="${UF2}_${PICO_BOARD}_riscv${PIOUSB}${PEI2S}${BLSUFFIX}"
 	else
-		UF2="${UF2}_${PICO_BOARD}_arm${PIOUSB}${PEI2S}"
+		UF2="${UF2}_${PICO_BOARD}_arm${PIOUSB}${PEI2S}${BLSUFFIX}"
 	fi
 else
 	if [ "$PICO_PLATFORM" = "rp2350-riscv" ] ; then
-		UF2="${UF2}_riscv${PIOUSB}${PEI2S}"
+		UF2="${UF2}_riscv${PIOUSB}${PEI2S}${BLSUFFIX}"
 	else
-		UF2="${UF2}_arm${PIOUSB}${PEI2S}"
+		UF2="${UF2}_arm${PIOUSB}${PEI2S}${BLSUFFIX}"
 	fi
 fi
 UF2="${APP}_${UF2}.uf2"
@@ -360,6 +369,9 @@ if [ $USEEXTRASI2S -eq 1 ] ; then
 	echo "Using pico-extras based I2S audio driver"
 else
 	echo "Using legacy custom I2S audio driver"
+fi
+if [ $USEBOOTLOADER -eq 1 ] ; then
+	echo "Building for the resident emuLoader bootloader (relinked to 0x10080000)"
 fi
 [ ! -z "$TOOLCHAIN_PATH" ]  && echo "Toolchain path: $TOOLCHAIN_PATH"
 echo "UF2 file: $UF2"
@@ -376,9 +388,9 @@ if [ $FORCEDVI -eq 1 ] ; then
 	FORCEDVIOPT="-DFORCE_DVI=1"
 fi
 if [ -z "$TOOLCHAIN_PATH" ] ; then
-	cmake -DCMAKE_BUILD_TYPE=$BUILD -DPICO_BOARD=$PICO_BOARD -DHW_CONFIG=$HWCONFIG -DPICO_PLATFORM=$PICO_PLATFORM -DENABLE_PIO_USB=$USEPIOUSB -DUSE_PICO_EXTRAS_I2S=$USEEXTRASI2S $FORCEDVIOPT .. || exit 1
+	cmake -DCMAKE_BUILD_TYPE=$BUILD -DPICO_BOARD=$PICO_BOARD -DHW_CONFIG=$HWCONFIG -DPICO_PLATFORM=$PICO_PLATFORM -DENABLE_PIO_USB=$USEPIOUSB -DUSE_PICO_EXTRAS_I2S=$USEEXTRASI2S -DBUILD_FOR_BOOTLOADER=$USEBOOTLOADER $FORCEDVIOPT .. || exit 1
 else
-	cmake -DCMAKE_BUILD_TYPE=$BUILD -DPICO_BOARD=$PICO_BOARD -DHW_CONFIG=$HWCONFIG -DPICO_PLATFORM=$PICO_PLATFORM -DENABLE_PIO_USB=$USEPIOUSB -DUSE_PICO_EXTRAS_I2S=$USEEXTRASI2S -DPICO_TOOLCHAIN_PATH=$TOOLCHAIN_PATH $FORCEDVIOPT .. ||  exit 1
+	cmake -DCMAKE_BUILD_TYPE=$BUILD -DPICO_BOARD=$PICO_BOARD -DHW_CONFIG=$HWCONFIG -DPICO_PLATFORM=$PICO_PLATFORM -DENABLE_PIO_USB=$USEPIOUSB -DUSE_PICO_EXTRAS_I2S=$USEEXTRASI2S -DBUILD_FOR_BOOTLOADER=$USEBOOTLOADER -DPICO_TOOLCHAIN_PATH=$TOOLCHAIN_PATH $FORCEDVIOPT .. ||  exit 1
 fi
 if [ $CMAKEONLY -eq 1 ] ; then
 	echo "CMake configuration done, exiting as requested."
@@ -389,6 +401,6 @@ cd ..
 echo ""
 if [ -f build/${APP}.uf2 ] ; then
 	cp build/${APP}.uf2 releases/${UF2} || exit 1
-	picotool info releases/${UF2}
+#	picotool info releases/${UF2}
 fi
 

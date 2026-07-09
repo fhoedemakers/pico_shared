@@ -40,6 +40,7 @@ set(BOARD pico_sdk)
 if (NOT DEFINED FORCE_DVI)
     set(FORCE_DVI 0 CACHE BOOL "Set to 1 to force DVI output instead of HSTX when available")
 endif()
+list(APPEND PICO_BOARD_HEADER_DIRS ${CMAKE_SOURCE_DIR}/pico_shared/boards)
 if ( HW_CONFIG EQUAL 1 )
 	# This default Config is for Pimoroni Pico DV Demo Base, note uart is disabled because gpio 1 is used for NES controller
 	set(DVICONFIG "dviConfig_PimoroniDemoDVSock" CACHE STRING
@@ -107,6 +108,7 @@ elseif ( HW_CONFIG EQUAL 2 )
     set(PICO_AUDIO_I2S_CLOCK_PINS_SWAPPED 0 CACHE STRING "Set to 1 if the I2S clock pins are swapped")
     set(PICO_AUDIO_I2S_RESET_PIN -1 CACHE STRING "Select the GPIO pin for I2S reset")
     # PIO USB settings
+    # set(ENABLE_PIO_USB 1 CACHE BOOL "Enable PIO USB support")
     set(PIO_USB_USE_PIO 2 CACHE BOOL "Select the PIO used for PIO-USB")
     # connect the DP+ pin to GPIO 20, DP- will be GPIO 21
     set(PIO_DP_PLUS_PIN 20 CACHE STRING "PIO USB DP pin.")
@@ -266,6 +268,7 @@ elseif ( HW_CONFIG EQUAL 7 )
     # --------------------------------------------------------------------
 	# WaveShare RP2350-PiZero
 	# --------------------------------------------------------------------
+    set(PICO_BOARD "waveshare_rp2350_pizero" CACHE STRING "Select the board type")
 	set(DVICONFIG "dviConfig_WaveShareRp2350" CACHE STRING
     "Select a default pin configuration from common_dvi_pin_configs.h")
     set(LED_GPIO_PIN "-1" CACHE STRING "Select the GPIO pin for LED")  

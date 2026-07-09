@@ -70,6 +70,21 @@ namespace io
         uint8_t keycode[6];
     };
     const KeyboardState &getCurrentKeyboardState();
+
+    // USB HID mouse state. Populated by hid_app.cpp from boot-protocol mouse
+    // reports (and generic desktop-mouse reports). Movement and wheel are
+    // accumulated deltas: the consumer should read them and reset dx/dy/wheel
+    // to zero after processing (single-consumer model). buttons matches
+    // MOUSE_BUTTON_* from TinyUSB (bit 0 left, bit 1 right, bit 2 middle).
+    struct MouseState
+    {
+        bool connected{false};
+        uint8_t buttons{0};
+        int32_t dx{0};
+        int32_t dy{0};
+        int32_t wheel{0};
+    };
+    MouseState &getCurrentMouseState();
 }
 
 #endif /* _510036F3_0134_6411_4376_A918ACA8AC4C */

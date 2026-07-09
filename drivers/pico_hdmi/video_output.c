@@ -490,9 +490,24 @@ static void get_acr_params(uint32_t sample_rate, uint32_t *n, uint32_t *cts)
     }
 }
 
+// Last rate handed to configure_audio_packets. Lets hstx_restart_core1
+// restore the caller-configured rate instead of resetting to 44.1 kHz
+// (pico_snesPlus runs 32 kHz).
+static uint32_t configured_audio_sample_rate = 48000;
+
+uint32_t pico_hdmi_get_audio_sample_rate(void)
+{
+    return configured_audio_sample_rate;
+}
+
 static void configure_audio_packets(uint32_t sample_rate)
 {
+    configured_audio_sample_rate = sample_rate;
     hstx_di_queue_set_sample_rate(sample_rate);
+    // Keep the IEC 60958 channel-status sample-frequency code in lockstep
+    // with ACR and the Audio InfoFrame — strict sinks require all three to
+    // agree with the actual stream rate.
+    hstx_packet_set_cs_sample_rate(sample_rate);
 
     hstx_packet_t packet;
     hstx_data_island_t island;
@@ -628,7 +643,18 @@ void video_output_set_vsync_callback(video_output_vsync_cb_t cb)
     vsync_callback = cb;
 }
 
-void video_output_core1_run(void)
+// __not_in_flash_func: this function's while(1) loop runs on core1 forever.
+// When core0 calls flash_range_erase / flash_range_program, XIP is briefly
+// disabled and any core1 instruction fetch from flash stalls or returns
+// garbage. Keeping the whole function (including the one-time hardware-init
+// prologue) in SRAM costs ~700 bytes but lets the bootloader's progress bar
+// keep updating on screen while flashing a new emulator. All callees from
+// the steady-state loop (time_us_32 inline, hstx_resync, dma_irq_handler,
+// scanline_callback, etc.) are themselves __not_in_flash_func; the only
+// flash-resident calls left here (printf, irq_set_enabled) sit inside the
+// rare resync path, which is not expected to fire during a normal flash
+// write -- and would be the same risk as before this attribute was added.
+void __not_in_flash_func(video_output_core1_run)(void)
 {
 #if 0
     // HSTX Hardware Setup
@@ -801,14 +827,16 @@ void video_output_core1_run(void)
             uint32_t d_us = now - rate_last_us;
             uint32_t d_frames = current_count - rate_last_frames;
             uint32_t d_irqs = irq_count - rate_last_irqs;
-            printf("video rate: %lu frames/s, %lu irqs/s (dvi=%d) clk_sys=%lu clk_hstx=%lu csr=%08lx resync=%d\n",
+            printf("video rate: %lu frames/s, %lu irqs/s (dvi=%d) clk_sys=%lu clk_hstx=%lu csr=%08lx resync=%d di_lvl=%lu underrun=%lu\n",
                    (unsigned long)((uint64_t)d_frames * 1000000u / d_us),
                    (unsigned long)((uint64_t)d_irqs * 1000000u / d_us),
                    dvi_mode ? 1 : 0,
                    (unsigned long)clock_get_hz(clk_sys),
                    (unsigned long)clock_get_hz(clk_hstx),
                    (unsigned long)hstx_ctrl_hw->csr,
-                   resync_count);
+                   resync_count,
+                   (unsigned long)hstx_di_queue_get_level(),
+                   (unsigned long)hstx_di_queue_get_underrun_count());
             printf("  hstx_div=%08lx exp_sh=%08lx exp_tmds=%08lx ping_ctrl=%08lx pong_ctrl=%08lx\n",
                    (unsigned long)clocks_hw->clk[clk_hstx].div,
                    (unsigned long)hstx_ctrl_hw->expand_shift,

@@ -100,8 +100,12 @@ void initializeNeoPixelStrip()
     // We use pio_claim_free_sm_and_add_program_for_gpio_range (for_gpio_range variant)
     // so we will get a PIO instance suitable for addressing gpios >= 32 if needed and supported by the hardware
     bool success = pio_claim_free_sm_and_add_program_for_gpio_range(&ws2812_program, &pio, &sm, &offset, LED_PIN, 1, true);
-    hard_assert(success);
-
+    //hard_assert(success);
+    if (! success)
+    {
+        printf("Failed to claim PIO and state machine for WS2812 program\n");
+        return;
+    }
     ws2812_program_init(pio, sm, offset, LED_PIN, 800000, IS_RGBW);
 
 #if (VU_METER_TOGGLE_PIN >= 0)

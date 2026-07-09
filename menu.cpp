@@ -147,7 +147,7 @@ void resetColors(int prevfgColor, int prevbgColor)
     }
 }
 
-static void getButtonLabels(char *buttonLabel1, char *buttonLabel2)
+void getButtonLabels(char *buttonLabel1, char *buttonLabel2)
 {
     auto &gp = io::getCurrentGamePadState(0);
     if (strcmp(gp.GamePadName, "Dual Shock 4") == 0 || strcmp(gp.GamePadName, "Dual Sense") == 0 || strcmp(gp.GamePadName, "PSClassic") == 0)
@@ -2402,9 +2402,15 @@ int showSettingsMenu(bool calledFromGame)
             }
              case MenuSettingsIndex::MOPT_ENTER_BOOTSEL_MODE:
             {
-                
-                
+
+
                 label = "Enter BOOTSEL Mode";
+                value = "";
+                break;
+            }
+            case MenuSettingsIndex::MOPT_REBOOT_TO_LOADER:
+            {
+                label = "Return to emulator selection";
                 value = "";
                 break;
             }
@@ -2526,6 +2532,12 @@ int showSettingsMenu(bool calledFromGame)
             {
                 label = "Overclock";
                 value = working.flags.overclock ? "ON" : "OFF";
+                break;
+            }
+            case MenuSettingsIndex::MOPT_FM_AUDIO:
+            {
+                label = "YM2413 FM";
+                value = working.flags.useFM ? "ON" : "OFF";
                 break;
             }
             // case MenuSettingsIndex::MOPT_FRUITJAM_INTERNAL_SPEAKER:
@@ -2666,7 +2678,7 @@ int showSettingsMenu(bool calledFromGame)
                 value = "";
                 break;
             }
-            snprintf(line, sizeof(line), "%s%s%s", label, (optIndex == MOPT_EXIT_GAME || optIndex == MOPT_SAVE_RESTORE_STATE || optIndex == MOPT_ENTER_BOOTSEL_MODE || optIndex == MOPT_RESET_GAME) ? "" : ": ", value);
+            snprintf(line, sizeof(line), "%s%s%s", label, (optIndex == MOPT_EXIT_GAME || optIndex == MOPT_SAVE_RESTORE_STATE || optIndex == MOPT_ENTER_BOOTSEL_MODE || optIndex == MOPT_REBOOT_TO_LOADER || optIndex == MOPT_RESET_GAME) ? "" : ": ", value);
             putText(0, row++, line, CBLACK, CWHITE);
         }
         // Down-scroll indicator (centered): shown when there are options below the window
@@ -2735,6 +2747,7 @@ int showSettingsMenu(bool calledFromGame)
             if (curOpt == MOPT_EXIT_GAME ||
                 curOpt == MOPT_SAVE_RESTORE_STATE ||
                 curOpt == MOPT_ENTER_BOOTSEL_MODE ||
+                curOpt == MOPT_REBOOT_TO_LOADER ||
                 curOpt == MOPT_RESET_GAME)
             {
                 snprintf(line, sizeof(line), "UP/DOWN: Move, %s: select", buttonLabel1);
@@ -2917,7 +2930,7 @@ int showSettingsMenu(bool calledFromGame)
                         firstVisibleOption = selectedOptionIndex - optionWindowSize + 1; // scroll down
                 }
             }
-            else if (pad & LEFT || pad & RIGHT || ((pad & A) && (optIndex == MOPT_EXIT_GAME || optIndex == MOPT_SAVE_RESTORE_STATE || optIndex == MOPT_ENTER_BOOTSEL_MODE || optIndex == MOPT_RESET_GAME || optIndex == MOPT_FDS_DISK_SWAP)))
+            else if (pad & LEFT || pad & RIGHT || ((pad & A) && (optIndex == MOPT_EXIT_GAME || optIndex == MOPT_SAVE_RESTORE_STATE || optIndex == MOPT_ENTER_BOOTSEL_MODE || optIndex == MOPT_REBOOT_TO_LOADER || optIndex == MOPT_RESET_GAME || optIndex == MOPT_FDS_DISK_SWAP)))
             {
                 // LEFT/RIGHT on the action row cycles sub-selection
                 if (onActionRow && (pad & (LEFT | RIGHT)))
@@ -2929,9 +2942,13 @@ int showSettingsMenu(bool calledFromGame)
                 }
                 else if (optIndex != -1)
                 {
-                     if (optIndex == MOPT_ENTER_BOOTSEL_MODE && pad & A) 
+                     if (optIndex == MOPT_ENTER_BOOTSEL_MODE && pad & A)
                     {
                        reset_usb_boot(0, 0);
+                    }
+                    if (optIndex == MOPT_REBOOT_TO_LOADER && pad & A)
+                    {
+                       Frens::rebootToBootloader(); // does not return
                     }
                     bool right = pad & RIGHT;
                     switch (optIndex)
@@ -3059,6 +3076,9 @@ int showSettingsMenu(bool calledFromGame)
                         break;
                     case MOPT_OVERCLOCK:
                         working.flags.overclock = !working.flags.overclock;
+                        break;
+                    case MOPT_FM_AUDIO:
+                        working.flags.useFM = !working.flags.useFM;
                         break;
                     case MOPT_DMG_PALETTE:
                     {
@@ -3231,14 +3251,16 @@ int showSettingsMenu(bool calledFromGame)
         // If the overclock toggle disagrees with the live clock, rewrite
         // FlashParams and reboot. writeFlashParamsToFlash arms the watchdog
         // and never returns.
+#if HW_CONFIG != 7
         uint32_t liveKHz   = clock_get_hz(clk_sys) / 1000;
-        uint32_t targetKHz = settings.flags.overclock ? FLASHPARAM_MAX_FREQ_KHZ : FLASHPARAM_MIN_FREQ_KHZ;
-        vreg_voltage targetV = settings.flags.overclock ? FLASHPARAM_MAX_VOLTAGE : FLASHPARAM_MIN_VOLTAGE;
+        uint32_t targetKHz = (settings.flags.overclock || settings.flags.useFM) ? FLASHPARAM_MAX_FREQ_KHZ : FLASHPARAM_MIN_FREQ_KHZ;
+        vreg_voltage targetV = (settings.flags.overclock || settings.flags.useFM) ? FLASHPARAM_MAX_VOLTAGE : FLASHPARAM_MIN_VOLTAGE;
         if (liveKHz != targetKHz)
         {
-            showLoadingScreen(settings.flags.overclock ? "Enabling overclock" : "Disabling overclock", 60);
+            showLoadingScreen((settings.flags.overclock || settings.flags.useFM) ? "Enabling overclock" : "Disabling overclock", 60);
             Frens::writeFlashParamsToFlash(targetKHz, targetV);
         }
+#endif
     }
     Frens::f_free(workingDyn);
     // restore contents of swap file back to altScreenbuffer when not nullptr
@@ -3350,8 +3372,12 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
     if (showSplash && !watchdog_enable_caused_reboot())
     {
         showSplash = false;
+#if !BOOTLOADER_BUILD
         printf("Showing splash screen\n");
         showSplashScreen();
+#else
+        printf("Bootloader build, skipping splash screen\n");
+#endif
     }
     srand(get_rand_32()); // Seed the random number generator for screensaver
     romlister.list(settings.currentDir);
@@ -3600,9 +3626,44 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
 
                     if (strcmp(settings.currentDir, "/") != 0)
                     {
+                        // Capture the directory we're leaving so we can
+                        // re-highlight it in the parent listing.
+                        char childName[ROMLISTER_MAXPATH] = {0};
+                        const char *slash = strrchr(settings.currentDir, '/');
+                        if (slash && *(slash + 1) != '\0')
+                        {
+                            strncpy(childName, slash + 1, sizeof(childName) - 1);
+                        }
+
                         romlister.list("..");
-                        settings.firstVisibleRowINDEX = 0;
-                        settings.selectedRow = STARTROW;
+
+                        int foundIndex = -1;
+                        if (childName[0] != '\0')
+                        {
+                            auto *parentEntries = romlister.GetEntries();
+                            for (size_t i = 0; i < romlister.Count(); ++i)
+                            {
+                                if (parentEntries[i].IsDirectory &&
+                                    strcasecmp(parentEntries[i].Path, childName) == 0)
+                                {
+                                    foundIndex = (int)i;
+                                    break;
+                                }
+                            }
+                        }
+
+                        if (foundIndex >= 0)
+                        {
+                            settings.firstVisibleRowINDEX =
+                                (foundIndex / PAGESIZE) * PAGESIZE;
+                            settings.selectedRow =
+                                STARTROW + (foundIndex - settings.firstVisibleRowINDEX);
+                        }
+                        else
+                        {
+                            settings.firstVisibleRowINDEX = 0;
+                            settings.selectedRow = STARTROW;
+                        }
                         displayRoms(romlister, settings.firstVisibleRowINDEX);
                         fr = f_getcwd(settings.currentDir, FF_MAX_LFN); // f_getcwd(settings.currentDir, FF_MAX_LFN);
                         if (fr == FR_OK)

@@ -6,12 +6,12 @@
 
 
 extern struct settings settings;
-#define SETTINGS_VERSION 113
+#define SETTINGS_VERSION 114
 
 struct settings
 {
     unsigned short version = SETTINGS_VERSION; // version of settings structure
-   
+
     ScreenMode screenMode;
     short firstVisibleRowINDEX;
     short selectedRow;
@@ -22,25 +22,31 @@ struct settings
     char currentDir[FF_MAX_LFN];
     int8_t fruitjamVolumeLevel; // Volume level for Fruit Jam internal speaker in db
     uint8_t scanlineType;
+    // 32-bit bitfield container: keeps the bits packed into a single storage
+    // unit so adding new flags doesn't change layout per-bit. 16 bits used,
+    // 16 spare. Bumping SETTINGS_VERSION above invalidates older saved files
+    // whose layout used the 16-bit container.
     struct
     {
-        unsigned short useExtAudio : 1;      // 0 = use DVIAudio, 1 = use external Audio
-        unsigned short enableVUMeter : 1;    // 0 = disable VU meter, 1 = enable VU meter
-        unsigned short borderMode : 2;       // BorderMode enum (2 bits)
-        unsigned short dmgLCDPalette : 2;    // DMG LCD Palette (2 bits) 0=Green 1=Color 2=B&W
-        unsigned short audioEnabled : 1;     // 1 = audio on, 0 = audio muted
-        unsigned short displayFrameRate : 1; // 1 = show FPS overlay, 0 = do not show
-        unsigned short frameSkip : 1;        // 1 = enable frame skipping, 0 = disable frame skipping
-        unsigned short scanlineOn : 1;        // 1 = scanlines on, 0 = scanlines off
-       // unsigned short fruitJamEnableInternalSpeaker : 1; // 1 = enable Fruit Jam internal speaker, 0 = disable
-        unsigned short rapidFireOnA : 1;      // 1 = rapid fire on A button, 0 = off
-        unsigned short rapidFireOnB : 1;      // 1 = rapid fire on B button, 0 = off
-        unsigned short useDVIModeForHDMI : 1;      // 1 = use DVI mode for HDMI output (lower latency, but no audio), 0 = use HDMI mode (required for audio, but slightly higher latency)
-        unsigned short autoSwapFDS : 1;      // 1 = automatically swap FDS disk sides when loading a .fds file, 0 = do not auto swap (user must manually select "FDS Disk Swap" in settings menu to swap sides). Default to on, because it's less confusing for users if the correct disk side is automatically loaded.
-        unsigned short autoInsertDiskA : 1;  // 1 = disk side A is pre-inserted at boot, 0 = disk starts ejected (user presses A to insert, allowing BIOS Mario/Luigi animation to play)
-        unsigned short overclock : 1;        // 1 = boot/run at FLASHPARAM_MAX_FREQ_KHZ, 0 = FLASHPARAM_MIN_FREQ_KHZ
-    } flags; // Total 16 bits
-   
+        uint32_t useExtAudio : 1;      // 0 = use DVIAudio, 1 = use external Audio
+        uint32_t enableVUMeter : 1;    // 0 = disable VU meter, 1 = enable VU meter
+        uint32_t borderMode : 2;       // BorderMode enum (2 bits)
+        uint32_t dmgLCDPalette : 2;    // DMG LCD Palette (2 bits) 0=Green 1=Color 2=B&W
+        uint32_t audioEnabled : 1;     // 1 = audio on, 0 = audio muted
+        uint32_t displayFrameRate : 1; // 1 = show FPS overlay, 0 = do not show
+        uint32_t frameSkip : 1;        // 1 = enable frame skipping, 0 = disable frame skipping
+        uint32_t scanlineOn : 1;       // 1 = scanlines on, 0 = scanlines off
+       // uint32_t fruitJamEnableInternalSpeaker : 1; // 1 = enable Fruit Jam internal speaker, 0 = disable
+        uint32_t rapidFireOnA : 1;     // 1 = rapid fire on A button, 0 = off
+        uint32_t rapidFireOnB : 1;     // 1 = rapid fire on B button, 0 = off
+        uint32_t useDVIModeForHDMI : 1; // 1 = use DVI mode for HDMI output (lower latency, but no audio), 0 = use HDMI mode (required for audio, but slightly higher latency)
+        uint32_t autoSwapFDS : 1;      // 1 = automatically swap FDS disk sides when loading a .fds file, 0 = do not auto swap (user must manually select "FDS Disk Swap" in settings menu to swap sides). Default to on, because it's less confusing for users if the correct disk side is automatically loaded.
+        uint32_t autoInsertDiskA : 1;  // 1 = disk side A is pre-inserted at boot, 0 = disk starts ejected (user presses A to insert, allowing BIOS Mario/Luigi animation to play)
+        uint32_t overclock : 1;        // 1 = boot/run at FLASHPARAM_MAX_FREQ_KHZ, 0 = FLASHPARAM_MIN_FREQ_KHZ
+        uint32_t useFM : 1;            // SMS-only: 1 = YM2413 FM sound on (RP2350 only); 0 = PSG only
+        uint32_t reserved : 15;        // spare bits for future flags; reset to 0
+    } flags; // 17 bits used + 15 reserved = full 32-bit container
+
 };
 namespace FrensSettings
 {
@@ -59,7 +65,8 @@ namespace FrensSettings
         GENESIS = 3,
         MULTI = 4,
         PCE = 5,
-        O2EM = 6
+        O2EM = 6,
+        SNES = 7
     } emulators;
     static emulators emulatorType = NES;
     void initSettings(emulators emu) ;
@@ -81,5 +88,6 @@ extern const int8_t g_settings_visibility_sms[];
 extern const int8_t g_settings_visibility_md[];
 extern const int8_t g_settings_visibility_pce[];
 extern const int8_t g_settings_visibility_o2em[];
+extern int8_t g_settings_visibility_snes[];
 extern const int8_t g_settings_visibility_main[];
 #endif

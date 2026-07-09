@@ -118,8 +118,13 @@ namespace Frens
 		fr = f_chdir(directoryName);
 		if (fr != FR_OK)
 		{
-			printf("Error changing dir: %d\n", fr);
-			return;
+			printf("Error changing dir to %s: %d\nTrying /", directoryName, fr);
+			fr = f_chdir("/");
+			if (fr != FR_OK)
+			{
+				printf("Error changing dir to /: %d\n", fr);
+				return;
+			}
 		}
 		printf("Listing current directory, reading maximum %d entries.\n", max_entries);
 		uint availMem = Frens::GetAvailableMemory();

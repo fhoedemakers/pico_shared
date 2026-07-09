@@ -78,11 +78,20 @@ enum class ScanlineType : uint8_t
 #ifndef SGX
 #define SGX 0
 #endif
+#ifndef NES_OVERCLOCK_FIX
+#define NES_OVERCLOCK_FIX 0
+#endif
+#ifndef GENESIS_OVERCLOCK_HSTX_FIX
+#define GENESIS_OVERCLOCK_HSTX_FIX 0
+#endif
 #ifndef F_MALLOC_DEBUG
 #define F_MALLOC_DEBUG 0
 #endif
 #ifndef ENABLEDVI
 #define ENABLEDVI 0 
+#endif
+#ifndef BOOTLOADER_BUILD
+#define BOOTLOADER_BUILD 0
 #endif
 extern uintptr_t ROM_FILE_ADDR ; //0x10090000
 extern int maxRomSize;
@@ -171,6 +180,7 @@ namespace Frens
     void f_free(void *pMem);
     void *f_realloc(void *pMem, const size_t newSize);
     uint GetAvailableMemory();
+    void dumpHeapStats(const char *tag);
     int GetUnUsedDMAChan(int startChannel);
     char *get_tag_text(const char *xml, const char *tag, char *buffer, size_t bufsize);
     void waitForVSync();
@@ -187,7 +197,29 @@ namespace Frens
 
      void pollHeadPhoneJack();
      bool isHeadPhoneJackConnected();
-   
+
+    // pico_emuLoader bootloader<->emulator handshake (see FrensHelpers.cpp).
+    // Built on watchdog scratch registers, which survive watchdog_reboot but
+    // are cleared by cold reset -- so the "launched from bootloader" semantic
+    // resets correctly on power-cycle or after a BOOTSEL flash.
+    //
+    // Emulator side:
+    //   isLaunchedFromBootloader() -- true if this image was started by the
+    //       resident bootloader (rather than flashed standalone via BOOTSEL).
+    //   rebootToBootloader() -- ask the bootloader to skip its resume path
+    //       on the next boot (so it shows the picker) and watchdog-reboot.
+    //       Does not return on success.
+    // Bootloader side:
+    //   markLaunchedFromBootloader() -- call right before app_launch_run() so
+    //       the launched image sees isLaunchedFromBootloader() == true.
+    //   consumeReturnToBootloaderRequest() -- in the resume path: returns
+    //       true and clears the request if the emulator asked to return to
+    //       the picker; the bootloader should then skip its resume jump.
+    bool isLaunchedFromBootloader();
+    void rebootToBootloader();
+    void markLaunchedFromBootloader();
+    bool consumeReturnToBootloaderRequest();
+
 } // namespace Frens
 
 

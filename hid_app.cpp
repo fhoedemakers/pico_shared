@@ -35,6 +35,25 @@ extern "C"
         static constexpr int MAX_USB_PLAYERS = 2;
         static uint8_t playerDevAddr[MAX_USB_PLAYERS] = {0, 0};
 
+        // Boot-protocol mouse tracking. A mouse does not occupy a player
+        // slot, so a keyboard + mouse + gamepad can all be connected at once.
+        static bool mouseMounted = false;
+        static uint8_t mouseDevAddr = 0;
+        static uint8_t mouseInstance = 0;
+
+        static void processMouseReport(hid_mouse_report_t const *r, uint16_t len)
+        {
+            auto &m = io::getCurrentMouseState();
+            m.connected = true;
+            m.buttons = r->buttons;
+            m.dx += r->x;
+            m.dy += r->y;
+            if (len >= 4) // wheel-less mice send 3-byte reports
+            {
+                m.wheel += r->wheel;
+            }
+        }
+
         static int assignPlayer(uint8_t dev_addr)
         {
             for (int i = 0; i < MAX_USB_PLAYERS; i++)
@@ -370,6 +389,21 @@ extern "C"
     {
         uint16_t vid, pid;
         tuh_vid_pid_get(dev_addr, &vid, &pid);
+        // Mice are handled separately and do not claim a player slot.
+        if (tuh_hid_interface_protocol(dev_addr, instance) == HID_ITF_PROTOCOL_MOUSE)
+        {
+            printf("Mouse detected - device address = %d, instance = %d is mounted - VID = %04x, PID = %04x\n",
+                   dev_addr, instance, vid, pid);
+            mouseMounted = true;
+            mouseDevAddr = dev_addr;
+            mouseInstance = instance;
+            io::getCurrentMouseState().connected = true;
+            if (!tuh_hid_receive_report(dev_addr, instance))
+            {
+                printf("Error: cannot request to receive report\r\n");
+            }
+            return;
+        }
         int player = assignPlayer(dev_addr);
         if (player < 0)
         {
@@ -451,6 +485,15 @@ extern "C"
 
     void tuh_hid_umount_cb(uint8_t dev_addr, uint8_t instance)
     {
+        if (mouseMounted && dev_addr == mouseDevAddr && instance == mouseInstance)
+        {
+            printf("Mouse device address = %d, instance = %d is unmounted\n", dev_addr, instance);
+            mouseMounted = false;
+            auto &m = io::getCurrentMouseState();
+            m.connected = false;
+            m.buttons = 0;
+            return;
+        }
         int player = getPlayerIndex(dev_addr);
         if (player >= 0)
         {
@@ -470,6 +513,20 @@ extern "C"
     void tuh_hid_report_received_cb(uint8_t dev_addr,
                                     uint8_t instance, uint8_t const *report, uint16_t len)
     {
+        if (mouseMounted && dev_addr == mouseDevAddr && instance == mouseInstance)
+        {
+            // Boot-protocol mouse report (TinyUSB host defaults interfaces to
+            // boot protocol): buttons, x, y, wheel.
+            if (len >= 3)
+            {
+                processMouseReport(reinterpret_cast<hid_mouse_report_t const *>(report), len);
+            }
+            if (!tuh_hid_receive_report(dev_addr, instance))
+            {
+                printf("Error: cannot request to receive report\r\n");
+            }
+            return;
+        }
         int player = getPlayerIndex(dev_addr);
         if (player < 0)
         {
@@ -515,6 +572,8 @@ extern "C"
                 gp.buttons = gp.buttons |
                              (r->buttons1 & DS4Report::Button1::TRIANGLE ? io::GamePadState::Button::X : 0) |
                              (r->buttons1 & DS4Report::Button1::SQUARE ? io::GamePadState::Button::Y : 0) |
+                             (r->buttons2 & DS4Report::Button2::L1 ? io::GamePadState::Button::L : 0) |
+                             (r->buttons2 & DS4Report::Button2::R1 ? io::GamePadState::Button::R : 0) |
                              (r->buttons2 & DS4Report::Button2::SHARE ? io::GamePadState::Button::SELECT : 0) |
                              (r->tpad ? io::GamePadState::Button::SELECT : 0) |
                              (r->buttons2 & DS4Report::Button2::OPTIONS ? io::GamePadState::Button::START : 0);
@@ -561,6 +620,8 @@ extern "C"
                     gp.buttons |
                     (buttons & DS5Report::Button::TRIANGLE ? io::GamePadState::Button::X : 0) |
                     (buttons & DS5Report::Button::SQUARE ? io::GamePadState::Button::Y : 0) |
+                    (buttons & DS5Report::Button::L1 ? io::GamePadState::Button::L : 0) |
+                    (buttons & DS5Report::Button::R1 ? io::GamePadState::Button::R : 0) |
                     (buttons & (DS5Report::Button::SHARE | DS5Report::Button::TPAD) ? io::GamePadState::Button::SELECT : 0) |
                     (buttons & DS5Report::Button::OPTIONS ? io::GamePadState::Button::START : 0);
                 gp.hat = static_cast<io::GamePadState::Hat>(r->getHat());
@@ -606,6 +667,9 @@ extern "C"
                         ((isManta[player] == 1 && r->byte6 & MantaPadReport::Button::NESB) ? io::GamePadState::Button::B : 0) |
                         ((isManta[player] == 2 && r->byte6 & MantaPadReport::Button::B) ? io::GamePadState::Button::B : 0) |
                         ((isManta[player] == 2 && r->byte6 & MantaPadReport::Button::X) ? io::GamePadState::Button::X : 0) |
+                        ((isManta[player] == 2 && r->byte6 & MantaPadReport::Button::Y) ? io::GamePadState::Button::Y : 0) |
+                        (r->byte7 & MantaPadReport::Button::SHOULDERLEFT ? io::GamePadState::Button::L : 0) |
+                        (r->byte7 & MantaPadReport::Button::SHOULDERRIGHT ? io::GamePadState::Button::R : 0) |
                         (r->byte7 & MantaPadReport::Button::START ? io::GamePadState::Button::START : 0) |
                         (r->byte7 & MantaPadReport::Button::SELECT ? io::GamePadState::Button::SELECT : 0) |
                         (udb == MantaPadReport::Button::UP ? io::GamePadState::Button::UP : 0) |
@@ -620,6 +684,9 @@ extern "C"
                         ((isManta[player] == 1 && r->byte6 & MantaPadReport::Button::NESB) ? io::GamePadState::Button::A : 0) |
                         ((isManta[player] == 2 && r->byte6 & MantaPadReport::Button::B) ? io::GamePadState::Button::A : 0) |
                         ((isManta[player] == 2 && r->byte6 & MantaPadReport::Button::X) ? io::GamePadState::Button::X : 0) |
+                        ((isManta[player] == 2 && r->byte6 & MantaPadReport::Button::Y) ? io::GamePadState::Button::Y : 0) |
+                        (r->byte7 & MantaPadReport::Button::SHOULDERLEFT ? io::GamePadState::Button::L : 0) |
+                        (r->byte7 & MantaPadReport::Button::SHOULDERRIGHT ? io::GamePadState::Button::R : 0) |
                         (r->byte7 & MantaPadReport::Button::START ? io::GamePadState::Button::START : 0) |
                         (r->byte7 & MantaPadReport::Button::SELECT ? io::GamePadState::Button::SELECT : 0) |
                         (udb == MantaPadReport::Button::UP ? io::GamePadState::Button::UP : 0) |
@@ -871,8 +938,12 @@ extern "C"
 
                 case HID_USAGE_DESKTOP_MOUSE:
                     TU_LOG1("HID receive mouse report\n");
-                    // Assume mouse follow boot report layout
-                    //                process_mouse_report((hid_mouse_report_t const *)report);
+                    // Assume mouse follows boot report layout (report ID, if
+                    // any, has already been stripped above).
+                    if (len >= 3)
+                    {
+                        processMouseReport(reinterpret_cast<hid_mouse_report_t const *>(report), len);
+                    }
                     break;
 
                 case HID_USAGE_DESKTOP_JOYSTICK:
@@ -989,6 +1060,12 @@ extern "C"
                     gp.buttons |= (abSwapped ? io::GamePadState::Button::A : io::GamePadState::Button::B);
                 if (p->wButtons & XINPUT_GAMEPAD_Y)
                     gp.buttons |= io::GamePadState::Button::X;
+                if (p->wButtons & XINPUT_GAMEPAD_X)
+                    gp.buttons |= io::GamePadState::Button::Y;
+                if (p->wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER)
+                    gp.buttons |= io::GamePadState::Button::L;
+                if (p->wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER)
+                    gp.buttons |= io::GamePadState::Button::R;
                 if (p->wButtons & XINPUT_GAMEPAD_DPAD_UP)
                     gp.buttons |= io::GamePadState::Button::UP;
                 if (p->wButtons & XINPUT_GAMEPAD_DPAD_DOWN)
@@ -1003,6 +1080,15 @@ extern "C"
                     gp.buttons |= io::GamePadState::Button::SELECT;
                 if (p->wButtons & XINPUT_GAMEPAD_GUIDE)
                     gp.buttons |= (io::GamePadState::Button::START | io::GamePadState::Button::SELECT);
+                // Left thumbstick doubles as the dpad (sThumbLY is positive up).
+                if (p->sThumbLX < -16384)
+                    gp.buttons |= io::GamePadState::Button::LEFT;
+                else if (p->sThumbLX > 16384)
+                    gp.buttons |= io::GamePadState::Button::RIGHT;
+                if (p->sThumbLY > 16384)
+                    gp.buttons |= io::GamePadState::Button::UP;
+                else if (p->sThumbLY < -16384)
+                    gp.buttons |= io::GamePadState::Button::DOWN;
                 gp.flagConnected(true);
             }
         }

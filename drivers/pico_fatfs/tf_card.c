@@ -62,7 +62,7 @@ static
 BYTE CardType;          /* Card type flags */
 
 /* SPI pin configurations */
-#if defined(PICO_RP2350A)
+#if PICO_RP2350A == 0
 static uint _pin_miso_conf[2][6] = {
     { 0,  4, 16, 20, 32, 36},  // SPI0_RX
     { 8, 12, 24, 28, 40, 44}   // SPI1_RX
@@ -92,15 +92,14 @@ static uint _pin_mosi_conf[2][4] = {
 
 /* SPI PIO inst (default) */
 static pio_spi_inst_t _pio_spi = {
-    .pio    = pio0,
-    .sm     = 0,
+    .pio    = SPI_PIO_DEFAULT_PIO,
+    .sm     = SPI_PIO_DEFAULT_SM,
     .cs_pin = 0
 };
-static PIO _pio = SPI_PIO_DEFAULT_PIO;
-static uint _sm = SPI_PIO_DEFAULT_SM;
 static io_rw_32* _reg_clkdiv = NULL;
-static io_rw_32  _pio_clkdiv_slow = 255 << 16;
-static io_rw_32  _pio_clkdiv_fast = 255 << 16;
+static io_rw_32  _pio_clkdiv_slow = 4096 << 16;
+static io_rw_32  _pio_clkdiv_fast =  256 << 16;
+#define PIO_CLKDIV_LIMIT (0x00018000)  // fractional div x1.5 (6 system clock syscles per 1 SCK cycle)
 
 
 static inline uint32_t _millis(void)
@@ -163,8 +162,6 @@ static void pico_fatfs_init_spi_pio(void)
     /* chip _select invalid*/
     CS_HIGH();
 
-    _pio_spi.pio    = _pio;
-    _pio_spi.sm     = _sm;
     _pio_spi.cs_pin = _config.pin_cs;
 
     uint f_clk_sys = frequency_count_khz(CLOCKS_FC0_SRC_VALUE_CLK_SYS);
@@ -172,7 +169,7 @@ static void pico_fatfs_init_spi_pio(void)
     uint offset = pio_add_program(_pio_spi.pio, &spi_cpha0_program);
     pio_spi_init(_pio_spi.pio, _pio_spi.sm, offset,
         8,       // 8 bits per SPI frame
-        (float) f_clk_sys / (_config.clk_slow / KHZ) / 4,
+        (float) f_clk_sys / (_config.clk_slow / KHZ) / 4,  // 4 PIO input clock cycles to generate one SPI clock cycle
         false,   // CPHA = 0
         false,   // CPOL = 0
         _config.pin_sck,
@@ -183,6 +180,13 @@ static void pico_fatfs_init_spi_pio(void)
     _reg_clkdiv      = &(_pio_spi.pio->sm[_pio_spi.sm].clkdiv);
     _pio_clkdiv_slow = *_reg_clkdiv;
     _pio_clkdiv_fast = (io_rw_32) ((float) _pio_clkdiv_slow * _config.clk_slow / _config.clk_fast);
+    _pio_clkdiv_fast &= 0xffffff00;
+    if (_pio_clkdiv_fast < PIO_CLKDIV_LIMIT) {
+        _pio_clkdiv_fast = PIO_CLKDIV_LIMIT;
+    }
+
+    _config.clk_fast = (uint64_t) f_clk_sys * 1000 * 256 / (_pio_clkdiv_fast / 256)  / 4;
+    _config.clk_slow = (uint64_t) f_clk_sys * 1000 * 256 / (_pio_clkdiv_slow / 256)  / 4;
 }
 
 /* Initialize SPI */
@@ -242,6 +246,11 @@ void pico_fatfs_init_spi(void)
         SPI_CPHA_0, /* cpha */
         SPI_MSB_FIRST /* order */
     );
+
+    FCLK_FAST();
+    _config.clk_fast = spi_get_baudrate(_config.spi_inst);
+    FCLK_SLOW();
+    _config.clk_slow = spi_get_baudrate(_config.spi_inst);
 }
 
 /* Exchange a byte */
@@ -741,11 +750,32 @@ bool pico_fatfs_set_config(pico_fatfs_spi_config_t* config)
 
 void pico_fatfs_config_spi_pio(PIO pio, uint sm)
 {
-    _pio = pio;
-    _sm = sm;
+    _pio_spi.pio = pio;
+    _pio_spi.sm  = sm;
 }
 
 int pico_fatfs_reboot_spi(void)
 {
+    // Send 32 cycles of CS low
+    FCLK_SLOW();
+    CS_HIGH();
+    sleep_ms(10);
+    CS_LOW();
+    for (int i = 0; i < 4; i++) {
+        xchg_spi(0xFF); /* Dummy clock (force DO enabled) */
+    }
+    CS_HIGH();
+    sleep_ms(10);
+
     return _select();
+}
+
+uint pico_fatfs_get_clk_slow_freq(void)
+{
+    return _config.clk_slow;
+}
+
+uint pico_fatfs_get_clk_fast_freq(void)
+{
+    return _config.clk_fast;
 }
