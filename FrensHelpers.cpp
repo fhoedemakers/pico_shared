@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <cstring>
+#include <malloc.h>
 #include "pico.h"
 #include "pico/stdlib.h"
 #include "pico/multicore.h"
@@ -75,6 +76,52 @@ namespace Frens
     static DWORD totalSpace = 0;
     static DWORD freeSpace = 0;
     static bool extSpeakerEnabled = false;
+
+    // pico_emuLoader bootloader handshake. Two watchdog scratch registers
+    // carry one-direction signals between the resident bootloader and the
+    // emulator app it launched. Both survive watchdog_reboot (since
+    // watchdog_reboot(0,0,0) only clobbers scratch[4]) and are cleared by a
+    // cold reset, so the "launched from bootloader" semantic resets correctly
+    // when the user power-cycles or flashes a stand-alone image via BOOTSEL.
+    //
+    //   scratch[6]: bootloader -> emulator. Set to LOADER_LAUNCH_MAGIC by
+    //               main.cpp right before app_launch_run(). Read by
+    //               isLaunchedFromBootloader().
+    //   scratch[7]: emulator -> bootloader. Set to LOADER_RETURN_MAGIC by
+    //               rebootToBootloader() right before watchdog_reboot(). The
+    //               bootloader checks and clears it in its resume path; if
+    //               present, the resume jump is skipped and the picker is
+    //               shown instead.
+    static constexpr uint32_t LOADER_LAUNCH_MAGIC = 0xB007ED01u;
+    static constexpr uint32_t LOADER_RETURN_MAGIC = 0xB007BACEu;
+    static constexpr int LOADER_LAUNCH_SCRATCH = 6;
+    static constexpr int LOADER_RETURN_SCRATCH = 7;
+
+    bool isLaunchedFromBootloader()
+    {
+        return watchdog_hw->scratch[LOADER_LAUNCH_SCRATCH] == LOADER_LAUNCH_MAGIC;
+    }
+
+    void rebootToBootloader()
+    {
+        watchdog_hw->scratch[LOADER_RETURN_SCRATCH] = LOADER_RETURN_MAGIC;
+        watchdog_reboot(0, 0, 0);
+        for (;;) tight_loop_contents();
+    }
+
+    void markLaunchedFromBootloader()
+    {
+        watchdog_hw->scratch[LOADER_LAUNCH_SCRATCH] = LOADER_LAUNCH_MAGIC;
+    }
+
+    bool consumeReturnToBootloaderRequest()
+    {
+        if (watchdog_hw->scratch[LOADER_RETURN_SCRATCH] == LOADER_RETURN_MAGIC) {
+            watchdog_hw->scratch[LOADER_RETURN_SCRATCH] = 0;
+            return true;
+        }
+        return false;
+    }
 #if !HSTX && FRAMEBUFFERISPOSSIBLE
     // uint8_t *framebuffer1; // [320 * 240];
     // uint8_t *framebuffer2; // [320 * 240];
@@ -182,16 +229,23 @@ namespace Frens
 #define STORAGE_CMD_DUMMY_BYTES 1
 #define STORAGE_CMD_DATA_BYTES 3
 #define STORAGE_CMD_TOTAL_BYTES (STORAGE_CMD_DUMMY_BYTES + STORAGE_CMD_DATA_BYTES)
-    uint storage_get_flash_capacity()
+uint __not_in_flash_func(storage_get_flash_capacity)()
+{
+    // This function needs to be called before any overclock settings are applied, 
+    // this may crash when PSRAM is also on the board.
+    static uint capacity = 0;
+    if (capacity != 0)
     {
-        uint8_t txbuf[STORAGE_CMD_TOTAL_BYTES] = {0x9f};
-        uint8_t rxbuf[STORAGE_CMD_TOTAL_BYTES] = {0};
-        auto irq = save_and_disable_interrupts();
-        flash_do_cmd(txbuf, rxbuf, STORAGE_CMD_TOTAL_BYTES);
-        restore_interrupts(irq);
-
-        return 1 << rxbuf[3];
+        return capacity;
     }
+    uint8_t txbuf[STORAGE_CMD_TOTAL_BYTES] = {0x9f};
+    uint8_t rxbuf[STORAGE_CMD_TOTAL_BYTES] = {0};
+    auto irq = save_and_disable_interrupts();
+    flash_do_cmd(txbuf, rxbuf, STORAGE_CMD_TOTAL_BYTES);
+    restore_interrupts(irq);
+    capacity = 1 << rxbuf[3];
+    return capacity;
+}
 #if !HSTX
     /// @brief Wait for vertical sync
     void setVSyncWaitTask(void (*task)(void))
@@ -856,6 +910,38 @@ namespace Frens
         return maxRomSize; // return maxRomSize as a fallback
     }
 
+    /* Snapshot both heaps (libc SRAM + lwmem PSRAM) on one line. Cheap
+     * enough to call at phase boundaries; mallinfo() walks the freelist
+     * but the lists are short on this build. */
+    void dumpHeapStats(const char *tag)
+    {
+        struct mallinfo mi = mallinfo();
+        unsigned sram_inuse  = (unsigned)mi.uordblks;
+        unsigned sram_free   = (unsigned)mi.fordblks;
+        unsigned sram_arena  = (unsigned)mi.arena;
+        unsigned sram_keep   = (unsigned)mi.keepcost; /* largest free contig */
+#if PICO_RP2350 && PSRAM_CS_PIN
+        if (isPsramEnabled())
+        {
+            PicoPlusPsram &psram_ = PicoPlusPsram::getInstance();
+            lwmem_stats_t st;
+            lwmem_get_stats_ex(nullptr, &st);
+            printf("[heap] %-14s SRAM arena=%uK in=%uK free=%uK largest=%uK | "
+                   "PSRAM total=%uK free=%uK minEver=%uK nAlloc=%u nFree=%u\n",
+                   tag,
+                   sram_arena >> 10, sram_inuse >> 10, sram_free >> 10, sram_keep >> 10,
+                   (unsigned)(st.mem_size_bytes >> 10),
+                   (unsigned)(st.mem_available_bytes >> 10),
+                   (unsigned)(st.minimum_ever_mem_available_bytes >> 10),
+                   (unsigned)st.nr_alloc, (unsigned)st.nr_free);
+            return;
+        }
+#endif
+        printf("[heap] %-14s SRAM arena=%uK in=%uK free=%uK largest=%uK | PSRAM disabled\n",
+               tag,
+               sram_arena >> 10, sram_inuse >> 10, sram_free >> 10, sram_keep >> 10);
+    }
+
     void *flashromtoPsram(char *selectdRom, bool swapbytes, uint32_t &crc, int crcOffset)
     {
 #if PICO_RP2350 && PSRAM_CS_PIN
@@ -1496,17 +1582,22 @@ namespace Frens
     bool initAll(char *selectedRom, uint32_t CPUFreqKHz, int marginTop, int marginBottom, size_t audiobufferSize, bool swapbytes, bool useFrameBuffer)
 
     {
+        dumpHeapStats("initAll/enter");
         byteSwapped = swapbytes;
         bool ok = false;
         int rc = initLed();
+        dumpHeapStats("initAll/initLed");
         if (rc != PICO_OK)
         {
             printf("Error initializing LED: %d\n", rc);
         }
        
+        dumpHeapStats("initAll/preInitPsram");
         if (initPsram() == false)
         {
+            printf("PSRAM not enabled, using flash for rom storage\n");
             auto flashcap = storage_get_flash_capacity();
+            printf("Flash capacity: %d bytes (%d Kbytes)\n", flashcap, flashcap / 1024);
             // Calculate the address in flash where roms will be stored
             printf("Flash binary start    : 0x%08x\n", &__flash_binary_start);
             printf("Flash binary end      : 0x%08x\n", &__flash_binary_end);
@@ -1516,8 +1607,9 @@ namespace Frens
             uint8_t *flash_end = (uint8_t *)&__flash_binary_start + flashcap - 1;
             printf("Flash end             : 0x%08x\n", flash_end);
             printf("Size program in flash :   %8d bytes (%d) Kbytes\n", &__flash_binary_end - &__flash_binary_start, (&__flash_binary_end - &__flash_binary_start) / 1024);
-            // round ROM_FILE_ADDRESS address up to 4k boundary of flash_binary_end
-            ROM_FILE_ADDR = ((uintptr_t)&__flash_binary_end + 0xFFF) & ~0xFFF;
+            // Place ROM one full flash sector above FlashParams so the sector
+            // holding FlashParams is never erased when (re)flashing a ROM.
+            ROM_FILE_ADDR = FLASHPARAM_ADDRESS + FLASH_SECTOR_SIZE;
             // ROM_FILE_ADDR =  0x1004a000;
             //  calculate max rom size
             maxRomSize = flash_end - (uint8_t *)ROM_FILE_ADDR;
@@ -1534,10 +1626,13 @@ namespace Frens
         // printf("Total flash size: %d bytes (%d Kbytes)\n", cap,cap/ 1024);
         // reset settings to default in case SD card could not be mounted
         FrensSettings::resetsettings();
+        dumpHeapStats("initAll/preInitSD");
         if (initSDCard())
         {
             ok = true;
+            dumpHeapStats("initAll/postInitSD");
             FrensSettings::loadsettings();
+            dumpHeapStats("initAll/postLoadSettings");
             // When a game is started from the menu, the menu will reboot the device.
             // After reboot the emulator will start the selected game.
             // The watchdog timer is used to detect if the reboot was caused by the menu.
@@ -1562,26 +1657,34 @@ namespace Frens
             marginTop = marginBottom = 0; // ignore margins when using framebuffer
         }
 #endif // DVI
+        dumpHeapStats("initAll/preDVandAudio");
         initDVandAudio(marginTop, marginBottom, audiobufferSize);
+        dumpHeapStats("initAll/postDVandAudio");
         // init USB driver
         // USB driver is initalized after display driver to prevent the display driver
         // from using the PIO state machines already claimed by the USB driver.
         // This is only needed for the PIO USB driver.
 #if CFG_TUH_RPI_PIO_USB && PICO_RP2350
         printf("Using PIO USB.\n");
+        dumpHeapStats("initAll/preUSB");
         pio_usb_board_init();
+        dumpHeapStats("initAll/postPioUsbBoard");
         tusb_rhport_init_t host_init = {
             .role = TUSB_ROLE_HOST,
             .speed = TUSB_SPEED_AUTO};
         tusb_init(BOARD_TUH_RHPORT, &host_init);
+        dumpHeapStats("initAll/postTusbInit");
 
         if (board_init_after_tusb)
         {
             board_init_after_tusb();
         }
+        dumpHeapStats("initAll/postBoardAfterTusb");
 #else
         printf("Using internal USB.\n");
+        dumpHeapStats("initAll/preUSB");
         tusb_init();
+        dumpHeapStats("initAll/postTusbInit");
 #endif
 #if !HSTX
         // Add a small stack for core1
@@ -1658,8 +1761,11 @@ namespace Frens
     // Set HSTX clock to 126 MHz if HSTX is used so the HSTX display driver can output at no more than 60Hz
     void setClocksAndStartStdio(uint32_t cpuFreqKHz, vreg_voltage voltage)
     {
+        // Call this function before setting the clock to a higher frequency.
+        // This will ensure that consecutive calls to   storage_get_flash_capacity();
+        // will not crash the board when the clock is set to a higher frequency than the default 125 MHz.
+        storage_get_flash_capacity();
         // Set voltage and clock frequency
-
         vreg_disable_voltage_limit();
         vreg_set_voltage(voltage);
 #if !HSTX
@@ -1707,7 +1813,7 @@ namespace Frens
         // stay at 252 MHz for SGX (no artifacts) or accept the dots at
         // 378 MHz — the chip has no third clean PLL to use for HSTX.
         bool hstx_ok = true;
-#if SGX && CFG_TUH_RPI_PIO_USB
+#if (SGX || GENESIS_OVERCLOCK_HSTX_FIX || NES_OVERCLOCK_FIX) && CFG_TUH_RPI_PIO_USB
         const bool force_pll_usb_hstx = true;
 #else
         const bool force_pll_usb_hstx = false;

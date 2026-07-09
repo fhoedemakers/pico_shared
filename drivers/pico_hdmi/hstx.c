@@ -286,7 +286,11 @@ void __not_in_flash_func(hstx_push_audio_sample)(const int left, const int right
             return;
         }
         hstx_packet_t packet;
-        g_hdmi_audio_frame_counter = hstx_packet_set_audio_samples(&packet, acc_buf, 4, g_hdmi_audio_frame_counter);
+        // _cs variant: carries IEC 60958 channel status with a valid
+        // sample-frequency code. Strict HDMI sinks mute all-zero channel
+        // status even with a correct Audio InfoFrame; lax sinks (capture
+        // cards) decode it but with glitches.
+        g_hdmi_audio_frame_counter = hstx_packet_set_audio_samples_cs(&packet, acc_buf, 4, g_hdmi_audio_frame_counter);
 
         hstx_data_island_t island;
         hstx_encode_data_island(&island, &packet, false, true);
@@ -325,6 +329,12 @@ void hstx_init(bool dviOnly)
 // hstx_default_core1_stack() restores the boot-time stack.
 void hstx_restart_core1(uint32_t *new_stack, size_t new_stack_bytes)
 {
+    // Capture the caller-configured audio rate BEFORE teardown:
+    // video_output_init below resets it to a 48 kHz default, and the
+    // hardcoded 44100 that used to be here silently clobbered emulators
+    // running any other rate.
+    uint32_t audio_rate = pico_hdmi_get_audio_sample_rate();
+
     video_output_stop();
     multicore_reset_core1();
 
@@ -336,7 +346,7 @@ void hstx_restart_core1(uint32_t *new_stack, size_t new_stack_bytes)
     hstx_di_queue_init();
     video_output_set_vsync_callback(hstx_vsync_callbackfunc);
     video_output_init(640, 480);
-    pico_hdmi_set_audio_sample_rate(44100);
+    pico_hdmi_set_audio_sample_rate(audio_rate);
     video_output_set_scanline_callback(scanline_callbackfunc);
 
     multicore_launch_core1_with_stack(video_output_core1_run, new_stack, new_stack_bytes);

@@ -7,7 +7,7 @@ struct settings settings;
 namespace FrensSettings
 {
     #define SETTINGSFILE "/settings_%s.dat" // File to store settings
-    static const char *emulatorstrings[7] = { "NES", "SMS", "GB", "MD", "MUL", "PCE", "O2E" };
+    static const char *emulatorstrings[8] = { "NES", "SMS", "GB", "MD", "MUL", "PCE", "O2E", "SNES" };
     static char settingsFileName[21] = {};
     static emulators emulatorTypeForSettings = emulators::MULTI;
     char *getSettingsFileName()
@@ -55,10 +55,16 @@ namespace FrensSettings
         }
         else if (strcasecmp(fileextension, ".gen") == 0 || strcasecmp(fileextension, ".md") == 0|| strcasecmp(fileextension, ".bin") == 0)
         {
-           
+
             if ( emulatorType == emulators::GENESIS ) return;
             emulatorType = emulators::GENESIS;
             g_settings_visibility = g_settings_visibility_md;
+        }
+        else if (strcasecmp(fileextension, ".smc") == 0 || strcasecmp(fileextension, ".sfc") == 0)
+        {
+            if ( emulatorType == emulators::SNES ) return;
+            emulatorType = emulators::SNES;
+            g_settings_visibility = g_settings_visibility_snes;
         }
         else
         {
@@ -97,6 +103,7 @@ namespace FrensSettings
         printf("autoSwapFDS: %d\n", settings.flags.autoSwapFDS);
         printf("autoInsertDiskA: %d\n", settings.flags.autoInsertDiskA);
         printf("overclock: %d\n", settings.flags.overclock);
+        printf("useFM: %d\n", settings.flags.useFM);
         printf("\n");
     }
     void resetsettings(struct settings *settingsPtr)
@@ -127,7 +134,9 @@ namespace FrensSettings
         settings.flags.autoSwapFDS = 0;
         settings.flags.autoInsertDiskA = 1; // default: disk side A pre-inserted at boot
         settings.flags.overclock = 0; // default: run at FLASHPARAM_MIN_FREQ_KHZ
-        strcpy(settings.currentDir, "/");
+        settings.flags.useFM = 0; // default: disable FM audio
+        settings.flags.reserved = 0;  // clear spare bits
+        snprintf(settings.currentDir, sizeof(settings.currentDir), "/roms/%s", emulatorstrings[static_cast<int>(emulatorType)]);
     }
 
     void savesettings()
