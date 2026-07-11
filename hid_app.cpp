@@ -17,6 +17,14 @@
 #define PRINTFBUTTONS 0
 #endif
 
+// Default mode for the MantaPad (081f:e401), which is sold both as a NES-
+// and as a SNES-shaped controller with the same VID/PID: 1 = NES behavior
+// (SNES mode activated by pressing Y), 2 = SNES from the start. SNES
+// emulators should define this as 2 so the pad works fully at connect.
+#ifndef MANTAPAD_DEFAULT_MODE
+#define MANTAPAD_DEFAULT_MODE 1
+#endif
+
 int abSwapped = ABSWAPPED;
 int isManta[2] = {0, 0};        // 1 NES, 2 SNES (per player)
 int isMantaVariant[2] = {0, 0}; // SNES pad (per player)
@@ -429,10 +437,18 @@ extern "C"
         else if (isMantaPad(vid, pid))
         {
             printf("MantaPad detected - device address = %d, instance = %d, player %d is mounted - ", dev_addr, instance, player + 1);
-            printf("Press Y to activate SNES mode\n");
-            isManta[player] = 1;
-            gp.GamePadName = "Manta NES";
-            gp.GamePadShortName = "MNES";
+            isManta[player] = MANTAPAD_DEFAULT_MODE;
+            if (isManta[player] == 2)
+            {
+                gp.GamePadName = "Manta SNES";
+                gp.GamePadShortName = "MSNES";
+            }
+            else
+            {
+                printf("Press Y to activate SNES mode\n");
+                gp.GamePadName = "Manta NES";
+                gp.GamePadShortName = "MNES";
+            }
         }
         else if (isMantaPadVariant(vid, pid))
         {
@@ -572,8 +588,8 @@ extern "C"
                 gp.buttons = gp.buttons |
                              (r->buttons1 & DS4Report::Button1::TRIANGLE ? io::GamePadState::Button::X : 0) |
                              (r->buttons1 & DS4Report::Button1::SQUARE ? io::GamePadState::Button::Y : 0) |
-                             (r->buttons2 & DS4Report::Button2::L1 ? io::GamePadState::Button::L : 0) |
-                             (r->buttons2 & DS4Report::Button2::R1 ? io::GamePadState::Button::R : 0) |
+                             (r->buttons2 & (DS4Report::Button2::L1 | DS4Report::Button2::L2) ? io::GamePadState::Button::L : 0) |
+                             (r->buttons2 & (DS4Report::Button2::R1 | DS4Report::Button2::R2) ? io::GamePadState::Button::R : 0) |
                              (r->buttons2 & DS4Report::Button2::SHARE ? io::GamePadState::Button::SELECT : 0) |
                              (r->tpad ? io::GamePadState::Button::SELECT : 0) |
                              (r->buttons2 & DS4Report::Button2::OPTIONS ? io::GamePadState::Button::START : 0);
@@ -620,8 +636,8 @@ extern "C"
                     gp.buttons |
                     (buttons & DS5Report::Button::TRIANGLE ? io::GamePadState::Button::X : 0) |
                     (buttons & DS5Report::Button::SQUARE ? io::GamePadState::Button::Y : 0) |
-                    (buttons & DS5Report::Button::L1 ? io::GamePadState::Button::L : 0) |
-                    (buttons & DS5Report::Button::R1 ? io::GamePadState::Button::R : 0) |
+                    (buttons & (DS5Report::Button::L1 | DS5Report::Button::L2) ? io::GamePadState::Button::L : 0) |
+                    (buttons & (DS5Report::Button::R1 | DS5Report::Button::R2) ? io::GamePadState::Button::R : 0) |
                     (buttons & (DS5Report::Button::SHARE | DS5Report::Button::TPAD) ? io::GamePadState::Button::SELECT : 0) |
                     (buttons & DS5Report::Button::OPTIONS ? io::GamePadState::Button::START : 0);
                 gp.hat = static_cast<io::GamePadState::Hat>(r->getHat());
@@ -758,6 +774,11 @@ extern "C"
                 gp.buttons = gp.buttons |
                              (r->byte2 & GenesisMiniReport::ButtonRetrobit::MODE ? io::GamePadState::Button::SELECT : 0) |
                              (r->byte1 & GenesisMiniReport::ButtonRetrobit::C ? io::GamePadState::Button::C : 0) |
+                             (r->byte1 & GenesisMiniReport::ButtonRetrobit::X ? io::GamePadState::Button::X : 0) |
+                             (r->byte1 & GenesisMiniReport::ButtonRetrobit::Y ? io::GamePadState::Button::Y : 0) |
+                             (r->byte1 & GenesisMiniReport::ButtonRetrobit::Z ? io::GamePadState::Button::Z : 0) |
+                             (r->byte1 & GenesisMiniReport::ButtonRetrobit::L ? io::GamePadState::Button::L : 0) |
+                             (r->byte1 & GenesisMiniReport::ButtonRetrobit::R ? io::GamePadState::Button::R : 0) |
                              (r->byte2 & GenesisMiniReport::ButtonRetrobit::START ? io::GamePadState::Button::START : 0) |
                              (r->byte5 == GenesisMiniReport::ButtonRetrobit::UP ? io::GamePadState::Button::UP : 0) |
                              (r->byte5 == GenesisMiniReport::ButtonRetrobit::DOWN ? io::GamePadState::Button::DOWN : 0) |
@@ -787,7 +808,10 @@ extern "C"
                     gp.buttons = (r->buttons & PSClassicReport::Button::Circle ? io::GamePadState::Button::B : 0) |
                                  (r->buttons & PSClassicReport::Button::Cross ? io::GamePadState::Button::A : 0);
                 }
-                gp.buttons |= (r->buttons & PSClassicReport::Button::Triangle ? io::GamePadState::Button::X : 0);
+                gp.buttons |= (r->buttons & PSClassicReport::Button::Triangle ? io::GamePadState::Button::X : 0) |
+                              (r->buttons & PSClassicReport::Button::Square ? io::GamePadState::Button::Y : 0);
+                // L1/L2/R1/R2 bit positions are not verified yet; capture a
+                // report with PRINTFBUTTONS=1 before mapping them to L/R.
                 switch (r->hat)
                 {
                 case PSClassicReport::Button::UP:
@@ -915,6 +939,15 @@ extern "C"
                                 break;
                             case HID_KEY_C:
                                 gp.buttons |= io::GamePadState::Button::X;
+                                break;
+                            case HID_KEY_V:
+                                gp.buttons |= io::GamePadState::Button::Y;
+                                break;
+                            case HID_KEY_Q:
+                                gp.buttons |= io::GamePadState::Button::L;
+                                break;
+                            case HID_KEY_W:
+                                gp.buttons |= io::GamePadState::Button::R;
                                 break;
                             case HID_KEY_ARROW_UP:
                                 gp.buttons |= io::GamePadState::Button::UP;

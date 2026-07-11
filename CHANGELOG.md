@@ -1,5 +1,15 @@
 # Release notes
 
+## 7/7/2026
+
+- **NES controller PIO driver now clocks 16 bits**, adding full SNES controller support on the same port: A, X, L and R are exposed through the new `nespad_states_ext[]` (SNES serial order, bit0=B … bit11=R). NES pads are auto-detected (clocks 9-16 read low on the wire) and keep populating `nespad_states[]` exactly as before, so existing emulators are unaffected.
+- **Wii Classic controller**: L and R shoulder buttons are now decoded (bits 10/11 of `wiipad_read()`); ZL/ZR act as L/R as well, covering both the Classic Controller (Pro) and the NES/SNES-Classic-mini pads.
+- **MantaPad (081f:e401)**: new compile-time `MANTAPAD_DEFAULT_MODE` (default 1 = NES behavior with Y-press to switch to SNES mode, unchanged). SNES emulators can define it as 2 to get full SNES mode at connect.
+- **DualShock 4 / DualSense**: L2/R2 triggers now act as L/R.
+- **PlayStation Classic controller**: Square button now mapped.
+- **Retro-bit Mega Drive Arcade pad**: X, Y, Z, L and R buttons now mapped.
+- **USB keyboard**: added V (Y button), Q (L) and W (R).
+
 ## 14/5/2026
 
 - **8:7 aspect ratio scaling** added as a new screen mode option, giving a more authentic CRT pixel shape alongside the existing 1:1 mode.
