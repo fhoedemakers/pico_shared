@@ -135,7 +135,11 @@ namespace Frens
     // volatile bool framebuffer2_rendering = false;
     // volatile ProcessScanLineFunction processScanLineFunction;
     // // Mutex for synchronization
-     WORD framebuffer[SCREENWIDTH * SCREENHEIGHT];
+     // Word-aligned: the 8:7 scale encoder (encodeTMDS_RGB444_Scaled16_7)
+     // casts this buffer to uint32_t* and reads it with ldmia, which hard-faults
+     // on Cortex-M if the base is not 4-byte aligned. Plain uint16_t arrays only
+     // get 2-byte alignment, so the fault depends on .bss layout (HW_CONFIG).
+     alignas(uint32_t) WORD framebuffer[SCREENWIDTH * SCREENHEIGHT];
 #endif
    
    
