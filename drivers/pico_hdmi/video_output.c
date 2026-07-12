@@ -878,11 +878,17 @@ void __not_in_flash_func(video_output_core1_run)(void)
         // masked across hstx_resync() so it cannot observe the chain in a
         // half-rebuilt state, then all watchdog baselines are reset so the
         // next iteration measures fresh post-recovery progress.
-        bool do_resync = resync_requested ||
-                         (now - last_frame_us) > VIDEO_OUTPUT_WATCHDOG_US;
+        bool stall_wd = (now - last_frame_us) > VIDEO_OUTPUT_WATCHDOG_US;
+        bool do_resync = resync_requested || stall_wd;
 
         if (do_resync)
         {
+            // Which watchdog fired matters for diagnosis: "stall" means the
+            // DMA IRQ stopped feeding the chain (missed deadline / wedge),
+            // "overrate" means the ping/pong chain drifted and is consuming
+            // buffers faster than the pixel clock allows.
+            const char *cause = (resync_requested && stall_wd) ? "overrate+stall"
+                                : (resync_requested ? "overrate" : "stall");
             resync_count++;
             irq_set_enabled(DMA_IRQ_0, false);
             hstx_resync();
@@ -892,7 +898,8 @@ void __not_in_flash_func(video_output_core1_run)(void)
             last_frame_count_seen = video_frame_count;
             overrate_last_us = last_frame_us;
             overrate_last_frames = video_frame_count;
-            printf("HSTX resync performed! Total resyncs since boot: %d\n", resync_count);
+            printf("HSTX resync performed! cause=%s di_level=%lu Total resyncs since boot: %d\n",
+                   cause, (unsigned long)hstx_di_queue_get_level(), resync_count);
         }
 
         if (background_task) {
