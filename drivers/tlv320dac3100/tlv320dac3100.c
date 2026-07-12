@@ -16,6 +16,7 @@
 #include "pico/stdlib.h"
 #include "hardware/i2c.h"
 #include "hardware/gpio.h"
+#include "i2c_bus_recovery.h"
 
 #include <stdio.h>
 
@@ -35,14 +36,44 @@ static volatile uint32_t s_last_irq_time = 0;
 
 /* ----- low-level register access -------------------------------------- */
 
+/* An SNES-classic-mini pad on the shared bus sporadically drives SDA during
+ * transactions addressed to the DAC (its firmware cannot keep up with
+ * back-to-back foreign traffic), aborting individual transfers with
+ * PICO_ERROR_GENERIC. Those aborts are transient, so every register access
+ * gets a settle gap for the pad to re-arm plus a few retries. */
+#define XFER_GAP_US      150
+#define XFER_RETRY_US    500
+#define XFER_RETRIES     5
+
+/* The live SDA/SCL levels tell a wedged bus (timeout with a line held low)
+ * apart from an absent/NACKing device; gpio_get() reads the pad even while
+ * the pins are muxed to the I2C peripheral. */
+static void log_i2c_fail(const char *op, int res, int attempt)
+{
+    printf("%stlv320 %s failed (attempt %d/%d): res=%d (%s) SDA=%d SCL=%d\n",
+           attempt == XFER_RETRIES ? "!!!WARNING!!!: " : "", op, attempt,
+           XFER_RETRIES, res,
+           res == PICO_ERROR_TIMEOUT ? "timeout"
+                                     : (res < 0 ? "nack/err" : "short xfer"),
+           gpio_get(PIN_SDA), gpio_get(PIN_SCL));
+    if (attempt == XFER_RETRIES) {
+        s_dac_error = true;
+    } else {
+        busy_wait_us(XFER_RETRY_US);
+    }
+}
+
 static void write_register(uint8_t reg, uint8_t value)
 {
-    uint8_t buf[2] = { reg, value };
-    int res = i2c_write_timeout_us(I2C_PORT, DAC_I2C_ADDR, buf, sizeof(buf),
-                                   /* nostop */ false, 1000);
-    if (res != 2) {
-        printf("!!!WARNING!!!: tlv320 i2c_write_timeout failed: res=%d\n", res);
-        s_dac_error = true;
+    for (int attempt = 1; attempt <= XFER_RETRIES; attempt++) {
+        uint8_t buf[2] = { reg, value };
+        int res = i2c_write_timeout_us(I2C_PORT, DAC_I2C_ADDR, buf, sizeof(buf),
+                                       /* nostop */ false, 1000);
+        busy_wait_us(XFER_GAP_US);
+        if (res == 2) {
+            break;
+        }
+        log_i2c_fail("i2c_write_timeout", res, attempt);
     }
 #if PICO_AUDIO_I2S_DEBUG
     printf("Write Reg: %d = 0x%x\n", reg, value);
@@ -52,17 +83,22 @@ static void write_register(uint8_t reg, uint8_t value)
 static uint8_t read_register(uint8_t reg)
 {
     uint8_t buf[1] = { reg };
-    int res = i2c_write_timeout_us(I2C_PORT, DAC_I2C_ADDR, buf, sizeof(buf),
-                                   /* nostop */ true, 1000);
-    if (res != 1) {
-        printf("!!!WARNING!!!: tlv320 i2c_write_timeout failed: res=%d\n", res);
-        s_dac_error = true;
-    }
-    res = i2c_read_timeout_us(I2C_PORT, DAC_I2C_ADDR, buf, sizeof(buf),
-                              /* nostop */ false, 1000);
-    if (res != 1) {
-        printf("!!!WARNING!!!: tlv320 i2c_read_timeout failed: res=%d\n", res);
-        s_dac_error = true;
+    for (int attempt = 1; attempt <= XFER_RETRIES; attempt++) {
+        buf[0] = reg;
+        int res = i2c_write_timeout_us(I2C_PORT, DAC_I2C_ADDR, buf, sizeof(buf),
+                                       /* nostop */ true, 1000);
+        if (res != 1) {
+            busy_wait_us(XFER_GAP_US);
+            log_i2c_fail("i2c_write_timeout", res, attempt);
+            continue;
+        }
+        res = i2c_read_timeout_us(I2C_PORT, DAC_I2C_ADDR, buf, sizeof(buf),
+                                  /* nostop */ false, 1000);
+        busy_wait_us(XFER_GAP_US);
+        if (res == 1) {
+            break;
+        }
+        log_i2c_fail("i2c_read_timeout", res, attempt);
     }
 #if PICO_AUDIO_I2S_DEBUG
     printf("Read Reg: %d = 0x%x\n", reg, buf[0]);
@@ -306,6 +342,9 @@ bool tlv320_init(void)
     printf("Init TLV320 DAC, max 5 retries...\n");
     do {
         s_dac_error = false;
+        /* The bus is shared (Wii pad on the same SDA/SCL); a wedged slave
+         * would time out every transaction below, so clear it first. */
+        i2c_bus_clear(PIN_SDA, PIN_SCL, "tlv320");
         tlv320_hardware_reset();
         tlv320_program_registers();
         if (!s_dac_error) {

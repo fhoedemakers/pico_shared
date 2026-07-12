@@ -23,6 +23,7 @@
 
 #include "nespad.h"
 #include "wiipad.h"
+#include "i2c_bus_recovery.h"
 #include "settings.h"
 #include "menu_settings.h" // for g_available_screen_modes visibility
 
@@ -1495,6 +1496,20 @@ uint __not_in_flash_func(storage_get_flash_capacity)()
         // https://github.com/fhoedemakers/pico-genesisPlus/issues/10
 #if !WIIPAD_DELAYED_START and WII_PIN_SDA >= 0 and WII_PIN_SCL >= 0
         wiipad_begin();
+#elif WII_PIN_SDA >= 0 and WII_PIN_SCL >= 0 and (USE_I2S_AUDIO == PICO_AUDIO_I2S_DRIVER_TLV320)
+        // The TLV320 DAC (initialized right after this via EXT_AUDIO_SETUP)
+        // shares the I2C bus with the Wii-extension port. An uninitialized
+        // SNES-classic-mini pad attached at power-on wedges the bus and makes
+        // every DAC transaction time out (res=-2). Recover the bus and give an
+        // attached pad its extension-init so it goes quiet before the DAC
+        // driver takes over. The DAC is held in reset meanwhile so it cannot
+        // observe the pad traffic (tlv320_hardware_reset() releases it later).
+        gpio_init(PICO_AUDIO_I2S_RESET_PIN);
+        gpio_put(PICO_AUDIO_I2S_RESET_PIN, 0);
+        gpio_set_dir(PICO_AUDIO_I2S_RESET_PIN, GPIO_OUT);
+        i2c_bus_clear(WII_PIN_SDA, WII_PIN_SCL, "pad-preinit");
+        wiipad_begin(); // fast NACK, no delays, when no pad is attached
+        i2c_bus_clear(WII_PIN_SDA, WII_PIN_SCL, "pre-DAC");
 #endif
     }
 
