@@ -32,6 +32,7 @@ enum MenuSettingsIndex {
     MOPT_OVERCLOCK,
     MOPT_FM_AUDIO,
     MOPT_ENTER_BOOTSEL_MODE,
+    MOPT_CONTROLLER_TEST,
     MOPT_COUNT
 };
 // Short description (max 40 chars) for each option. Use designated initializers
@@ -64,6 +65,7 @@ const char* const g_settings_descriptions[MOPT_COUNT] = {
     [MOPT_OVERCLOCK]                 = "Run CPU at high clock (reboots to apply)",
     [MOPT_FM_AUDIO]                  = "YM2413 FM sound (SMS, RP2350 only)",
     [MOPT_ENTER_BOOTSEL_MODE]        = "Reboot to BOOTSEL mode for flashing",
+    [MOPT_CONTROLLER_TEST]           = "Test buttons on connected controllers",
 };
 
 extern const int8_t *g_settings_visibility; // Visibility configuration for options menu

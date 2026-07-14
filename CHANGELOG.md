@@ -1,5 +1,19 @@
 # Release notes
 
+## 12/7/2026
+
+- **Fix: TLV320 DAC init failure with an SNES-classic-mini pad attached at power-on** (shared I2C bus). The SNES-classic pad's firmware cannot cleanly ignore traffic addressed to other devices: uninitialized it wedges the bus outright (`res=-2` timeouts), and even initialized it sporadically drives SDA during the DAC's back-to-back register accesses, aborting individual transfers (`res=-1`). Fixes: (1) boards with the TLV320 and delayed Wii-pad start now recover the bus and pre-initialize an attached pad (while holding the DAC in reset) before DAC init — as a bonus the pad works from the first menu frame; (2) every TLV320 register access now gets a 150 µs settle gap for the pad to re-arm plus up to 5 retries on transient aborts. New generic `i2c_bus_clear()` helper (`drivers/i2c_bus_recovery`) performs the standard SCL-pulse bus-clear and is run before every `tlv320_init()` attempt. TLV320 I2C failure logs now include the attempt count, decoded error cause and live SDA/SCL line levels.
+
+## 7/7/2026
+
+- **NES controller PIO driver now clocks 16 bits**, adding full SNES controller support on the same port: A, X, L and R are exposed through the new `nespad_states_ext[]` (SNES serial order, bit0=B … bit11=R). NES pads are auto-detected (clocks 9-16 read low on the wire) and keep populating `nespad_states[]` exactly as before, so existing emulators are unaffected.
+- **Wii Classic controller**: L and R shoulder buttons are now decoded (bits 10/11 of `wiipad_read()`); ZL/ZR act as L/R as well, covering both the Classic Controller (Pro) and the NES/SNES-Classic-mini pads.
+- **MantaPad (081f:e401)**: new compile-time `MANTAPAD_DEFAULT_MODE` (default 1 = NES behavior with Y-press to switch to SNES mode, unchanged). SNES emulators can define it as 2 to get full SNES mode at connect.
+- **DualShock 4 / DualSense**: L2/R2 triggers now act as L/R.
+- **PlayStation Classic controller**: Square button now mapped.
+- **Retro-bit Mega Drive Arcade pad**: X, Y, Z, L and R buttons now mapped.
+- **USB keyboard**: added V (Y button), Q (L) and W (R).
+
 ## 14/5/2026
 
 - **8:7 aspect ratio scaling** added as a new screen mode option, giving a more authentic CRT pixel shape alongside the existing 1:1 mode.

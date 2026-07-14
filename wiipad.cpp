@@ -47,7 +47,9 @@ uint16_t wiipad_read(void) {
     static constexpr int B = 1 << 1;
     static constexpr int X = 1 << 8;
     static constexpr int Y = 1 << 9;
-    
+    static constexpr int L = 1 << 10;
+    static constexpr int R = 1 << 11;
+
     if ( !wiipad_connected ) {
         return 0;
     }
@@ -67,6 +69,10 @@ uint16_t wiipad_read(void) {
         if (!(buf[5] & 0x20)) v |= Y;
         if (!(buf[4] & 0x10)) v |= SELECT;
         if (!(buf[4] & 0x04)) v |= START;
+        // Shoulders: LT/RT full-press bits (how the NES/SNES-Classic-mini
+        // pads report L/R) unioned with ZL/ZR (Classic Controller Pro).
+        if (!(buf[4] & 0x20) || !(buf[5] & 0x80)) v |= L;
+        if (!(buf[4] & 0x02) || !(buf[5] & 0x04)) v |= R;
     }
     return v;
 }

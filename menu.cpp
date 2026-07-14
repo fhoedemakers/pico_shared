@@ -952,6 +952,246 @@ static bool showDialogYesNo(const char *message)
         }
     }
 }
+// --- Controller Test screen (Settings > Controller Test) -------------------
+// Shows a SNES-pad graphic that follows whichever input source was last
+// active, plus a status list of all sources. Reads the raw per-source globals
+// instead of RomSelect_PadState: the menu mask merges all sources, drops L/R,
+// and its HSTX SELECT+A branch switches to DVI mode - unacceptable while a
+// tester is mashing buttons. Canonical button order is the SNES serial layout
+// of nespad_states_ext[]:
+// bit0=B 1=Y 2=Select 3=Start 4=Up 5=Down 6=Left 7=Right 8=A 9=X 10=L 11=R
+
+enum CtSource
+{
+    CT_SRC_GPIO1,
+    CT_SRC_GPIO2,
+    CT_SRC_USB1,
+    CT_SRC_USB2,
+    CT_SRC_WII,
+    CT_SRC_COUNT
+};
+static const char *const ctSrcNames[CT_SRC_COUNT] = {"GPIO1", "GPIO2", "USB1", "USB2", "Wii"};
+
+// io::GamePadState::Button -> canonical SNES serial order
+static uint16_t ctFromUsb(uint32_t b)
+{
+    using B = io::GamePadState::Button;
+    uint16_t v = 0;
+    if (b & B::B) v |= 1u << 0;
+    if (b & B::Y) v |= 1u << 1;
+    if (b & B::SELECT) v |= 1u << 2;
+    if (b & B::START) v |= 1u << 3;
+    if (b & B::UP) v |= 1u << 4;
+    if (b & B::DOWN) v |= 1u << 5;
+    if (b & B::LEFT) v |= 1u << 6;
+    if (b & B::RIGHT) v |= 1u << 7;
+    if (b & B::A) v |= 1u << 8;
+    if (b & B::X) v |= 1u << 9;
+    if (b & B::L) v |= 1u << 10;
+    if (b & B::R) v |= 1u << 11;
+    return v;
+}
+
+#if WII_PIN_SDA >= 0 and WII_PIN_SCL >= 0
+// wiipad_read() layout (bit0=A 1=B ... 8=X 9=Y) -> canonical: swap A/B and
+// X/Y bit positions; Select/Start/dpad/L/R already line up.
+static uint16_t ctFromWii(uint16_t w)
+{
+    uint16_t v = w & 0x0CFC; // Select, Start, dpad, L, R unchanged
+    if (w & (1u << 0)) v |= 1u << 8;  // A
+    if (w & (1u << 1)) v |= 1u << 0;  // B
+    if (w & (1u << 8)) v |= 1u << 9;  // X
+    if (w & (1u << 9)) v |= 1u << 1;  // Y
+    return v;
+}
+#endif
+
+// Sample every compiled-in source into cur[] (canonical order) and return the
+// OR of all of them. Relies on the caller having pumped Menu_LoadFrame(),
+// which refreshes nespad_states_ext[] and the USB gamepad state.
+static uint16_t ctSampleSources(uint16_t cur[CT_SRC_COUNT])
+{
+#if NES_PIN_CLK != -1
+    cur[CT_SRC_GPIO1] = nespad_states_ext[0];
+#endif
+#if NES_PIN_CLK_1 != -1
+    cur[CT_SRC_GPIO2] = nespad_states_ext[1];
+#endif
+    cur[CT_SRC_USB1] = ctFromUsb(io::getCurrentGamePadState(0).buttons);
+    cur[CT_SRC_USB2] = ctFromUsb(io::getCurrentGamePadState(1).buttons);
+#if WII_PIN_SDA >= 0 and WII_PIN_SCL >= 0
+    cur[CT_SRC_WII] = ctFromWii(wiipad_read());
+#endif
+    uint16_t merged = 0;
+    for (int i = 0; i < CT_SRC_COUNT; i++)
+    {
+        merged |= cur[i];
+    }
+    return merged;
+}
+
+static const char *ctUsbStatus(int idx)
+{
+    auto &gp = io::getCurrentGamePadState(idx);
+    if (!gp.isConnected())
+    {
+        return "not connected";
+    }
+    return gp.GamePadName ? gp.GamePadName : "connected";
+}
+
+struct CtButton
+{
+    const char *label;
+    uint8_t col;
+    uint8_t row;
+    uint16_t mask;
+};
+static const CtButton ctButtons[12] = {
+    {"[ L ]", 3, 4, 1u << 10}, {"[ R ]", 32, 4, 1u << 11},
+    {"( ^ )", 5, 6, 1u << 4},  {"( X )", 29, 6, 1u << 9},
+    {"( < )", 2, 7, 1u << 6},  {"( > )", 8, 7, 1u << 7},
+    {"[SEL]", 14, 7, 1u << 2}, {"[STA]", 20, 7, 1u << 3},
+    {"( Y )", 26, 7, 1u << 1}, {"( A )", 32, 7, 1u << 8},
+    {"( v )", 5, 8, 1u << 5},  {"( B )", 29, 8, 1u << 0},
+};
+static const char *const ctPadTop = ".------------------------------------.";
+static const char *const ctPadMid = "|                                    |";
+static const char *const ctPadBot = "'------------------------------------'";
+
+static void ctDrawSourceRow(int row, int src, int active, const char *status)
+{
+    char line[SCREEN_COLS + 1];
+    snprintf(line, sizeof(line), "%c %-5s %s", (src == active) ? '>' : ' ', ctSrcNames[src], status);
+    line[SCREEN_COLS - 1] = '\0'; // drawn at col 1; putText does not clip at end of row
+    putText(1, row, line, (src == active) ? CGREEN : settings.fgcolor, settings.bgcolor);
+}
+
+static void showControllerTestScreen()
+{
+    constexpr int exitHoldFrames = 120; // 2 s at 60 fps
+    constexpr uint16_t selectStart = (1u << 2) | (1u << 3);
+    uint16_t cur[CT_SRC_COUNT] = {0};
+    uint16_t prev[CT_SRC_COUNT] = {0};
+    bool seen[CT_SRC_COUNT] = {false};
+    int active = -1;
+    int holdFrames = 0;
+    char line[SCREEN_COLS + 1];
+
+    waitForNoButtonPress(); // absorb the A press that opened the screen
+    while (true)
+    {
+        memcpy(prev, cur, sizeof(prev));
+        uint16_t merged = ctSampleSources(cur);
+        for (int i = 0; i < CT_SRC_COUNT; i++)
+        {
+            if (cur[i] & ~prev[i]) // newest 0->1 edge wins; held pads don't flap
+            {
+                active = i;
+            }
+            if (cur[i])
+            {
+                seen[i] = true;
+            }
+        }
+        if ((merged & selectStart) == selectStart)
+        {
+            if (++holdFrames >= exitHoldFrames)
+            {
+                break;
+            }
+        }
+        else
+        {
+            holdFrames = 0;
+        }
+
+        ClearScreen(settings.bgcolor);
+        const char *title = "-- Controller Test --";
+        putText(centerColClamped(strlen(title)), 0, title, settings.fgcolor, settings.bgcolor);
+        if (active < 0)
+        {
+            const char *prompt = "Press any button on a controller";
+            putText(centerColClamped(strlen(prompt)), 2, prompt, settings.fgcolor, settings.bgcolor);
+        }
+        else
+        {
+            switch (active)
+            {
+            case CT_SRC_GPIO1:
+            case CT_SRC_GPIO2:
+                snprintf(line, sizeof(line), "Testing: %s (SNES/NES pad)", ctSrcNames[active]);
+                break;
+            case CT_SRC_USB1:
+            case CT_SRC_USB2:
+                snprintf(line, sizeof(line), "Testing: %s %s", ctSrcNames[active], ctUsbStatus(active - CT_SRC_USB1));
+                break;
+            default:
+                snprintf(line, sizeof(line), "Testing: Wii Classic");
+                break;
+            }
+            line[SCREEN_COLS - 1] = '\0'; // drawn at col 1; putText does not clip at end of row
+            putText(1, 2, line, settings.fgcolor, settings.bgcolor);
+        }
+
+        putText(1, 5, ctPadTop, settings.fgcolor, settings.bgcolor);
+        putText(1, 6, ctPadMid, settings.fgcolor, settings.bgcolor);
+        putText(1, 7, ctPadMid, settings.fgcolor, settings.bgcolor);
+        putText(1, 8, ctPadMid, settings.fgcolor, settings.bgcolor);
+        putText(1, 9, ctPadBot, settings.fgcolor, settings.bgcolor);
+        uint16_t shown = (active >= 0) ? cur[active] : 0;
+        for (const auto &b : ctButtons)
+        {
+            bool on = (shown & b.mask) != 0;
+            putText(b.col, b.row, b.label, on ? CWHITE : settings.fgcolor, on ? CGREEN : settings.bgcolor);
+        }
+
+        putText(1, 11, "Sources:", settings.fgcolor, settings.bgcolor);
+        int row = 12;
+#if NES_PIN_CLK != -1
+        ctDrawSourceRow(row++, CT_SRC_GPIO1, active, seen[CT_SRC_GPIO1] ? "input seen" : "no input");
+#endif
+#if NES_PIN_CLK_1 != -1
+        ctDrawSourceRow(row++, CT_SRC_GPIO2, active, seen[CT_SRC_GPIO2] ? "input seen" : "no input");
+#endif
+        ctDrawSourceRow(row++, CT_SRC_USB1, active, ctUsbStatus(0));
+        ctDrawSourceRow(row++, CT_SRC_USB2, active, ctUsbStatus(1));
+#if WII_PIN_SDA >= 0 and WII_PIN_SCL >= 0
+        ctDrawSourceRow(row++, CT_SRC_WII, active, wiipad_is_connected() ? "connected" : "not detected");
+#endif
+
+        const char *hint = "Hold SELECT+START 2 sec to exit";
+        putText(centerColClamped(strlen(hint)), 26, hint, settings.fgcolor, settings.bgcolor);
+        if (holdFrames > 0)
+        {
+            int filled = holdFrames / (exitHoldFrames / 20); // bar has 20 cells
+            line[0] = '[';
+            memset(line + 1, '-', 20);
+            line[21] = ']';
+            line[22] = '\0';
+            putText(9, 27, line, settings.fgcolor, settings.bgcolor);
+            if (filled > 0)
+            {
+                memset(line, '#', filled);
+                line[filled] = '\0';
+                putText(10, 27, line, CWHITE, CGREEN);
+            }
+        }
+
+        drawAllLines(-1);
+        Menu_LoadFrame();
+    }
+    // Wait for every source to read released before returning, so the held
+    // SELECT+START cannot edge-trigger the settings menu's own abort combo.
+    uint16_t merged;
+    do
+    {
+        drawAllLines(-1);
+        Menu_LoadFrame();
+        merged = ctSampleSources(cur);
+    } while (merged != 0);
+}
+
 void DisplayFatalError(char *error)
 {
     while (true)
@@ -2408,6 +2648,12 @@ int showSettingsMenu(bool calledFromGame)
                 value = "";
                 break;
             }
+            case MenuSettingsIndex::MOPT_CONTROLLER_TEST:
+            {
+                label = "Controller Test";
+                value = "";
+                break;
+            }
             case MenuSettingsIndex::MOPT_REBOOT_TO_LOADER:
             {
                 label = "Return to emulator selection";
@@ -2678,7 +2924,7 @@ int showSettingsMenu(bool calledFromGame)
                 value = "";
                 break;
             }
-            snprintf(line, sizeof(line), "%s%s%s", label, (optIndex == MOPT_EXIT_GAME || optIndex == MOPT_SAVE_RESTORE_STATE || optIndex == MOPT_ENTER_BOOTSEL_MODE || optIndex == MOPT_REBOOT_TO_LOADER || optIndex == MOPT_RESET_GAME) ? "" : ": ", value);
+            snprintf(line, sizeof(line), "%s%s%s", label, (optIndex == MOPT_EXIT_GAME || optIndex == MOPT_SAVE_RESTORE_STATE || optIndex == MOPT_ENTER_BOOTSEL_MODE || optIndex == MOPT_REBOOT_TO_LOADER || optIndex == MOPT_RESET_GAME || optIndex == MOPT_CONTROLLER_TEST) ? "" : ": ", value);
             putText(0, row++, line, CBLACK, CWHITE);
         }
         // Down-scroll indicator (centered): shown when there are options below the window
@@ -2748,7 +2994,8 @@ int showSettingsMenu(bool calledFromGame)
                 curOpt == MOPT_SAVE_RESTORE_STATE ||
                 curOpt == MOPT_ENTER_BOOTSEL_MODE ||
                 curOpt == MOPT_REBOOT_TO_LOADER ||
-                curOpt == MOPT_RESET_GAME)
+                curOpt == MOPT_RESET_GAME ||
+                curOpt == MOPT_CONTROLLER_TEST)
             {
                 snprintf(line, sizeof(line), "UP/DOWN: Move, %s: select", buttonLabel1);
             }
@@ -2930,7 +3177,7 @@ int showSettingsMenu(bool calledFromGame)
                         firstVisibleOption = selectedOptionIndex - optionWindowSize + 1; // scroll down
                 }
             }
-            else if (pad & LEFT || pad & RIGHT || ((pad & A) && (optIndex == MOPT_EXIT_GAME || optIndex == MOPT_SAVE_RESTORE_STATE || optIndex == MOPT_ENTER_BOOTSEL_MODE || optIndex == MOPT_REBOOT_TO_LOADER || optIndex == MOPT_RESET_GAME || optIndex == MOPT_FDS_DISK_SWAP)))
+            else if (pad & LEFT || pad & RIGHT || ((pad & A) && (optIndex == MOPT_EXIT_GAME || optIndex == MOPT_SAVE_RESTORE_STATE || optIndex == MOPT_ENTER_BOOTSEL_MODE || optIndex == MOPT_REBOOT_TO_LOADER || optIndex == MOPT_RESET_GAME || optIndex == MOPT_FDS_DISK_SWAP || optIndex == MOPT_CONTROLLER_TEST)))
             {
                 // LEFT/RIGHT on the action row cycles sub-selection
                 if (onActionRow && (pad & (LEFT | RIGHT)))
@@ -2969,6 +3216,18 @@ int showSettingsMenu(bool calledFromGame)
                     {
                         rval = 5; // reset game
                         exitMenu = true;
+                        break;
+                    }
+                    case MOPT_CONTROLLER_TEST:
+                    {
+                        // LEFT/RIGHT also reach this case via the OR-list above;
+                        // only A opens the screen.
+                        if (pad & A)
+                        {
+                            showControllerTestScreen();
+                            startFrames = -1; // re-seed idle counter: frames spent in the
+                                              // test screen must not trip the screensaver
+                        }
                         break;
                     }
                     case MOPT_SCREENMODE:
@@ -3255,7 +3514,7 @@ int showSettingsMenu(bool calledFromGame)
         uint32_t liveKHz   = clock_get_hz(clk_sys) / 1000;
         uint32_t targetKHz = (settings.flags.overclock || settings.flags.useFM) ? FLASHPARAM_MAX_FREQ_KHZ : FLASHPARAM_MIN_FREQ_KHZ;
         vreg_voltage targetV = (settings.flags.overclock || settings.flags.useFM) ? FLASHPARAM_MAX_VOLTAGE : FLASHPARAM_MIN_VOLTAGE;
-        if (liveKHz != targetKHz)
+        if (liveKHz != targetKHz && FrensSettings::getEmulatorType() != FrensSettings::emulators::SNES)
         {
             showLoadingScreen((settings.flags.overclock || settings.flags.useFM) ? "Enabling overclock" : "Disabling overclock", 60);
             Frens::writeFlashParamsToFlash(targetKHz, targetV);

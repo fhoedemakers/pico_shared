@@ -275,10 +275,16 @@ void __not_in_flash_func(hstx_push_audio_sample)(const int left, const int right
     static audio_sample_t acc_buf[4];
     static int acc_count = 0;
     static  uint32_t video_frame_count = 0;
-    acc_buf[acc_count].left = left;
-    acc_buf[acc_count].right = right;
+    // Masked index + >= reset: if two producers ever race this function
+    // (menu wavplayer on core0 vs a core1 mixer), a lost update could step
+    // acc_count past 4 — with an exact == check that would never reset
+    // again and acc_buf[acc_count] would write through adjacent memory at
+    // the audio sample rate. The mask bounds every write; >= guarantees
+    // the reset. Costs one AND per sample.
+    acc_buf[acc_count & 3].left = left;
+    acc_buf[acc_count & 3].right = right;
     acc_count++;
-    if (acc_count == 4)
+    if (acc_count >= 4)
     {
         if (hstx_di_queue_get_level() >= HSTX_AUDIO_DI_HIGH_WATERMARK)
         {
@@ -298,14 +304,44 @@ void __not_in_flash_func(hstx_push_audio_sample)(const int left, const int right
         acc_count = 0;
     }
 }
-static uint32_t core1_stack[1024] __attribute__((aligned(8)));
+// core1 boot stack — two variants:
+//
+// Opt-in (HSTX_CORE1_STACK_IN_SCRATCH_X=1, set by the app's CMake): use
+// the linker-reserved SCRATCH_X region (__StackOneBottom..__StackOneTop,
+// PICO_CORE1_STACK_SIZE bytes) — the stack multicore_launch_core1()'s
+// default path would use, which sits idle because this driver always
+// launches with an explicit stack. Returns 4 KB of .bss to the app's
+// SRAM heap, and the dedicated scratch bank has no bus contention with
+// DMA or core0. Apps opting in should also set PICO_CORE1_STACK_SIZE=4096
+// to claim the full bank — the default (= PICO_STACK_SIZE, typically
+// 3072) leaves only 3 KB, which is tight for the resync path's core1
+// printf (newlib vfprintf uses 1-2 KB). First user: pico_snesPlus.
+//
+// Default: the original 4 KB static buffer, so existing emulators keep
+// byte-identical behavior without needing CMake changes. Either way,
+// emulators needing a deeper stack (pico-pcePlus CHD: ~8 KB) relaunch
+// onto a caller-owned buffer via hstx_restart_core1().
 static bool s_hstx_dvi_mode = false;
+
+#if HSTX_CORE1_STACK_IN_SCRATCH_X
+extern uint32_t __StackOneBottom[];
+extern uint32_t __StackOneTop[];
+
+void *hstx_default_core1_stack(size_t *out_bytes)
+{
+    if (out_bytes)
+        *out_bytes = (size_t)((uintptr_t)__StackOneTop - (uintptr_t)__StackOneBottom);
+    return __StackOneBottom;
+}
+#else
+static uint32_t core1_stack[1024] __attribute__((aligned(8)));
 
 void *hstx_default_core1_stack(size_t *out_bytes)
 {
     if (out_bytes) *out_bytes = sizeof(core1_stack);
     return core1_stack;
 }
+#endif
 
 void hstx_init(bool dviOnly)
 {
@@ -316,14 +352,16 @@ void hstx_init(bool dviOnly)
     video_output_init(640, 480);
     pico_hdmi_set_audio_sample_rate(44100);
     video_output_set_scanline_callback(scanline_callbackfunc);
-    multicore_launch_core1_with_stack(video_output_core1_run, core1_stack, sizeof(core1_stack));
+    size_t stack_bytes;
+    uint32_t *stack = (uint32_t *)hstx_default_core1_stack(&stack_bytes);
+    multicore_launch_core1_with_stack(video_output_core1_run, stack, stack_bytes);
     printf("Pico HDMI initialized.\n");
 }
 
 // Tear HSTX + core1 down and relaunch core1 with a different stack buffer.
 // Used by pico-pcePlus to grow core1's stack to ~8 KB only when a CHD CD
 // game is mounted — libchdr's chd_read uses ~6-10 KB and overflows the
-// default 4 KB into adjacent SRAM otherwise. The caller owns new_stack
+// default stack (PICO_CORE1_STACK_SIZE in SCRATCH_X) otherwise. The caller owns new_stack
 // (must be 8-byte aligned) and is responsible for freeing it once hstx is
 // restarted onto a different stack again. Passing the pointer returned by
 // hstx_default_core1_stack() restores the boot-time stack.

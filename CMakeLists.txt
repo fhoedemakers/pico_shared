@@ -22,6 +22,7 @@ FlashParams.cpp
 #PicoPlusPsram.cpp
 )
 add_subdirectory(drivers/pico_fatfs)
+add_subdirectory(drivers/i2c_bus_recovery)
 add_subdirectory(drivers/tlv320dac3100)
 
 option(USE_PICO_EXTRAS_I2S "Use the pico-extras based I2S audio driver instead of the custom one" OFF)
@@ -56,9 +57,10 @@ pico_generate_pio_header(${projectname} ${CMAKE_CURRENT_LIST_DIR}/ws2812.pio)
 target_link_libraries(pico_shared 
                       INTERFACE 
                       pico_rand
-                      pico_fatfs 
-                      pico_audio_i2s 
-                      lwmem 
+                      pico_fatfs
+                      pico_audio_i2s
+                      i2c_bus_recovery
+                      lwmem
                       #pico_hstx 
                       #pico_audio_mcp4822 
                       pico_psram

@@ -2,6 +2,11 @@
 
 #define nespad_wrap_target 0
 
+// Both program variants clock 16 bits so SNES controllers (which share the
+// NES latch/clock/data protocol but shift out 16 bits: B,Y,Select,Start,
+// Up,Down,Left,Right,A,X,L,R + 4 ID bits) are read in full. Plain NES
+// controllers simply shift out low for bits 9-16; nespad_read_finish()
+// detects that and masks the result back to 8 bits.
 #if HW_CONFIG == 12 || HW_CONFIG == 13 // Murmulator M1/M2 bothe controllers ahare latch and clock
 static const uint16_t nespad_program_instructions[] = {
     //     .wrap_target
@@ -9,7 +14,7 @@ static const uint16_t nespad_program_instructions[] = {
     // from https://github.com/fhoedemakers/pico-infonesPlus/pull/167
     0xD020, //  0: irq    wait 0          side 1
     0xFA01, //  1: set    pins, 1         side 1 [10]
-    0xF027, //  2: set    x, 7            side 1
+    0xF02F, //  2: set    x, 15           side 1
     0xE000, //  3: set    pins, 0         side 0
     0x4401, //  4: in     pins, 1         side 0 [4]
     0xF400, //  5: set    pins, 0         side 1 [4]
@@ -21,7 +26,7 @@ static const uint16_t nespad_program_instructions[] = {
     //     .wrap_target
     0xd020, //  0: irq    wait 0          side 1
     0xf101, //  1: set    pins, 1         side 1 [1]
-    0xf027, //  2: set    x, 7            side 1
+    0xf02f, //  2: set    x, 15           side 1
     0xf000, //  3: set    pins, 0         side 1
     0xf400, //  4: set    pins, 0         side 1 [4]
     0xe100, //  5: set    pins, 0         side 0 [1]
@@ -63,6 +68,11 @@ static int program_offset[NES_NUM_PIOS];      // valid only if program_added[i] 
 static bool program_added[NES_NUM_PIOS] = {}; // default-initialized to false
 
 uint8_t nespad_states[2] = {0, 0};
+// Full 16-clock read in SNES serial order: bit0=B, 1=Y, 2=Select, 3=Start,
+// 4=Up, 5=Down, 6=Left, 7=Right, 8=A, 9=X, 10=L, 11=R (1 = pressed).
+// A plain NES controller only populates bits 0-7 (A,B,Select,Start,dpad) —
+// for those pads this is identical to nespad_states[].
+uint16_t nespad_states_ext[2] = {0, 0};
 uint8_t nespad_state = 0;
 bool nespad_begin(uint8_t padnum, uint32_t cpu_khz, uint8_t clkPin, uint8_t dataPin,
                   uint8_t latPin, PIO _pio)
@@ -100,7 +110,7 @@ bool nespad_begin(uint8_t padnum, uint32_t cpu_khz, uint8_t clkPin, uint8_t data
   pio_sm_set_pindirs_with_mask(pio[padnum], sm[padnum],
                                (1u << clkPin) | (1u << latPin),
                                (1u << clkPin) | (1u << dataPin) | (1u << latPin));
-  sm_config_set_in_shift(&c, true, true, 8);
+  sm_config_set_in_shift(&c, true, true, 16);
   sm_config_set_clkdiv_int_frac(&c, cpu_khz / 1000, 0);
 
   pio_set_irq0_source_enabled(pio[padnum], (pio_interrupt_source)(pis_interrupt0 + sm[padnum]), false);
@@ -111,7 +121,7 @@ bool nespad_begin(uint8_t padnum, uint32_t cpu_khz, uint8_t clkPin, uint8_t data
   return true;
 }
 
-// Initiate nespad read. Non-blocking; result will be available in ~100 uS
+// Initiate nespad read. Non-blocking; result will be available in ~200 uS
 // via nespad_read_finish(). Must first call nespad_begin() once to set up PIO.
 void nespad_read_start(void)
 {
@@ -122,24 +132,34 @@ void nespad_read_start(void)
   }
 }
 
-// Finish nespad read. Ideally should be called ~100 uS after
+// Finish nespad read. Ideally should be called ~200 uS after
 // nespad_read_start(), but can be sooner (will block until ready), or later
-// (will introduce latency). Sets value of global nespad_state variable, a
-// bitmask of button/D-pad state (1 = pressed). 0x01=Right, 0x02=Left,
-// 0x04=Down, 0x08=Up, 0x10=Start, 0x20=Select, 0x40=B, 0x80=A. Must first
-// call nespad_begin() once to set up PIO. Result will be 0 if PIO failed to
-// init (e.g. no free state machine).
-void nespad_read_finish(void)
+// (will introduce latency). Sets nespad_states[] (legacy 8-bit view, 1 =
+// pressed: 0x01=A/B, 0x02=B/Y, 0x04=Select, 0x08=Start, 0x10=Up, 0x20=Down,
+// 0x40=Left, 0x80=Right — first name NES pad, second SNES pad) and
+// nespad_states_ext[] (full SNES-order 12-button word, see declaration).
+// Must first call nespad_begin() once to set up PIO. Result will be 0 if
+// PIO failed to init (e.g. no free state machine).
+static uint16_t nespad_decode(int padnum)
 {
+  if (sm[padnum] < 0)
+    return 0;
   // Right-shift was used in sm config so bit order matches NES controller
   // bits used elsewhere in picones, but does require shifting down...
-  nespad_states[0] = (sm[0] >= 0) ? ((pio_sm_get_blocking(pio[0], sm[0]) >> 24) ^ 0xFF) : 0;
-  if (second_pad)
-  {
-    nespad_states[1] = (sm[1] >= 0) ? ((pio_sm_get_blocking(pio[1], sm[1]) >> 24) ^ 0xFF) : 0;
-  }
-  else
-  {
-    nespad_states[1] = 0;
-  }
+  uint32_t raw = (pio_sm_get_blocking(pio[padnum], sm[padnum]) >> 16) ^ 0xFFFF;
+  // NES controller: the 4021's serial input is grounded, so clocks 9-16
+  // read low on the wire = 1 after inversion. A SNES controller drives the
+  // 4 ID bits (13-16) high = 0 after inversion, so they can never all be
+  // set. Disconnected port reads high via pull-up = all zeros.
+  if ((raw & 0xF000) == 0xF000)
+    raw &= 0x00FF; // NES pad: keep the 8 real buttons
+  return (uint16_t)(raw & 0x0FFF); // SNES pad: strip the ID bits
+}
+
+void nespad_read_finish(void)
+{
+  nespad_states_ext[0] = nespad_decode(0);
+  nespad_states_ext[1] = second_pad ? nespad_decode(1) : 0;
+  nespad_states[0] = (uint8_t)nespad_states_ext[0];
+  nespad_states[1] = (uint8_t)nespad_states_ext[1];
 }
