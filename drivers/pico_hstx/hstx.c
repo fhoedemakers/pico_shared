@@ -46,7 +46,9 @@
 // #define clockspeed 252000 // 315000
 // int clockspeed;
 // #define clockdivisor 2
-static uint8_t FRAMEBUFFER[(MODE_H_ACTIVE_PIXELS / 2) * (MODE_V_ACTIVE_LINES / 2) * 2];
+/* 4-byte aligned: emulators may render directly into the framebuffer with
+ * word-sized fills (e.g. snes9x's RENDER_TO_FB backdrop fill). */
+static uint8_t ALIGNED FRAMEBUFFER[(MODE_H_ACTIVE_PIXELS / 2) * (MODE_V_ACTIVE_LINES / 2) * 2];
 static uint16_t ALIGNED HDMIlines[2][MODE_H_ACTIVE_PIXELS] = {0};
 static uint8_t *WriteBuf = FRAMEBUFFER;
 uint8_t *DisplayBuf = FRAMEBUFFER;
