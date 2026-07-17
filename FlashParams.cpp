@@ -1,9 +1,44 @@
 #include "FlashParams.h"
 #include <cstring>
 
+#define FLASHPARAM_MIN_FREQ_KHZ 252000 // NES, GB, SMS
+#define FLASHPARAM_MIN_VOLTAGE vreg_voltage::VREG_VOLTAGE_1_20
+
+// Genesis max settings
+#if !HSTX
+#define FLASHPARAM_MAX_FREQ_KHZ 324000 
+// Because of high overclock, RP2450-Pizero needs high voltage for stable image. 
+// THIS MAY OVERHEAT AND DAMAGE THE CPU, USE HEATSINK!!!
+#if HW_CONFIG == 7   
+// 1_90 2_00 : Unstable image during gameplay
+// 2_35 : Stable image during gameplay, but random reboots.
+#define FLASHPARAM_MAX_VOLTAGE vreg_voltage::VREG_VOLTAGE_2_50
+#else
+#define FLASHPARAM_MAX_VOLTAGE vreg_voltage::VREG_VOLTAGE_1_30
+#endif
+#else
+#define FLASHPARAM_MAX_FREQ_KHZ 378000 // May cause artifacts on some screens, 336000 seems stable 
+                                       // https://github.com/fhoedemakers/retroJam/issues/7
+#define FLASHPARAM_MAX_VOLTAGE vreg_voltage::VREG_VOLTAGE_1_60
+#endif
 // Helper functions to manage FlashParams in flash memory.
 namespace Frens
 {
+    static vreg_voltage _minVoltage = FLASHPARAM_MIN_VOLTAGE;
+    static vreg_voltage _maxVoltage = FLASHPARAM_MAX_VOLTAGE;
+    static uint32_t _minFreq = FLASHPARAM_MIN_FREQ_KHZ;
+    static uint32_t _maxFreq = FLASHPARAM_MAX_FREQ_KHZ;
+    
+    void setOverclockLimits(uint32_t minFreqKHz, uint32_t maxFreqKHz, vreg_voltage minVoltage, vreg_voltage maxVoltage)
+    {
+        _minFreq = minFreqKHz;
+        _maxFreq = maxFreqKHz;
+        _minVoltage = minVoltage;
+        _maxVoltage = maxVoltage;
+    }
+
+    uint32_t getMinFreqKHz() { return _minFreq; }
+    uint32_t getMaxFreqKHz() { return _maxFreq; }
 
     /// @brief Validate the given FlashParams structure.
     /// @param params
@@ -18,12 +53,12 @@ namespace Frens
         }
 
         // Check CPU frequency & voltage
-        if (params.cpuFreqKHz == FLASHPARAM_MIN_FREQ_KHZ && params.voltage == FLASHPARAM_MIN_VOLTAGE)
+        if (params.cpuFreqKHz == _minFreq && params.voltage == _minVoltage)
         {
             // printf("Valid FlashParams: min freq/voltage\n");
             return true;
         }
-        if (params.cpuFreqKHz == FLASHPARAM_MAX_FREQ_KHZ && params.voltage == FLASHPARAM_MAX_VOLTAGE)
+        if (params.cpuFreqKHz == _maxFreq && params.voltage == _maxVoltage)
         {
             // printf("Valid FlashParams: max freq/voltage\n");
             return true;
@@ -43,7 +78,7 @@ namespace Frens
     /// @param cpuFreqKHz The CPU frequency in KHz.
     /// @param voltage The voltage setting.
     /// @return true on success, false when invalid params are provided.
-    bool writeFlashParamsToFlash(uint32_t cpuFreqKHz, vreg_voltage voltage)
+    bool __not_in_flash_func(writeFlashParamsToFlash)(uint32_t cpuFreqKHz, vreg_voltage voltage)
     {
         FlashParams params;
         params.cpuFreqKHz = cpuFreqKHz;
@@ -82,4 +117,13 @@ namespace Frens
         return true;
     }
 
+    bool WriteMaxValuesToFlash()
+    {
+        return writeFlashParamsToFlash(_maxFreq, _maxVoltage);
+    }
+
+    bool WriteMinValuesToFlash()
+    {
+        return writeFlashParamsToFlash(_minFreq, _minVoltage);
+    }
 } // namespace Frens
