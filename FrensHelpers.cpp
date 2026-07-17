@@ -1810,7 +1810,34 @@ uint __not_in_flash_func(storage_get_flash_capacity)()
              * system clock does not overdrive the flash. Without this, random faults or hard
              * crashes can occur when fetching code/data from XIP at these frequencies.
              */
-            qmi_hw->m[0].timing = 0x60007304; // 4x FLASH divisor
+            /*
+             * Frequency-aware divisor. The old fixed 0x60007304 hard-coded
+             * CLKDIV=4, so the flash clock tracked clk_sys: fine at 378 MHz
+             * (94.5 MHz flash) but 432/480/504 gave 108/120/126 MHz, past
+             * what the QSPI part will sample reliably — and XIP traffic
+             * peaks under emulator load, so that shows up as a hard fault
+             * seconds in rather than at boot.
+             *
+             * Pick the smallest divisor that keeps flash <= 94.5 MHz (the
+             * rate proven at 378 MHz), and scale RXDELAY so the read sample
+             * point stays at roughly the same absolute delay in ns (3 sys
+             * cycles @ 378 MHz = 7.9 ns). At 378 this reproduces the old
+             * constant exactly (div 4, rxdelay 3 -> 0x60007304), so nothing
+             * changes for existing builds; at 504 it gives div 6 (84 MHz
+             * flash) and rxdelay 4.
+             *
+             * Field layout (RP2350 QMI M0_TIMING): COOLDOWN[31:30]=1,
+             * PAGEBREAK[29:28]=2 (1024), MAX_SELECT[21:16]=0,
+             * MIN_DESELECT[15:11]=14, RXDELAY[10:8], CLKDIV[7:0].
+             */
+            const uint32_t max_flash_khz = 94500;
+            uint32_t flash_div = (cpuFreqKHz + max_flash_khz - 1) / max_flash_khz;
+            if (flash_div < 4)
+                flash_div = 4;
+            uint32_t rxdelay = (3 * cpuFreqKHz + 189000) / 378000; // 3 @378, 4 @504
+            if (rxdelay > 7)
+                rxdelay = 7; // RXDELAY is 3 bits
+            qmi_hw->m[0].timing = 0x60000000u | (14u << 11) | (rxdelay << 8) | flash_div;
         }
 
         sleep_ms(100);

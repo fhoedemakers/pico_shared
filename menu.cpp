@@ -952,6 +952,110 @@ static bool showDialogYesNo(const char *message)
         }
     }
 }
+
+// Warn before committing an overclock whose target clock exceeds this (kHz).
+static constexpr uint32_t OVERCLOCK_WARN_KHZ = 378000;
+
+// Format a vreg_voltage enum as "X.XX V". The enum values are contiguous from
+// VREG_VOLTAGE_0_85 upward, so index a millivolt table by the offset.
+static void formatVregVoltage(vreg_voltage v, char *buf, size_t n)
+{
+    static const uint16_t mv[] = {
+        850, 900, 950, 1000, 1050, 1100, 1150, 1200, 1250, 1300,   // 0.85 .. 1.30
+        1350, 1400, 1500, 1600, 1650, 1700, 1800, 1900, 2000,      // 1.35 .. 2.00
+        2350, 2500, 2650, 2800, 3000, 3150, 3300};                 // 2.35 .. 3.30
+    int idx = (int)v - (int)VREG_VOLTAGE_0_85;
+    if (idx >= 0 && idx < (int)(sizeof(mv) / sizeof(mv[0])))
+    {
+        unsigned m = mv[idx];
+        snprintf(buf, n, "%u.%02u V", m / 1000, (m % 1000) / 10);
+    }
+    else
+    {
+        snprintf(buf, n, "?.?? V");
+    }
+}
+
+// Fill a rectangular block of the character grid with a solid color (spaces).
+static void fillRect(int x, int y, int w, int h, int color)
+{
+    for (int r = 0; r < h; r++)
+    {
+        for (int c = 0; c < w; c++)
+        {
+            int col = x + c;
+            int rowIdx = y + r;
+            if (col < 0 || col >= SCREEN_COLS || rowIdx < 0 || rowIdx >= SCREEN_ROWS)
+                continue;
+            int idx = rowIdx * SCREEN_COLS + col;
+            screenBuffer[idx].charvalue = ' ';
+            screenBuffer[idx].fgcolor = color;
+            screenBuffer[idx].bgcolor = color;
+        }
+    }
+}
+
+// Full-screen warning shown before enabling an overclock that boots the CPU
+// above the safe default clock. The message sits inside a red box and shows the
+// target clock and voltage. Returns true if the user confirms (A: Continue),
+// false to back out (B: Undo). Modeled on showDialogYesNo.
+static bool showOverclockWarning(uint32_t targetMHz, vreg_voltage targetVoltage)
+{
+    char msg[SCREEN_COLS + 1];
+    char voltStr[10];
+    formatVregVoltage(targetVoltage, voltStr, sizeof(voltStr));
+
+    ClearScreen(settings.bgcolor);
+
+    // Red alert box with white text.
+    const int boxW = 33;
+    const int boxH = 9;
+    const int boxX = centerColClamped(boxW);
+    const int boxY = SCREEN_ROWS / 2 - boxH / 2 - 2;
+    fillRect(boxX, boxY, boxW, boxH, CRED);
+
+    int row = boxY + 1;
+    const char *title = "!! OVERCLOCK WARNING !!";
+    putText(centerColClamped(strlen(title)), row, title, CWHITE, CRED);
+    row += 2;
+    snprintf(msg, sizeof(msg), "Runs at %u MHz / %s.", (unsigned)targetMHz, voltStr);
+    putText(centerColClamped(strlen(msg)), row, msg, CWHITE, CRED);
+    row += 1;
+    const char *l2 = "This can cause serious wear";
+    putText(centerColClamped(strlen(l2)), row, l2, CWHITE, CRED);
+    row += 1;
+    const char *l3 = "and overheating of the board.";
+    putText(centerColClamped(strlen(l3)), row, l3, CWHITE, CRED);
+    row += 2;
+    const char *l4 = "Enable it at your own risk.";
+    putText(centerColClamped(strlen(l4)), row, l4, CWHITE, CRED);
+
+    // Button prompts below the box, in the normal menu colors.
+    getButtonLabels(buttonLabel1, buttonLabel2);
+    row = boxY + boxH + 1;
+    snprintf(msg, sizeof(msg), "%s:Continue", buttonLabel1);
+    putText(centerColClamped(strlen(msg)), row, msg, settings.fgcolor, settings.bgcolor);
+    row += 1;
+    snprintf(msg, sizeof(msg), "%s:Undo", buttonLabel2);
+    putText(centerColClamped(strlen(msg)), row, msg, settings.fgcolor, settings.bgcolor);
+
+    waitForNoButtonPress();
+    DWORD waitPad;
+    while (true)
+    {
+        drawAllLines(-1);
+        RomSelect_PadState(&waitPad);
+        Menu_LoadFrame();
+        if (waitPad & A)
+        {
+            return true;
+        }
+        else if (waitPad & B)
+        {
+            return false;
+        }
+    }
+}
 // --- Controller Test screen (Settings > Controller Test) -------------------
 // Shows a SNES-pad graphic that follows whichever input source was last
 // active, plus a status list of all sources. Reads the raw per-source globals
@@ -3497,6 +3601,19 @@ int showSettingsMenu(bool calledFromGame)
     }
     if (applySettings && (rval == 0 || rval == 5))
     {
+#if HW_CONFIG != 7
+        // Enabling overclock (OFF->ON) boots into a higher clock. If that target
+        // exceeds the safe default, warn first and let the user back out. Checked
+        // before the commit below, while settings still holds the old value.
+        if (working.flags.overclock && !settings.flags.overclock &&
+            Frens::getMaxFreqKHz() > OVERCLOCK_WARN_KHZ)
+        {
+            if (!showOverclockWarning(Frens::getMaxFreqKHz() / 1000, Frens::getMaxVoltage()))
+            {
+                working.flags.overclock = 0; // Undo: keep overclock OFF, no reboot
+            }
+        }
+#endif
         // Copy working settings into global settings and persist.
         // Preserve directory navigation fields that user did not edit here.
         working.firstVisibleRowINDEX = settings.firstVisibleRowINDEX;
@@ -3512,12 +3629,25 @@ int showSettingsMenu(bool calledFromGame)
         // and never returns.
 #if HW_CONFIG != 7
         uint32_t liveKHz   = clock_get_hz(clk_sys) / 1000;
-        uint32_t targetKHz = (settings.flags.overclock || settings.flags.useFM) ? FLASHPARAM_MAX_FREQ_KHZ : FLASHPARAM_MIN_FREQ_KHZ;
-        vreg_voltage targetV = (settings.flags.overclock || settings.flags.useFM) ? FLASHPARAM_MAX_VOLTAGE : FLASHPARAM_MIN_VOLTAGE;
-        if (liveKHz != targetKHz && FrensSettings::getEmulatorType() != FrensSettings::emulators::SNES)
+        uint32_t targetKHz = (settings.flags.overclock || settings.flags.useFM) ? Frens::getMaxFreqKHz() : Frens::getMinFreqKHz();
+        //vreg_voltage targetV = (settings.flags.overclock || settings.flags.useFM) ? Frens::getMaxVoltage() : Frens::getMinVoltage();
+        if (liveKHz != targetKHz ) //&& FrensSettings::getEmulatorType() != FrensSettings::emulators::SNES)
         {
             showLoadingScreen((settings.flags.overclock || settings.flags.useFM) ? "Enabling overclock" : "Disabling overclock", 60);
-            Frens::writeFlashParamsToFlash(targetKHz, targetV);
+            if (liveKHz < targetKHz)
+            {
+                if (Frens::WriteMaxValuesToFlash() == false)
+                {
+                    printf("Failed to write max values to flash\n");
+                }
+            }
+            else
+            {
+                if (Frens::WriteMinValuesToFlash() == false)
+                {
+                    printf("Failed to write min values to flash\n");
+                }
+            }
         }
 #endif
     }
@@ -3669,7 +3799,7 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
 // clk_hstx from clk_sys at 378 MHz — running there would produce visible TMDS
 // artifacts. Skip the auto-switch in that case; the .sgx ROM still loads and
 // runs at the build's default 252 MHz (slower on the heavier titles but clean).
-#if (HSTX && SGX && CFG_TUH_RPI_PIO_USB)
+#if (HSTX && SGX && CFG_TUH_RPI_PIO_USB) 
         // Skip per-ROM auto-switch when user explicitly locked overclock on:
         // the system stays at FLASHPARAM_MAX_FREQ_KHZ for every ROM.
         if (!settings.flags.overclock && selectedRomOrFolder && entries[index].IsDirectory == false && oldIndex != index)
@@ -3677,25 +3807,25 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
             oldIndex = index;
             if ( strncasecmp(fileExt, ".sgx", 4) == 0)
             {
-                if (clockFreq != FLASHPARAM_MAX_FREQ_KHZ)
+                if (clockFreq != Frens::getMaxFreqKHz())
                 {
                     char message[40];
-                    snprintf(message, sizeof(message), "Setting clock to  %dMHZ for SGX", FLASHPARAM_MAX_FREQ_KHZ /1000);
+                    snprintf(message, sizeof(message), "Setting clock to  %dMHZ for SGX", Frens::getMaxFreqKHz() /1000);
                     showLoadingScreen(message, 60);
                     FrensSettings::savesettings(); // save current settings before changing clock
-                    if (Frens::writeFlashParamsToFlash(FLASHPARAM_MAX_FREQ_KHZ, FLASHPARAM_MAX_VOLTAGE) == false)
+                    if (Frens::WriteMaxValuesToFlash() == false)
                     {
                         printf("Failed to write flash params for high clock\n");
                     }
                 }
             } else {
-                if (clockFreq != FLASHPARAM_MIN_FREQ_KHZ)
+                if (clockFreq != Frens::getMinFreqKHz())
                 {
                     char message[40];
-                    snprintf(message, sizeof(message), "Setting clock to  %dMHZ", FLASHPARAM_MIN_FREQ_KHZ /1000);
+                    snprintf(message, sizeof(message), "Setting clock to  %dMHZ", Frens::getMinFreqKHz() /1000);
                     showLoadingScreen(message, 60);
                     FrensSettings::savesettings(); // save current settings before changing clock
-                    if (Frens::writeFlashParamsToFlash(FLASHPARAM_MIN_FREQ_KHZ, FLASHPARAM_MIN_VOLTAGE) == false)
+                    if (Frens::WriteMinValuesToFlash() == false)
                     {
                         printf("Failed to write flash params for low clock\n");
                     }
@@ -3720,13 +3850,13 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
             if (FrensSettings::getEmulatorType() == FrensSettings::emulators::GENESIS && !isWav)
             {
                 // Skip clock switch when user locked overclock on (stay at MAX).
-                if (!settings.flags.overclock && clockFreq != FLASHPARAM_MAX_FREQ_KHZ)
+                if (!settings.flags.overclock && clockFreq != Frens::getMaxFreqKHz())
                 {
                     char message[40];
-                    snprintf(message, sizeof(message), "Setting clock to  %dMHZ", FLASHPARAM_MAX_FREQ_KHZ /1000);
+                    snprintf(message, sizeof(message), "Setting clock to  %dMHZ", Frens::getMaxFreqKHz() /1000);
                     showLoadingScreen(message, 60);
                     FrensSettings::savesettings(); // save current settings before changing clock
-                    if (Frens::writeFlashParamsToFlash(FLASHPARAM_MAX_FREQ_KHZ, FLASHPARAM_MAX_VOLTAGE) == false)
+                    if (Frens::WriteMaxValuesToFlash() == false)
                     {
                         printf("Failed to write flash params for high clock\n");
                     }
@@ -3735,13 +3865,13 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
             else
             {
                 // Skip clock switch when user locked overclock on (stay at MAX).
-                if (!settings.flags.overclock && clockFreq != FLASHPARAM_MIN_FREQ_KHZ)
+                if (!settings.flags.overclock && clockFreq != Frens::getMinFreqKHz())
                 {
                     char message[40];
-                    snprintf(message, sizeof(message), "Setting clock to  %dMHZ", FLASHPARAM_MIN_FREQ_KHZ /1000);
+                    snprintf(message, sizeof(message), "Setting clock to  %dMHZ", Frens::getMinFreqKHz() /1000);
                     showLoadingScreen(message, 60);
                     FrensSettings::savesettings(); // save current settings before changing clock
-                    if (Frens::writeFlashParamsToFlash(FLASHPARAM_MIN_FREQ_KHZ, FLASHPARAM_MIN_VOLTAGE) == false)
+                    if (Frens::WriteMinValuesToFlash() == false)
                     {
                         printf("Failed to write flash params for low clock\n");
                     }
@@ -3762,14 +3892,14 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
 #if !HSTX
             if ((PAD1_Latch)&UP && (PAD1_Latch & SELECT))
             {
-                if (clockFreq == FLASHPARAM_MAX_FREQ_KHZ)
+                if (clockFreq == Frens::getMaxFreqKHz())
                 {
                     printf("Emergency reset to low clock speed requested\n");
                     // Emergency reset to default settings and clock speed
                     // This can be used to in case there is no display or unstable display because of high clock speed settings
                     FrensSettings::resetsettings();
                     FrensSettings::savesettings();
-                    Frens::writeFlashParamsToFlash(FLASHPARAM_MIN_FREQ_KHZ, FLASHPARAM_MIN_VOLTAGE);
+                    Frens::WriteMinValuesToFlash();
                 } else {
                     printf("Emergency reset requested, but already at low clock speed\n");
                 }
