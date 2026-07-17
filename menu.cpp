@@ -952,6 +952,110 @@ static bool showDialogYesNo(const char *message)
         }
     }
 }
+
+// Warn before committing an overclock whose target clock exceeds this (kHz).
+static constexpr uint32_t OVERCLOCK_WARN_KHZ = 378000;
+
+// Format a vreg_voltage enum as "X.XX V". The enum values are contiguous from
+// VREG_VOLTAGE_0_85 upward, so index a millivolt table by the offset.
+static void formatVregVoltage(vreg_voltage v, char *buf, size_t n)
+{
+    static const uint16_t mv[] = {
+        850, 900, 950, 1000, 1050, 1100, 1150, 1200, 1250, 1300,   // 0.85 .. 1.30
+        1350, 1400, 1500, 1600, 1650, 1700, 1800, 1900, 2000,      // 1.35 .. 2.00
+        2350, 2500, 2650, 2800, 3000, 3150, 3300};                 // 2.35 .. 3.30
+    int idx = (int)v - (int)VREG_VOLTAGE_0_85;
+    if (idx >= 0 && idx < (int)(sizeof(mv) / sizeof(mv[0])))
+    {
+        unsigned m = mv[idx];
+        snprintf(buf, n, "%u.%02u V", m / 1000, (m % 1000) / 10);
+    }
+    else
+    {
+        snprintf(buf, n, "?.?? V");
+    }
+}
+
+// Fill a rectangular block of the character grid with a solid color (spaces).
+static void fillRect(int x, int y, int w, int h, int color)
+{
+    for (int r = 0; r < h; r++)
+    {
+        for (int c = 0; c < w; c++)
+        {
+            int col = x + c;
+            int rowIdx = y + r;
+            if (col < 0 || col >= SCREEN_COLS || rowIdx < 0 || rowIdx >= SCREEN_ROWS)
+                continue;
+            int idx = rowIdx * SCREEN_COLS + col;
+            screenBuffer[idx].charvalue = ' ';
+            screenBuffer[idx].fgcolor = color;
+            screenBuffer[idx].bgcolor = color;
+        }
+    }
+}
+
+// Full-screen warning shown before enabling an overclock that boots the CPU
+// above the safe default clock. The message sits inside a red box and shows the
+// target clock and voltage. Returns true if the user confirms (A: Continue),
+// false to back out (B: Undo). Modeled on showDialogYesNo.
+static bool showOverclockWarning(uint32_t targetMHz, vreg_voltage targetVoltage)
+{
+    char msg[SCREEN_COLS + 1];
+    char voltStr[10];
+    formatVregVoltage(targetVoltage, voltStr, sizeof(voltStr));
+
+    ClearScreen(settings.bgcolor);
+
+    // Red alert box with white text.
+    const int boxW = 33;
+    const int boxH = 9;
+    const int boxX = centerColClamped(boxW);
+    const int boxY = SCREEN_ROWS / 2 - boxH / 2 - 2;
+    fillRect(boxX, boxY, boxW, boxH, CRED);
+
+    int row = boxY + 1;
+    const char *title = "!! OVERCLOCK WARNING !!";
+    putText(centerColClamped(strlen(title)), row, title, CWHITE, CRED);
+    row += 2;
+    snprintf(msg, sizeof(msg), "Runs at %u MHz / %s.", (unsigned)targetMHz, voltStr);
+    putText(centerColClamped(strlen(msg)), row, msg, CWHITE, CRED);
+    row += 1;
+    const char *l2 = "This can cause serious wear";
+    putText(centerColClamped(strlen(l2)), row, l2, CWHITE, CRED);
+    row += 1;
+    const char *l3 = "and overheating of the board.";
+    putText(centerColClamped(strlen(l3)), row, l3, CWHITE, CRED);
+    row += 2;
+    const char *l4 = "Enable it at your own risk.";
+    putText(centerColClamped(strlen(l4)), row, l4, CWHITE, CRED);
+
+    // Button prompts below the box, in the normal menu colors.
+    getButtonLabels(buttonLabel1, buttonLabel2);
+    row = boxY + boxH + 1;
+    snprintf(msg, sizeof(msg), "%s:Continue", buttonLabel1);
+    putText(centerColClamped(strlen(msg)), row, msg, settings.fgcolor, settings.bgcolor);
+    row += 1;
+    snprintf(msg, sizeof(msg), "%s:Undo", buttonLabel2);
+    putText(centerColClamped(strlen(msg)), row, msg, settings.fgcolor, settings.bgcolor);
+
+    waitForNoButtonPress();
+    DWORD waitPad;
+    while (true)
+    {
+        drawAllLines(-1);
+        RomSelect_PadState(&waitPad);
+        Menu_LoadFrame();
+        if (waitPad & A)
+        {
+            return true;
+        }
+        else if (waitPad & B)
+        {
+            return false;
+        }
+    }
+}
 // --- Controller Test screen (Settings > Controller Test) -------------------
 // Shows a SNES-pad graphic that follows whichever input source was last
 // active, plus a status list of all sources. Reads the raw per-source globals
@@ -3497,6 +3601,19 @@ int showSettingsMenu(bool calledFromGame)
     }
     if (applySettings && (rval == 0 || rval == 5))
     {
+#if HW_CONFIG != 7
+        // Enabling overclock (OFF->ON) boots into a higher clock. If that target
+        // exceeds the safe default, warn first and let the user back out. Checked
+        // before the commit below, while settings still holds the old value.
+        if (working.flags.overclock && !settings.flags.overclock &&
+            Frens::getMaxFreqKHz() > OVERCLOCK_WARN_KHZ)
+        {
+            if (!showOverclockWarning(Frens::getMaxFreqKHz() / 1000, Frens::getMaxVoltage()))
+            {
+                working.flags.overclock = 0; // Undo: keep overclock OFF, no reboot
+            }
+        }
+#endif
         // Copy working settings into global settings and persist.
         // Preserve directory navigation fields that user did not edit here.
         working.firstVisibleRowINDEX = settings.firstVisibleRowINDEX;

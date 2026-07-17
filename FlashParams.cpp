@@ -39,6 +39,8 @@ namespace Frens
 
     uint32_t getMinFreqKHz() { return _minFreq; }
     uint32_t getMaxFreqKHz() { return _maxFreq; }
+    vreg_voltage getMinVoltage() { return _minVoltage; }
+    vreg_voltage getMaxVoltage() { return _maxVoltage; }
 
     /// @brief Validate the given FlashParams structure.
     /// @param params

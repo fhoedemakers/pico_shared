@@ -29,4 +29,6 @@ namespace Frens {
     bool WriteMinValuesToFlash();
     uint32_t getMinFreqKHz() ;
     uint32_t getMaxFreqKHz() ;
+    vreg_voltage getMinVoltage() ;
+    vreg_voltage getMaxVoltage() ;
 } // namespace Frens
