@@ -19,7 +19,7 @@
 #else
 #define FLASHPARAM_MAX_FREQ_KHZ 378000 // May cause artifacts on some screens, 336000 seems stable 
                                        // https://github.com/fhoedemakers/retroJam/issues/7
-#define FLASHPARAM_MAX_VOLTAGE vreg_voltage::VREG_VOLTAGE_1_60
+#define FLASHPARAM_MAX_VOLTAGE vreg_voltage::VREG_VOLTAGE_1_50
 #endif
 // Helper functions to manage FlashParams in flash memory.
 namespace Frens
