@@ -102,6 +102,23 @@ function(_frens_relink_flash TARGET ORIGIN LENGTH)
     # 16 MB partition). FRENS_FLASH_TOTAL is the single source of truth here.
     target_compile_definitions(${TARGET} PRIVATE
         PICO_FLASH_SIZE_BYTES=${FRENS_FLASH_TOTAL})
+    # picotool >= 2.2.0 re-detects the chip from the ELF instead of trusting
+    # --family, and assumes RP2040 for images that don't start at 0x10000000.
+    # Our relinked images do, so tell it explicitly. Option doesn't exist
+    # before 2.2.0, so version-guard it.
+    if(PICO_PLATFORM MATCHES "rp2350")
+        find_program(_frens_picotool picotool)
+        if(_frens_picotool)
+            execute_process(COMMAND ${_frens_picotool} version --semantic
+                            OUTPUT_VARIABLE _frens_pt_ver
+                            OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+            if(_frens_pt_ver VERSION_GREATER_EQUAL 2.2.0)
+                set_target_properties(${TARGET} PROPERTIES
+                    PICOTOOL_EXTRA_UF2_ARGS "--platform;rp2350")
+            endif()
+        endif()
+    endif()
+
 endfunction()
 
 # Link the bootloader into the reserved boot region at the start of flash.
