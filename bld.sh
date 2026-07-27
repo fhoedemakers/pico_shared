@@ -18,10 +18,11 @@ function usage() {
 	echo "  -d: build in DEBUG configuration"
 	echo "  -2: build for Pico 2 board (RP2350)"
 	echo "  -r: build for Pico 2 board (RP2350) with riscv core"
-	echo "  -u: enable PIO USB support (RP2350 only) disabled by default except for Waveshare RP2350-PiZero and Adafruit Fruit Jam."
+	echo "  -u: (RP2350 only, must also use -2) enable PIO USB support (RP2350 only) disabled by default except for Waveshare RP2350-PiZero and Adafruit Fruit Jam."
 	echo "  -w: build for Pico_w or Pico2_w"
-	echo "  -b: build for the resident emuLoader bootloader (passes -DBUILD_FOR_BOOTLOADER=ON;"
+	echo "  -b: (RP2350 only, must also use -2) build for the resident emuLoader bootloader (passes -DBUILD_FOR_BOOTLOADER=ON;"
 	echo "      relinks the image to the application partition at 0x10080000 instead of 0x10000000)."
+	echo "      Copies the resulting UF2 to releases_bl instead of releases."
 	echo "  -t <path to riscv toolchain>: only needed for riscv, specify the path to the riscv toolchain bin folder"
 	echo "     Default is \$PICO_SDK_PATH/toolchain/RISCV_RPI_2_0_0_2/bin"
 	echo "  -p <nprocessors>: specify the number of processors to use for the build"
@@ -63,6 +64,7 @@ function usage() {
 	echo ""
 	echo -e "\t./bld.sh -c <hwconfig> -r -t \$PICO_SDK_PATH/toolchain/RISCV_RPI_2_0_0_2/bin"
 	echo ""
+	echo "Note: All .uf2 files are copied to the releases folder, except for the bootloader (-b) build which is copied to releases_bl"
 } 
 NPROC=$(nproc)
 BUILDPROC=$NPROC
@@ -165,7 +167,15 @@ while getopts "muwhd2rc:t:p:iDeb" opt; do
 	  ;;
   esac
 done
+if [[ $PICO_BOARD != "pico2" && $USEPIOUSB -eq 1 ]] ; then
+	echo "Option -u is only valid for RP2350 boards"
+	exit 1
+fi
 
+if [[ $PICO_BOARD != "pico2" && $USEBOOTLOADER -eq 1 ]] ; then
+	echo "Option -b is only valid for RP2350 boards"
+	exit 1
+fi
 
 # check toolchain if -r is set
 if [[ $picoriscIsSet -eq 1 && -z "$TOOLCHAIN_PATH" ]] ; then
@@ -377,6 +387,7 @@ fi
 echo "UF2 file: $UF2"
 
 [ -d releases ] || mkdir releases || exit 1
+[ -d releases_bl ] || mkdir releases_bl || exit 1
 if [ -d build ] ; then
 	rm -rf build || exit 1
 fi
@@ -400,7 +411,11 @@ make -j $BUILDPROC || exit 1
 cd ..
 echo ""
 if [ -f build/${APP}.uf2 ] ; then
-	cp build/${APP}.uf2 releases/${UF2} || exit 1
+	if [ $USEBOOTLOADER -eq 1 ] ; then
+		cp build/${APP}.uf2 releases_bl/${UF2} || exit 1
+	else
+		cp build/${APP}.uf2 releases/${UF2} || exit 1
+	fi
 #	picotool info releases/${UF2}
 fi
 
