@@ -6,6 +6,11 @@
 volatile bool HSTX_vblank = false;
 static uint8_t FRAMEBUFFER[(MODE_H_ACTIVE_PIXELS / 2) * (MODE_V_ACTIVE_LINES / 2) * 2] __attribute__((aligned(4)));
 // uint16_t ALIGNED HDMIlines[2][MODE_H_ACTIVE_PIXELS] = {0};
+// All three alias the one framebuffer (single-buffered, no flipping). They must
+// stay pointing at it: s9x_port_anchor_screen() caches hstx_getframebuffer()
+// plus a compile-time 320x240 offset and only recomputes it when the PPU screen
+// height changes, so anything that repointed these — including the 8bpp text
+// mode below, which only reinterprets the bytes — would leave that stale.
 static uint8_t *WriteBuf = FRAMEBUFFER;
 static uint8_t *DisplayBuf = FRAMEBUFFER;
 static uint8_t *LayerBuf = FRAMEBUFFER;
@@ -104,6 +109,40 @@ uint16_t *__not_in_flash_func(hstx_getlineFromFramebuffer)(int scanline)
 {
     return (uint16_t *)(WriteBuf + (scanline * HRes * 2));
 }
+
+#if USE80COLS
+// 8bpp text mode state. Read by the scanline callback in the core1 DMA IRQ, so
+// the LUT has to be SRAM-resident: a flash or PSRAM fetch inside that IRQ can
+// stall behind QMI traffic and blow the line deadline (see the border-fill
+// comment further down). Plain .bss is right here — do NOT move this to
+// __scratch_x, which CMakeLists.txt has already given over in full to core1's
+// stack.
+//
+// 256 entries rather than 64: it costs 384 extra bytes and removes both a mask
+// per pixel and any possibility of an out-of-range index scanning out garbage
+// while the framebuffer still holds bytes from the previous interpretation.
+static uint16_t s_textPal[256];
+static volatile int s_textMode = HSTX_TEXTMODE_OFF;
+
+void hstx_setTextMode640(int state, const uint16_t *pal, int palCount)
+{
+    if (pal)
+    {
+        if (palCount > 256)
+            palCount = 256;
+        for (int i = 0; i < palCount; i++)
+            s_textPal[i] = pal[i];
+        for (int i = palCount; i < 256; i++)
+            s_textPal[i] = 0; // unused indices scan out black
+    }
+    s_textMode = state;
+}
+
+uint8_t *__not_in_flash_func(hstx_getTextLine640)(int scanline)
+{
+    return WriteBuf + (scanline * HRes * 2);
+}
+#endif // USE80COLS
 void __not_in_flash_func(hstx_vsync_callbackfunc)(void)
 {
    HSTX_vblank = true;
@@ -168,6 +207,43 @@ void __not_in_flash_func(scanline_callbackfunc)(uint32_t v_scanline, uint32_t ac
     __dmb();
 
     int Line_dup = load_line >> 1;
+
+#if USE80COLS
+    // 8bpp text mode is tested before everything else. The 8:7 and scanline
+    // paths below read the framebuffer as RGB555, so they would scan palette
+    // indices out as colour; branching first makes that unreachable by
+    // construction instead of relying on the menu having cleared those flags.
+    int tmode = s_textMode;
+    if (tmode != HSTX_TEXTMODE_OFF)
+    {
+        uint32_t *dst = buff;
+        if (tmode == HSTX_TEXTMODE_BLANK)
+        {
+            // Volatile stores so GCC cannot substitute a call to a
+            // flash-resident memset — same reasoning as the border fills below.
+            volatile uint32_t *bp = dst;
+            for (int i = 0; i < MODE_H_ACTIVE_PIXELS / 2; i++)
+                bp[i] = 0;
+            return;
+        }
+        // Row stride is 640 bytes = 640 palette indices, which is the same byte
+        // offset the RGB555 path uses for 320 pixels — so no index math changes.
+        // One word load yields four indices; two word stores emit four pixels.
+        const uint32_t *src = (const uint32_t *)&DisplayBuf[Line_dup * MODE_H_ACTIVE_PIXELS];
+        for (uint32_t i = 0; i < MODE_H_ACTIVE_PIXELS / 4; i++)
+        {
+            uint32_t q = src[i];
+            uint32_t p0 = s_textPal[q & 0xFFu];
+            uint32_t p1 = s_textPal[(q >> 8) & 0xFFu];
+            uint32_t p2 = s_textPal[(q >> 16) & 0xFFu];
+            uint32_t p3 = s_textPal[q >> 24];
+            *dst++ = p0 | (p1 << 16);
+            *dst++ = p2 | (p3 << 16);
+        }
+        return;
+    }
+#endif // USE80COLS
+
     const uint32_t DARKEN_MASK = 0x7BDE7BDEu;
     const uint16_t DM = 0x7BDEu;
     int is_odd_line = load_line & 1;

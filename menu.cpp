@@ -87,8 +87,53 @@ const static char *connectedGamePadName[2];
 const static char *connectedGamePadShortName[2];
 
 
+// Total grid cells. Uses SCREEN_COLS because that is the stride, not the
+// visible width: the cells past menuVisibleCols on each row are allocated and
+// cleared, just never rasterized.
 #define SCREENBUFCELLS SCREEN_ROWS *SCREEN_COLS
 charCell *screenBuffer;
+
+// Visible columns. Starts at 40 so that everything drawn before the first
+// menuSetColumns() call (and every non-80-column build) behaves as it always
+// has. Shorthand MCOLS marks the layout sites — centering, right-alignment,
+// wrapping, clipping — as opposed to SCREEN_COLS, which marks grid indexing.
+int menuVisibleCols = 40;
+#define MCOLS menuVisibleCols
+
+// Centering helpers. Two of them because the file uses two non-equivalent
+// idioms: they agree for even text lengths and differ by one for odd lengths,
+// so each call site keeps the exact column it has today.
+static inline int centerColClamped(int textLen)
+{
+    int col = (MCOLS - textLen) / 2;
+    return col < 0 ? 0 : col;
+}
+static inline int centerCol(int textLen)
+{
+    int col = MCOLS / 2 - textLen / 2;
+    return col < 0 ? 0 : col;
+}
+
+// Fill a rectangular block of the character grid with a solid color (spaces).
+static void fillRect(int x, int y, int w, int h, int color)
+{
+    for (int r = 0; r < h; r++)
+    {
+        for (int c = 0; c < w; c++)
+        {
+            int col = x + c;
+            int rowIdx = y + r;
+            // Both meanings meet here: clip against the *visible* width, then
+            // index with the grid *stride*. They are equal only at 40 columns.
+            if (col < 0 || col >= MCOLS || rowIdx < 0 || rowIdx >= SCREEN_ROWS)
+                continue;
+            int idx = rowIdx * SCREEN_COLS + col;
+            screenBuffer[idx].charvalue = ' ';
+            screenBuffer[idx].fgcolor = color;
+            screenBuffer[idx].bgcolor = color;
+        }
+    }
+}
 
 static char *selectedRomOrFolder;
 static bool errorInSavingRom = false;
@@ -101,7 +146,7 @@ static uint8_t crcOffset = 0; // Default offset for CRC calculation
 
 static char buttonLabel1[2]; // e.g., "A", "B", "X", "O"
 static char buttonLabel2[2]; // e.g., "A", "B", "
-static char line[41];
+static char line[SCREEN_COLS + 1];
 static char valueBuf[16]; // separate buffer for numeric values
 static bool exitMenu = false;
 static bool settingsActive = false;
@@ -373,7 +418,11 @@ void RomSelect_DrawLine(int line, int selectedRow, int pixelsToSkip = 0)
 
     // calculate first char column index from pixelstoskip
     auto firstCharColumnIndex = (pixelsToSkip % SCREENWIDTH) / FONT_CHAR_WIDTH;
-    for (auto i = 0; i < SCREEN_COLS; ++i)
+    // MCOLS, not SCREEN_COLS: this loop writes exactly its bound * 8 pixels with
+    // no clipping, so the bound has to match the destination row width. Running
+    // it to the grid stride while the row is only MCOLS*8 wide would walk into
+    // the following scanline, for every line of the frame.
+    for (auto i = 0; i < MCOLS; ++i)
     {
         if (i < firstCharColumnIndex)
         {
@@ -381,7 +430,7 @@ void RomSelect_DrawLine(int line, int selectedRow, int pixelsToSkip = 0)
         }
         int charIndex = i + line / FONT_CHAR_HEIGHT * SCREEN_COLS;
 
-        int row = charIndex / SCREEN_COLS;
+        int row = line / FONT_CHAR_HEIGHT;
         uint c = screenBuffer[charIndex].charvalue;
         if (row == selectedRow)
         {
@@ -414,6 +463,50 @@ void RomSelect_DrawLine(int line, int selectedRow, int pixelsToSkip = 0)
     }
     return;
 }
+
+#if MENU80COLS
+/// @brief 8bpp counterpart of RomSelect_DrawLine, for the 640-pixel-wide text
+///        mode. Writes one palette *index* per pixel instead of one RGB555
+///        value, so a row is MCOLS*8 bytes and the whole 240-row frame fits the
+///        same 153,600-byte framebuffer at twice the horizontal resolution.
+///        The scanline IRQ expands the indices through its own SRAM palette.
+///
+/// Cheaper than the 16bpp path, not just narrower: screenBuffer already stores
+/// indices, so this does no NesMenuPalette lookups at all (the 16bpp path does
+/// two per cell, out of flash). No pixelsToSkip parameter — image compositing
+/// needs 16bpp and is only available at 40 columns.
+static void RomSelect_DrawLine8(int line, int selectedRow, uint8_t *rowBytes)
+{
+    uint8_t fgcolor, bgcolor;
+    uint8_t *pixelRow = rowBytes;
+    int row = line / FONT_CHAR_HEIGHT;
+    int rowInChar = line % FONT_CHAR_HEIGHT;
+    int rowBase = row * SCREEN_COLS;
+    bool selected = (row == selectedRow);
+
+    for (auto i = 0; i < MCOLS; ++i)
+    {
+        int charIndex = rowBase + i;
+        uint c = screenBuffer[charIndex].charvalue;
+        if (selected)
+        {
+            fgcolor = settingsActive ? CWHITE : settings.bgcolor;
+            bgcolor = settingsActive ? CBLACK : settings.fgcolor;
+        }
+        else
+        {
+            fgcolor = screenBuffer[charIndex].fgcolor;
+            bgcolor = screenBuffer[charIndex].bgcolor;
+        }
+        char fontSlice = getcharslicefrom8x8font(c, rowInChar);
+        for (auto bit = 0; bit < 8; bit++)
+        {
+            *pixelRow++ = (fontSlice & 1) ? fgcolor : bgcolor;
+            fontSlice >>= 1;
+        }
+    }
+}
+#endif
 
 /// @brief Renders a single 320-pixel scanline into the active video line buffer.
 ///        Optionally blends (actually overwrites) an image row before drawing text.
@@ -449,6 +542,17 @@ void RomSelect_DrawLine(int line, int selectedRow, int pixelsToSkip = 0)
 ///   - scanline outside imagey..imagey+h: only text (unless reserved offset for early lines).
 void drawline(int scanline, int selectedRow, int w = 0, int h = 0, uint16_t *imagebuffer = nullptr, int imagex = 0, int imagey = 0)
 {
+#if MENU80COLS
+    // 80-column text mode: the framebuffer row is 640 palette indices, so
+    // neither the 16bpp glyph writer nor image compositing applies. Callers that
+    // want an image must drop to 40 columns first (MenuColsScope does this); if
+    // one does not, the image is simply skipped rather than written as indices.
+    if (MCOLS > 40)
+    {
+        RomSelect_DrawLine8(scanline, selectedRow, hstx_getTextLine640(scanline));
+        return;
+    }
+#endif
 #if !HSTX
     dvi::DVI::LineBuffer *b = nullptr;
 #if FRAMEBUFFERISPOSSIBLE
@@ -535,7 +639,7 @@ void putText(int x, int y, const char *text, int fgcolor, int bgcolor, bool wrap
                     word_len++;
                 }
                 // If word doesn't fit, move to next line
-                if (cur_x + word_len > SCREEN_COLS && cur_x != 0)
+                if (cur_x + word_len > MCOLS && cur_x != 0)
                 {
                     cur_x = offset;
                     cur_y++;
@@ -555,6 +659,16 @@ void putText(int x, int y, const char *text, int fgcolor, int bgcolor, bool wrap
                     cur_x++;
                     maxLen--;
                     lastWasSpace = false;
+                    // A word wider than the line cannot be relocated by the
+                    // fit test above, so break it here. Without this the write
+                    // runs past the last visible column: today that lands on
+                    // the next visible row, and once the grid stride exceeds
+                    // the visible width it lands in cells nothing rasterizes.
+                    if (cur_x >= MCOLS)
+                    {
+                        cur_x = offset;
+                        cur_y++;
+                    }
                     index = cur_y * SCREEN_COLS + cur_x;
                 }
                 // Write any following spaces (collapse consecutive)
@@ -571,7 +685,7 @@ void putText(int x, int y, const char *text, int fgcolor, int bgcolor, bool wrap
                         cur_x++;
                         maxLen--;
                         lastWasSpace = true;
-                        if (cur_x >= SCREEN_COLS)
+                        if (cur_x >= MCOLS)
                         {
                             cur_x = offset;
                             cur_y++;
@@ -601,7 +715,7 @@ void putText(int x, int y, const char *text, int fgcolor, int bgcolor, bool wrap
                 screenBuffer[index].bgcolor = bgcolor;
                 cur_x++;
                 maxLen--;
-                if (cur_x >= SCREEN_COLS)
+                if (cur_x >= MCOLS)
                 {
                     if (wraplines)
                     {
@@ -621,7 +735,6 @@ void putText(int x, int y, const char *text, int fgcolor, int bgcolor, bool wrap
 
 void DrawScreen(int selectedRow, int w = 0, int h = 0, uint16_t *imagebuffer = nullptr, int imagex = 0, int imagey = 0)
 {
-    const char *spaces = "                   ";
     char tmpstr[24];
     char s[SCREEN_COLS + 1];
     char buttonLabel1[2];
@@ -633,7 +746,10 @@ void DrawScreen(int selectedRow, int w = 0, int h = 0, uint16_t *imagebuffer = n
         {
             putText(1, ENDROW + 3, "Dac Initialization Failed", CRED, CWHITE);
         }
-        putText(SCREEN_COLS / 2 - strlen(spaces) / 2, SCREEN_ROWS - 1, spaces, settings.bgcolor, settings.bgcolor);
+        // Erase the gamepad-name slot before redrawing it. Sized to tmpstr, not
+        // to a 19-space literal: the name can reach 23 characters, so the old
+        // literal under-erased and left tails of longer names behind.
+        fillRect(centerCol((int)sizeof(tmpstr)), SCREEN_ROWS - 1, (int)sizeof(tmpstr), 1, settings.bgcolor);
         if ( connectedGamePadShortName[0] != nullptr && connectedGamePadShortName[1] != nullptr)
         {
             snprintf(tmpstr, sizeof(tmpstr), "%s/%s", connectedGamePadShortName[0], connectedGamePadShortName[1]);
@@ -655,7 +771,7 @@ void DrawScreen(int selectedRow, int w = 0, int h = 0, uint16_t *imagebuffer = n
                 }
             }
         }
-        putText(SCREEN_COLS / 2 - strlen(tmpstr) / 2, SCREEN_ROWS - 1, tmpstr, CBLUE, CWHITE);
+        putText(MCOLS / 2 - strlen(tmpstr) / 2, SCREEN_ROWS - 1, tmpstr, CBLUE, CWHITE);
         snprintf(s, sizeof(s), "%c%dK %c%c",
                  Frens::isPsramEnabled() ? 'P' : 'F',
                  maxRomSize / 1024,
@@ -665,11 +781,14 @@ void DrawScreen(int selectedRow, int w = 0, int h = 0, uint16_t *imagebuffer = n
         snprintf(s, sizeof(s), "%s:Open %s:Back", buttonLabel1, buttonLabel2);
 
         putText(1, ENDROW + 2, s, settings.fgcolor, settings.bgcolor);
+        // Second footer column. MCOLS/2 - 3 reproduces the hand-placed column 17
+        // at 40 columns and keeps the pair visually balanced at 80.
+        int footerCol2 = MCOLS / 2 - 3;
         bool artworkEnabled = isArtWorkEnabled();
         if (artworkEnabled)
         {
             strcpy(s, "START:Info");
-            putText(17, ENDROW + 2, s, settings.fgcolor, settings.bgcolor);
+            putText(footerCol2, ENDROW + 2, s, settings.fgcolor, settings.bgcolor);
         }
         int optionsRow = artworkEnabled ? ENDROW + 3 : ENDROW + 2;
 
@@ -688,7 +807,7 @@ void DrawScreen(int selectedRow, int w = 0, int h = 0, uint16_t *imagebuffer = n
                 strcpy(s, "SELECT:Settings" );
             }
         }
-        putText(17, optionsRow, s, settings.fgcolor, settings.bgcolor);
+        putText(footerCol2, optionsRow, s, settings.fgcolor, settings.bgcolor);
     }
 
     for (auto line = 0; line < 240; line++)
@@ -714,14 +833,14 @@ inline void showhdmilabel()
 #if HSTX
     if (video_output_get_dvi_mode())
     {
-        putText(SCREEN_COLS - 4, 0, "DVI", fgcolor, bgcolor);
+        putText(MCOLS - 4, 0, "DVI", fgcolor, bgcolor);
     }
     else
     {
-        putText(SCREEN_COLS - 5, 0, "HDMI", fgcolor, bgcolor);
+        putText(MCOLS - 5, 0, "HDMI", fgcolor, bgcolor);
     }
 #else
-    putText(SCREEN_COLS - 5, 0, "HDMI", fgcolor, bgcolor);
+    putText(MCOLS - 5, 0, "HDMI", fgcolor, bgcolor);
 #endif
 }
 
@@ -758,33 +877,38 @@ void displayRoms(Frens::RomLister &romlister, int startIndex)
     char s[SCREEN_COLS + 1];
     auto y = STARTROW;
     auto entries = romlister.GetEntries();
+    // Clamp to the buffer as well as the visible width: MCOLS-1 happens to be
+    // smaller than sizeof(buffer) today, but only because ROMLISTER_MAXPATH is 80.
+    size_t romNameLimit = sizeof(buffer);
+    if ((size_t)(MCOLS - 1) < romNameLimit)
+        romNameLimit = (size_t)(MCOLS - 1);
     ClearScreen(settings.bgcolor);
     snprintf(s, sizeof(s), "- %s -", menutitle);
-    putText(SCREEN_COLS / 2 - strlen(s) / 2, 0, s, settings.fgcolor, settings.bgcolor);
+    putText(centerCol(strlen(s)), 0, s, settings.fgcolor, settings.bgcolor);
     snprintf(buffer, sizeof(buffer), "%uMHZ", clock_get_hz(clk_sys) / 1000000);
     showhdmilabel();
     putText(1, 0, buffer, settings.fgcolor, settings.bgcolor);
     strcpy(s, "Choose a rom to play:");
-    putText(SCREEN_COLS / 2 - strlen(s) / 2, 1, s, settings.fgcolor, settings.bgcolor);
+    putText(centerCol(strlen(s)), 1, s, settings.fgcolor, settings.bgcolor);
     // strcpy(s, "---------------------");
     // putText(SCREEN_COLS / 2 - strlen(s) / 2, 1, s, fgcolor, bgcolor);
 
-    for (int i = 1; i < SCREEN_COLS - 1; i++)
+    for (int i = 1; i < MCOLS - 1; i++)
     {
         putText(i, STARTROW - 1, "-", settings.fgcolor, settings.bgcolor);
     }
-    for (int i = 1; i < SCREEN_COLS - 1; i++)
+    for (int i = 1; i < MCOLS - 1; i++)
     {
         putText(i, ENDROW + 1, "-", settings.fgcolor, settings.bgcolor);
     }
 
     // strcpy(s, "A Select, B Back");
     // putText(1, ENDROW + 2, s, settings.fgcolor, settings.bgcolor);
-    putText(SCREEN_COLS - strlen(PICOHWNAME_) - 1, ENDROW + 2, PICOHWNAME_, settings.fgcolor, settings.bgcolor);
+    putText(MCOLS - strlen(PICOHWNAME_) - 1, ENDROW + 2, PICOHWNAME_, settings.fgcolor, settings.bgcolor);
     {
         char versionStr[30];
         getVersionString(versionStr, sizeof(versionStr));
-        putText(SCREEN_COLS - strlen(versionStr) - 1, SCREEN_ROWS - 1, versionStr, settings.fgcolor, settings.bgcolor);
+        putText(MCOLS - strlen(versionStr) - 1, SCREEN_ROWS - 1, versionStr, settings.fgcolor, settings.bgcolor);
     }
 
     // putText(SCREEN_COLS / 2 - strlen(picoType()) / 2, SCREEN_ROWS - 2, picoType(), fgcolor, bgcolor);
@@ -797,12 +921,12 @@ void displayRoms(Frens::RomLister &romlister, int startIndex)
             if (info.IsDirectory)
             {
                 // snprintf(buffer, sizeof(buffer), "D %s", info.Path);
-                snprintf(buffer, SCREEN_COLS - 1, "D %s", info.Path);
+                snprintf(buffer, romNameLimit, "D %s", info.Path);
             }
             else
             {
                 // snprintf(buffer, sizeof(buffer), "R %s", info.Path);
-                snprintf(buffer, SCREEN_COLS - 1, "R %s", info.Path);
+                snprintf(buffer, romNameLimit, "R %s", info.Path);
             }
 
             putText(1, y, buffer, settings.fgcolor, settings.bgcolor);
@@ -818,6 +942,74 @@ static inline void drawAllLines(int selected)
         drawline(lineNr, selected);
     }
 }
+
+void menuSetColumns(int cols)
+{
+    cols = (cols > 40) ? 80 : 40;
+#if MENU80COLS
+    // The PSRAM gate, deliberately runtime rather than #if PSRAM_CS_PIN: that
+    // macro defaults to a valid pin on every HSTX board whether or not the chip
+    // is fitted, so a compile-time test would be close to a no-op.
+    // isPsramEnabled() reflects the boot-time probe instead, which also means one
+    // binary covers both populations. Flip MENU80COLS_REQUIRE_PSRAM to 0 to try
+    // 80 columns without PSRAM — the only difference is that screenBuffer's 7200
+    // bytes come off the SRAM heap rather than out of PSRAM.
+    if (cols == 80 && MENU80COLS_REQUIRE_PSRAM && !Frens::isPsramEnabled())
+    {
+        cols = 40;
+    }
+    if (cols == menuVisibleCols)
+    {
+        return;
+    }
+    // Blank, and let a whole frame scan out blanked, before touching either the
+    // contents or the mode. No byte value reads as black in both
+    // interpretations — 16bpp 0x0000 is black but 8bpp index 0 is an ordinary
+    // palette colour — so doing this in any other order shows one frame of
+    // wrong colours on every switch.
+    hstx_setTextMode640(HSTX_TEXTMODE_BLANK, nullptr, 0);
+    hstx_waitForVSync();
+    menuVisibleCols = cols;
+    uint8_t *fb = hstx_getframebuffer();
+    if (cols == 80)
+    {
+        // Fill with the background *index* so the first frame after the switch
+        // is a clean menu background instead of whatever palette entry 0 is.
+        memset(fb, (uint8_t)settings.bgcolor, SCREENWIDTH * SCREENHEIGHT * sizeof(WORD));
+        hstx_setTextMode640(HSTX_TEXTMODE_640, NesMenuPalette, NesMenuPaletteItems);
+    }
+    else
+    {
+        memset(fb, 0, SCREENWIDTH * SCREENHEIGHT * sizeof(WORD));
+        hstx_setTextMode640(HSTX_TEXTMODE_OFF, nullptr, 0);
+    }
+    // Clear the grid too. Widening exposes columns that the narrower screen left
+    // untouched, and most callers redraw via a path that starts with ClearScreen
+    // — but not all of them, and a stale right half is the kind of artifact that
+    // only shows up on one transition. Cheaper to make it impossible here.
+    // Guarded because showSettingsMenu enters its scope before allocating.
+    if (screenBuffer)
+    {
+        ClearScreen(settings.bgcolor);
+    }
+    // No redraw here: every menu screen repaints from screenBuffer once per
+    // frame, so the next Menu_LoadFrame cycle fills the reinterpreted buffer.
+#else
+    menuVisibleCols = cols;
+#endif
+}
+
+// RAII column switch for the screens that composite 16bpp images. Several of
+// them have early returns, and a manual restore would leak 80-column mode into
+// a screen that then scans artwork out through the palette LUT.
+struct MenuColsScope
+{
+    int prev;
+    explicit MenuColsScope(int cols) : prev(menuVisibleCols) { menuSetColumns(cols); }
+    ~MenuColsScope() { menuSetColumns(prev); }
+    MenuColsScope(const MenuColsScope &) = delete;
+    MenuColsScope &operator=(const MenuColsScope &) = delete;
+};
 void waitForNoButtonPress()
 {
     DWORD PAD1_Latch;
@@ -840,6 +1032,16 @@ void menuPumpBlankFrames(int count)
     scaleMode8_7_ = Frens::applyScreenMode(ScreenMode::NOSCANLINE_1_1);
     dvi_->getBlankSettings().top = 0;
     dvi_->getBlankSettings().bottom = 0;
+#endif
+#if MENU80COLS
+    // A zeroed framebuffer is black in 16bpp but palette entry 0 in 8bpp text
+    // mode, so ask the scanline callback for black outright instead of relying
+    // on the memset below meaning what it says.
+    int prevTextMode80 = (MCOLS > 40);
+    if (prevTextMode80)
+    {
+        hstx_setTextMode640(HSTX_TEXTMODE_BLANK, nullptr, 0);
+    }
 #endif
     for (int i = 0; i < count; i++)
     {
@@ -867,6 +1069,12 @@ void menuPumpBlankFrames(int count)
 #endif
         Menu_LoadFrame();
     }
+#if MENU80COLS
+    if (prevTextMode80)
+    {
+        hstx_setTextMode640(HSTX_TEXTMODE_640, nullptr, 0);
+    }
+#endif
 #if !HSTX
     scaleMode8_7_ = Frens::applyScreenMode(settings.screenMode);
     // Reset the screen mode to the original settings
@@ -880,11 +1088,6 @@ void menuPumpBlankFrames(int count)
 #endif
 }
 
-static inline int centerColClamped(int textLen)
-{
-    int col = (SCREEN_COLS - textLen) / 2;
-    return col < 0 ? 0 : col;
-}
 static void showMessageBox(const char *message1, unsigned short fgcolor, const char *message2, const char *message3)
 {
 
@@ -979,24 +1182,6 @@ static void formatVregVoltage(vreg_voltage v, char *buf, size_t n)
     }
 }
 
-// Fill a rectangular block of the character grid with a solid color (spaces).
-static void fillRect(int x, int y, int w, int h, int color)
-{
-    for (int r = 0; r < h; r++)
-    {
-        for (int c = 0; c < w; c++)
-        {
-            int col = x + c;
-            int rowIdx = y + r;
-            if (col < 0 || col >= SCREEN_COLS || rowIdx < 0 || rowIdx >= SCREEN_ROWS)
-                continue;
-            int idx = rowIdx * SCREEN_COLS + col;
-            screenBuffer[idx].charvalue = ' ';
-            screenBuffer[idx].fgcolor = color;
-            screenBuffer[idx].bgcolor = color;
-        }
-    }
-}
 
 // Full-screen warning shown before enabling an overclock that boots the CPU
 // above the safe default clock. The message sits inside a red box and shows the
@@ -1170,7 +1355,7 @@ static void ctDrawSourceRow(int row, int src, int active, const char *status)
 {
     char line[SCREEN_COLS + 1];
     snprintf(line, sizeof(line), "%c %-5s %s", (src == active) ? '>' : ' ', ctSrcNames[src], status);
-    line[SCREEN_COLS - 1] = '\0'; // drawn at col 1; putText does not clip at end of row
+    line[MCOLS - 1] = '\0'; // drawn at col 1; putText does not clip at end of row
     putText(1, row, line, (src == active) ? CGREEN : settings.fgcolor, settings.bgcolor);
 }
 
@@ -1237,23 +1422,28 @@ static void showControllerTestScreen()
                 snprintf(line, sizeof(line), "Testing: Wii Classic");
                 break;
             }
-            line[SCREEN_COLS - 1] = '\0'; // drawn at col 1; putText does not clip at end of row
+            line[MCOLS - 1] = '\0'; // drawn at col 1; putText does not clip at end of row
             putText(1, 2, line, settings.fgcolor, settings.bgcolor);
         }
 
-        putText(1, 5, ctPadTop, settings.fgcolor, settings.bgcolor);
-        putText(1, 6, ctPadMid, settings.fgcolor, settings.bgcolor);
-        putText(1, 7, ctPadMid, settings.fgcolor, settings.bgcolor);
-        putText(1, 8, ctPadMid, settings.fgcolor, settings.bgcolor);
-        putText(1, 9, ctPadBot, settings.fgcolor, settings.bgcolor);
+        // The pad art is a fixed-width 38-column drawing with the button labels
+        // hand-placed inside it, so centre the whole thing as one unit and offset
+        // the labels by the same amount. At 40 columns padCol is 1, which is
+        // exactly where these were drawn before.
+        int padCol = centerColClamped(38);
+        putText(padCol, 5, ctPadTop, settings.fgcolor, settings.bgcolor);
+        putText(padCol, 6, ctPadMid, settings.fgcolor, settings.bgcolor);
+        putText(padCol, 7, ctPadMid, settings.fgcolor, settings.bgcolor);
+        putText(padCol, 8, ctPadMid, settings.fgcolor, settings.bgcolor);
+        putText(padCol, 9, ctPadBot, settings.fgcolor, settings.bgcolor);
         uint16_t shown = (active >= 0) ? cur[active] : 0;
         for (const auto &b : ctButtons)
         {
             bool on = (shown & b.mask) != 0;
-            putText(b.col, b.row, b.label, on ? CWHITE : settings.fgcolor, on ? CGREEN : settings.bgcolor);
+            putText(padCol - 1 + b.col, b.row, b.label, on ? CWHITE : settings.fgcolor, on ? CGREEN : settings.bgcolor);
         }
 
-        putText(1, 11, "Sources:", settings.fgcolor, settings.bgcolor);
+        putText(padCol, 11, "Sources:", settings.fgcolor, settings.bgcolor);
         int row = 12;
 #if NES_PIN_CLK != -1
         ctDrawSourceRow(row++, CT_SRC_GPIO1, active, seen[CT_SRC_GPIO1] ? "input seen" : "no input");
@@ -1272,16 +1462,17 @@ static void showControllerTestScreen()
         if (holdFrames > 0)
         {
             int filled = holdFrames / (exitHoldFrames / 20); // bar has 20 cells
+            int barCol = centerColClamped(22);               // "[" + 20 cells + "]"
             line[0] = '[';
             memset(line + 1, '-', 20);
             line[21] = ']';
             line[22] = '\0';
-            putText(9, 27, line, settings.fgcolor, settings.bgcolor);
+            putText(barCol, 27, line, settings.fgcolor, settings.bgcolor);
             if (filled > 0)
             {
                 memset(line, '#', filled);
                 line[filled] = '\0';
-                putText(10, 27, line, CWHITE, CGREEN);
+                putText(barCol + 1, 27, line, CWHITE, CGREEN);
             }
         }
 
@@ -1314,7 +1505,7 @@ void showSplashScreen()
     {
         char versionStr[30];
         getVersionString(versionStr, sizeof(versionStr), true);
-        putText(SCREEN_COLS - strlen(versionStr) - 2, SCREEN_ROWS - 2, versionStr, DEFAULT_FGCOLOR, DEFAULT_BGCOLOR);
+        putText(MCOLS - strlen(versionStr) - 2, SCREEN_ROWS - 2, versionStr, DEFAULT_FGCOLOR, DEFAULT_BGCOLOR);
     }
     int startFrame = -1;
     while (true)
@@ -1332,7 +1523,7 @@ void showSplashScreen()
         }
         if ((frameCount % 30) == 0)
         {
-            for (auto i = 0; i < SCREEN_COLS; i++)
+            for (auto i = 0; i < MCOLS; i++)
             {
                 auto col = rand() % 63;
                 putText(i, 0, " ", col, col);
@@ -1344,7 +1535,7 @@ void showSplashScreen()
                 auto col = rand() % 63;
                 putText(0, i, " ", col, col);
                 col = rand() % 63;
-                putText(SCREEN_COLS - 1, i, " ", col, col);
+                putText(MCOLS - 1, i, " ", col, col);
             }
         }
     }
@@ -1367,7 +1558,7 @@ void screenSaverWithBlocks()
         {
             auto color = rand() % 63;
             auto row = rand() % SCREEN_ROWS;
-            auto column = rand() % SCREEN_COLS;
+            auto column = rand() % MCOLS;
             putText(column, row, " ", color, color);
         }
     }
@@ -1375,6 +1566,11 @@ void screenSaverWithBlocks()
 
 void screenSaverWithArt(bool showdefault = false)
 {
+    // Composites 16bpp RGB555 artwork, so the framebuffer has to be in its
+    // normal 320-wide interpretation. Draws no text at all (drawline suppresses
+    // glyphs whenever imagex or imagey is non-zero), so nothing is lost by
+    // dropping to 40 columns here.
+    MenuColsScope colsScope(40);
     DWORD PAD1_Latch;
     WORD frameCount = 0;
 
@@ -1557,6 +1753,11 @@ void screenSaver()
 /// @return 0: Do nothing, 1: start game, 2: start screensaver
 int showartwork(uint32_t crc, FSIZE_t romsize)
 {
+    // Composites a 16bpp RGB555 image alongside its metadata text, so this
+    // screen keeps the framebuffer in its 320-wide interpretation and its
+    // existing 40-column layout. A scope rather than a manual restore because
+    // the "no metadata and no image" path returns early.
+    MenuColsScope colsScope(40);
     char info[SCREEN_COLS + 1];
     char gamename[64];
     char releaseDate[16]; // 19900212T000000
@@ -1854,11 +2055,11 @@ static void showLoadingScreen(const char *message = nullptr, int framesToWait = 
         ClearScreen(settings.bgcolor);
         if (message)
         {
-            putText(SCREEN_COLS / 2 - strlen(message) / 2, SCREEN_ROWS / 2, message, settings.fgcolor, settings.bgcolor);
+            putText(MCOLS / 2 - strlen(message) / 2, SCREEN_ROWS / 2, message, settings.fgcolor, settings.bgcolor);
         }
         else
         {
-            putText(SCREEN_COLS / 2 - 5, SCREEN_ROWS / 2, "Loading...", settings.fgcolor, settings.bgcolor);
+            putText(MCOLS / 2 - 5, SCREEN_ROWS / 2, "Loading...", settings.fgcolor, settings.bgcolor);
         }
         while (framesToWait-- > 0)
         {
@@ -2038,6 +2239,7 @@ static bool ensureSaveStateDirectories(uint32_t crc)
 /// @return false when a save state failed to load. True otherwise.
 bool showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefunc)(const char *path), const char *extraMessage, SaveStateTypes quickSave)
 {
+    MenuColsScope colsScope(80); // text-only screen
     bool saveStateLoadedOK = true;
     uint8_t saveslots[MAXSAVESTATESLOTS]{};
     char tmppath[40]; // /SAVESTATES/NES/XXXXXXXX/slot1.sta
@@ -2196,7 +2398,8 @@ bool showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
             char linebuf[48];
             ClearScreen(settings.bgcolor);
             getButtonLabels(buttonLabel1, buttonLabel2);
-            putText(9, 0, "-- Save/Load State --", settings.fgcolor, settings.bgcolor);
+            const char *ssTitle = "-- Save/Load State --";
+            putText(centerColClamped(strlen(ssTitle)), 0, ssTitle, settings.fgcolor, settings.bgcolor);
             putText(0, 2, "Choose slot:", settings.fgcolor, settings.bgcolor);
 
             for (int i = 0; i < MAXSAVESTATESLOTS && (4 + i) < ENDROW - 2; i++)
@@ -2547,6 +2750,10 @@ bool showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
     //Frens::waitForVSync();
     printf("Exiting save state menu.\n");
     Frens::f_free(screenBuffer);
+    // Null it: the MenuColsScope destructor runs after this return and clears the
+    // grid on a width change, and anything else reaching for screenBuffer past
+    // this point is a bug we would rather see as a null deref than as UB.
+    screenBuffer = nullptr;
     return saveStateLoadedOK;
 }
 
@@ -2556,6 +2763,11 @@ bool showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
 //         3 exit to menu
 int showSettingsMenu(bool calledFromGame)
 {
+    // Text-only screen, so 80 columns when the build and board allow it. As a
+    // scope this covers both entry paths: from the menu it is already 80 and the
+    // call is a no-op, and from a running game it switches to 80 here and back
+    // to 40 on the way out, whichever exit the function takes.
+    MenuColsScope colsScope(80);
     bool settingsChanged = false;
     int rval = 0;
     int margintop = 0;
@@ -2707,14 +2919,14 @@ int showSettingsMenu(bool calledFromGame)
         showhdmilabel();
         // Centered Title
         constexpr int titleLen = 13; // "-- Settings --"
-        int titleCol = (SCREEN_COLS - titleLen) / 2;
+        int titleCol = (MCOLS - titleLen) / 2;
         if (titleCol < 0)
             titleCol = 0;
         putText(titleCol, row++, "-- Settings --", CBLACK, CWHITE);
         // Blank spacer line
         putText(0, row++, "", CBLACK, CWHITE);
         // Up-scroll indicator (centered): shown when there are options above the window
-        putText(SCREEN_COLS / 2, upIndicatorRow,
+        putText(MCOLS / 2, upIndicatorRow,
                 (firstVisibleOption > 0) ? "^" : " ", CBLACK, CWHITE);
         // Render the visible option window (up to optionWindowSize entries)
         row = rowStartOptions;
@@ -3035,7 +3247,7 @@ int showSettingsMenu(bool calledFromGame)
             putText(0, row++, line, CBLACK, CWHITE);
         }
         // Down-scroll indicator (centered): shown when there are options below the window
-        putText(SCREEN_COLS / 2, downIndicatorRow,
+        putText(MCOLS / 2, downIndicatorRow,
                 (firstVisibleOption + optionWindowSize < visibleCount) ? "v" : " ", CBLACK, CWHITE);
         // Render SAVE / CANCEL / DEFAULT at a fixed row, with per-word highlighting
         row = actionRowScreen;
@@ -3045,7 +3257,7 @@ int showSettingsMenu(bool calledFromGame)
             int lens[3]            = { (int)strlen(labels[0]), (int)strlen(labels[1]), (int)strlen(labels[2]) };
             const int gap          = 2; // spaces between words
             int totalLen           = lens[0] + gap + lens[1] + gap + lens[2];
-            int startCol           = (SCREEN_COLS - totalLen) / 2;
+            int startCol           = (MCOLS - totalLen) / 2;
             if (startCol < 0) startCol = 0;
             int col3 = startCol;
             for (int ai = 0; ai < 3; ++ai)
@@ -3062,7 +3274,7 @@ int showSettingsMenu(bool calledFromGame)
         int blocksPerRow = 16;
         int blockRows = paletteRowCount;
         int gridWidth = blocksPerRow; // one char per block
-        int gridStartCol = (SCREEN_COLS - gridWidth) / 2;
+        int gridStartCol = (MCOLS - gridWidth) / 2;
         if (gridStartCol < 0)
             gridStartCol = 0;
         for (int pr = 0; pr < blockRows; ++pr)
@@ -3120,7 +3332,7 @@ int showSettingsMenu(bool calledFromGame)
         int helpCount = 2;
         row = SCREEN_ROWS - helpCount - 1; // leave one blank row at bottom
         int hlen = (int)strlen(line);
-        int col = (SCREEN_COLS - hlen) / 2;
+        int col = (MCOLS - hlen) / 2;
         if (col < 0)
             col = 0;
         putText(col, row++, line, CBLACK, CWHITE);
@@ -3140,18 +3352,18 @@ int showSettingsMenu(bool calledFromGame)
         }
         else
         {
-            putText(0, helpRowScreen, "                                        ", CBLACK, CWHITE);
+            fillRect(0, helpRowScreen, MCOLS, 1, CWHITE);
         }
 
         hlen = (int)strlen(line);
-        col = (SCREEN_COLS - hlen) / 2;
+        col = (MCOLS - hlen) / 2;
         if (col < 0)
             col = 0;
         putText(col, row++, line, CBLACK, CWHITE);
         snprintf(line, sizeof(line),
                  "Press %s to go back.", buttonLabel2);
         hlen = (int)strlen(line);
-        col = (SCREEN_COLS - hlen) / 2;
+        col = (MCOLS - hlen) / 2;
         if (col < 0)
             col = 0;
         putText(col, row++, line, CBLACK, CWHITE);
@@ -3739,6 +3951,11 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
 
     printf("Allocating %d bytes for screenbuffer\n", screenbufferSize);
     screenBuffer = (charCell *)Frens::f_malloc(screenbufferSize); // (charCell *)InfoNes_GetRAM(&ramsize);
+    // The rom list, the settings menu and the splash are all text-only, so run
+    // the menu at 80 columns where supported. The image screens narrow back to
+    // 40 for their own duration via MenuColsScope, and the matching switch back
+    // to 40 for the game happens just before screenBuffer is released below.
+    menuSetColumns(80);
     size_t directoryContentsBufferSize = 32768;
     // void *buffer = (void *)Frens::f_malloc(directoryContentsBufferSize); // InfoNes_GetChrBuf(&chr_size);
     Frens::RomLister romlister(directoryContentsBufferSize, allowedExtensions);
@@ -3911,7 +4128,7 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
             // reset horizontal scroll of highlighted row
             settings.horzontalScrollIndex = 0;
             putText(3, settings.selectedRow, selectedRomOrFolder, settings.fgcolor, settings.bgcolor);
-            putText(SCREEN_COLS - 1, settings.selectedRow, " ", settings.bgcolor, settings.bgcolor);
+            putText(MCOLS - 1, settings.selectedRow, " ", settings.bgcolor, settings.bgcolor);
             // if ((PAD1_Latch & Y) == Y)
             // {
             //     fgcolor++;
@@ -4312,7 +4529,7 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
                     settings.horzontalScrollIndex = 0;
                 }
                 putText(3, settings.selectedRow, selectedRomOrFolder + settings.horzontalScrollIndex, settings.fgcolor, settings.bgcolor);
-                putText(SCREEN_COLS - 1, settings.selectedRow, " ", settings.bgcolor, settings.bgcolor);
+                putText(MCOLS - 1, settings.selectedRow, " ", settings.bgcolor, settings.bgcolor);
             }
         }
         if (totalFrames == -1)
@@ -4337,7 +4554,11 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
     ClearScreen(CBLACK); // Removes artifacts from previous screen
                          // Wait until user has released all buttons
     waitForNoButtonPress();
+    // Hand the framebuffer back to the emulator in its normal 320-wide 16bpp
+    // interpretation before releasing the grid this mode rasterizes from.
+    menuSetColumns(40);
     Frens::f_free(screenBuffer);
+    screenBuffer = nullptr;
     // Frens::f_free(buffer);
 
     FrensSettings::savesettings();

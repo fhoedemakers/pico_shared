@@ -7,6 +7,21 @@
 #define HSTX 0
 #endif
 #define FRAMEBUFFERISPOSSIBLE ( !HSTX && PICO_RP2350 )
+// 80-column menu text needs a 640-pixel-wide source row. Only the HSTX path can
+// produce one: its command list and DMA already carry 640 distinct TMDS pixels
+// and the 320->640 doubling is just a software loop in the scanline IRQ, so the
+// existing framebuffer can be reinterpreted as 640x240 8bpp palette indices at
+// no extra memory cost. Every PicoDVI encoder consumes w/2 input pixels and
+// would need a new 1:1 encoder plus a generated LUT phase, so RP2040 and
+// PicoDVI boards stay at 40 columns.
+#if PICO_RP2350 && HSTX && USE80COLS
+#define MENU80COLS 1
+#else
+#define MENU80COLS 0
+#if USE80COLS
+#warning "USE80COLS ignored: 80-column menu text requires an RP2350 HSTX build. Falling back to 40 columns."
+#endif
+#endif
 #include <string>
 #include <algorithm>
 #include <memory>

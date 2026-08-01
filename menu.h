@@ -2,6 +2,12 @@
 #define ROMSELECT
 #include <stdint.h>
 #include <stddef.h>
+// Pulled in here rather than left to the caller for MENU80COLS: splash.cpp
+// includes menu.h *before* FrensHelpers.h, and a missing MENU80COLS would give
+// that translation unit a different SCREEN_COLS than menu.cpp — i.e. a
+// different grid stride for the same screenBuffer. FrensHelpers.h is guarded,
+// so this is free everywhere it is already included first.
+#include "FrensHelpers.h"
 #define SWVERSION "VX.X"
 
 #if PICO_RP2350
@@ -14,14 +20,39 @@
 #define PICOHWNAME_ "rp2040"
 #endif
 
+// Character-grid row stride, and the widest this build can ever display.
+// Compile-time on purpose: screenBuffer's stride has to be constant so that
+// every `row * SCREEN_COLS + col` index stays correct no matter how many
+// columns are currently visible. The *visible* count is menuVisibleCols below.
+#if MENU80COLS
+#define SCREEN_COLS 80
+#else
 #define SCREEN_COLS 40
+#endif
+// Rows are unchanged at 80 columns: vertical line-doubling is still in play, so
+// an 8x8 source cell scans out as 8x16 physical pixels — exactly the classic
+// VGA 80x30 text cell. Every row constant below therefore holds for both widths.
 #define SCREEN_ROWS 30
 
 #define STARTROW 3
 #define ENDROW (SCREEN_ROWS - 5)
 #define PAGESIZE (ENDROW - STARTROW + 1)
 
-#define VISIBLEPATHSIZE (SCREEN_COLS - 3)   
+// Columns currently visible: 40 or 80. Runtime, because the artwork and
+// screensaver screens need the framebuffer back in 16bpp 320-wide mode, and
+// because 80 columns is gated on PSRAM, which is probed at boot.
+extern int menuVisibleCols;
+// Set the visible column count and repaint. Clamps to 40 unless this is an
+// 80-column build on a board that actually has PSRAM.
+void menuSetColumns(int cols);
+// Flip to 0 to allow 80 columns on HSTX boards without PSRAM. On by default
+// because screenBuffer doubles to 7200 bytes, and Frens::f_malloc puts it in
+// PSRAM when present — keeping it off the tight SRAM arena entirely.
+#ifndef MENU80COLS_REQUIRE_PSRAM
+#define MENU80COLS_REQUIRE_PSRAM 1
+#endif
+
+#define VISIBLEPATHSIZE (menuVisibleCols - 3)
 struct charCell
 {
     uint8_t fgcolor;
