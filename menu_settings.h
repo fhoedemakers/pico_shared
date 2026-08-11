@@ -33,6 +33,11 @@ enum MenuSettingsIndex {
     MOPT_FM_AUDIO,
     MOPT_ENTER_BOOTSEL_MODE,
     MOPT_CONTROLLER_TEST,
+    // Keep new options ahead of MOPT_COUNT and append only: every emulator
+    // declares its g_settings_visibility_* array as a positional list sized
+    // [MOPT_COUNT], so a trailing entry they do not initialise is simply zero
+    // (hidden), while inserting in the middle would shift all their values.
+    MOPT_RECENT_GAMES,
     MOPT_COUNT
 };
 // Short description (max 40 chars) for each option. Use designated initializers
@@ -66,6 +71,7 @@ const char* const g_settings_descriptions[MOPT_COUNT] = {
     [MOPT_FM_AUDIO]                  = "YM2413 FM sound (SMS, RP2350 only)",
     [MOPT_ENTER_BOOTSEL_MODE]        = "Reboot to BOOTSEL mode for flashing",
     [MOPT_CONTROLLER_TEST]           = "Test buttons on connected controllers",
+    [MOPT_RECENT_GAMES]              = "Restart a recently played game",
 };
 
 extern const int8_t *g_settings_visibility; // Visibility configuration for options menu

@@ -93,6 +93,15 @@ enum class ScanlineType : uint8_t
 #ifndef BOOTLOADER_BUILD
 #define BOOTLOADER_BUILD 0
 #endif
+// Testing aid, off by default. On boards without PSRAM the menu normally
+// reboots to start a game, even when the rom is already programmed into flash.
+// With this set to 1 the menu returns to the emulator directly in that case,
+// which makes the crash-fix-retry cycle on a misbehaving game far quicker.
+// It is not the default because the reboot is deliberate: it avoids sound
+// problems and Wii-pad lockups (see the comment at the end of menu()).
+#ifndef START_FLASHED_ROM_WITHOUT_REBOOT
+#define START_FLASHED_ROM_WITHOUT_REBOOT 0
+#endif
 extern uintptr_t ROM_FILE_ADDR ; //0x10090000
 extern int maxRomSize;
 extern char ErrorMessage[];
@@ -130,7 +139,19 @@ namespace Frens
     bool initSDCard();
     bool applyScreenMode(ScreenMode screenMode_);
     bool screenMode(int incr);
-    void flashrom(char *selectedRom);
+    // Flashes the rom named in ROMINFOFILE into the xip flash region, unless
+    // the image already there is that same rom (see recentgames.h). Only called
+    // on boards without PSRAM. The declaration used to be missing swapbytes,
+    // which would not have linked.
+    void flashrom(char *selectedRom, bool swapbytes);
+    // True when the image already programmed into flash is exactly this rom:
+    // checks the record written by the last flash (emulator, load address, byte
+    // swap, path, and the file's size and timestamp on the card), then verifies
+    // with a crc32 over the memory mapped image itself. On success the rom's
+    // crc is restored into the value getCrcOfLoadedRom() reports, so save state
+    // and artwork paths resolve as they would after a real flash, and sizeOut
+    // (when given) receives the rom size. Always false when PSRAM is enabled.
+    bool isRomAlreadyInFlash(const char *fullPath, bool swapbytes, uint32_t *sizeOut = nullptr);
     void __not_in_flash_func(core1_main)();
     // Opt-in line-stream mode for core1 (RP2040 DVI, no framebuffer). When a
     // fill callback is registered, core1 continuously reads a source one line
