@@ -302,7 +302,14 @@ void RomSelect_PadState(DWORD *pdwPad1, bool ignorepushed = false)
             (combinedButtons & io::GamePadState::Button::B ? B : 0) |
             (combinedButtons & io::GamePadState::Button::SELECT ? SELECT : 0) |
             (combinedButtons & io::GamePadState::Button::START ? START : 0) |
-            (combinedButtons & io::GamePadState::Button::X ? X : 0) |
+            // Genesis pads report their C button as Button::C, not Button::X.
+            // Both are "button 3" as far as the menu is concerned (X on SNES,
+            // Y on XInput, Triangle on PlayStation, C on Genesis), so either
+            // one opens the recently played list. On the original 3-button
+            // Genesis Mini pad C doubles as SELECT (hid_app.cpp), and the
+            // browser tests SELECT first, so there it still opens the settings
+            // menu - unchanged, and never both at once.
+            (combinedButtons & (io::GamePadState::Button::X | io::GamePadState::Button::C) ? X : 0) |
             (combinedButtons & io::GamePadState::Button::Y ? Y : 0) |
             0;
 
@@ -2021,6 +2028,7 @@ static bool startRom(char *dir, char *name, char *rompath)
         // available while it reads the rom.
         if (!writeRomInfoFile(dir, name))
         {
+            printf("startRom: writing %s failed\n", ROMINFOFILE);
             errorInSavingRom = true;
         }
 #if START_FLASHED_ROM_WITHOUT_REBOOT
@@ -2821,9 +2829,13 @@ static int showRecentGamesMenu(char *outPath, size_t outPathSize)
             outPath[outPathSize - 1] = 0;
             // Not Frens::fileExists(): that keeps its FILINFO (288 bytes) on
             // the stack, and this runs one or two frames deep inside menu().
+            // When the allocation fails we cannot check, so assume the game is
+            // there and let the launch report any real problem - refusing to
+            // start over a failed malloc would be a lie about the SD card.
             FILINFO *fno = (FILINFO *)Frens::f_malloc(sizeof(FILINFO));
-            bool exists = (fno && f_stat(outPath, fno) == FR_OK);
+            FRESULT statResult = fno ? f_stat(outPath, fno) : FR_OK;
             Frens::f_free(fno);
+            bool exists = (statResult == FR_OK);
             if (!exists)
             {
                 showMessageBox("Game is no longer on the SD card.", CRED,
@@ -3984,7 +3996,13 @@ int showSettingsMenu(bool calledFromGame)
                 exitMenu = true;
             }
         }
-        if (frameCount - startFrames > 3600)
+        // startFrames == -1 means "re-seed on the next pass" - set by the
+        // handlers that open a screen of their own, because the frames spent
+        // in there are not idle time. It must not be treated as a timestamp:
+        // frameCount - (-1) is over 3600 for all but the first minute of
+        // uptime, which silently turned any result those handlers had just
+        // set into rval 2 (screensaver).
+        if (startFrames != -1 && frameCount - startFrames > 3600)
         {
             // if no input for 3600 frames, start screensaver
             rval = 2;
@@ -4655,14 +4673,21 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
 
     // A game picked from the recently played list is started here, outside the
     // browser loop, so it takes exactly the same path as a normal launch.
-    if (startRecent && recentLaunchPath && recentLaunchPath[0])
+    if (startRecent)
     {
+        printf("Recent: launching '%s'\n", recentLaunchPath ? recentLaunchPath : "(null)");
         showLoadingScreen();
-        char *slash = strrchr(recentLaunchPath, '/');
+        char *slash = recentLaunchPath ? strrchr(recentLaunchPath, '/') : nullptr;
         if (slash)
         {
             *slash = 0; // split "<dir>/<name>" in place; dir is "" in the root
-            startRom(recentLaunchPath, slash + 1, rompath);
+            bool ok = startRom(recentLaunchPath, slash + 1, rompath);
+            printf("Recent: startRom(dir='%s', name='%s') -> %d, rompath='%s'\n",
+                   recentLaunchPath, slash + 1, ok, rompath);
+        }
+        else
+        {
+            printf("Recent: no directory separator in path, cannot start\n");
         }
     }
 
@@ -4700,7 +4725,7 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
         // Don't return from this function call, but reboot in order to get avoid several problems with sound and lockups (WII-pad)
         // After reboot the emulator will flash the rom and start the selected game.
         Frens::resetWifi();
-        printf("Rebooting...\n");
+        printf("Rebooting to start %s\n", rompath[0] ? rompath : "(rom named in " ROMINFOFILE ")");
         watchdog_enable(1, 1);
         while (1)
         {
