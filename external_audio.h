@@ -35,6 +35,9 @@
 #define EXT_AUDIO_MUTE_INTERNAL_SPEAKER(mute) audio_i2s_muteInternalSpeaker(mute)
 #define EXT_AUDIO_SETVOLUME(level) audio_i2s_setVolume(level) 
 #define EXT_AUDIO_POLL_HEADPHONE() audio_i2s_poll_headphone_status()
+// Free space in the output ring, in stereo frames. Lets a caller close the loop
+// on its own production rate instead of assuming an exact frames-per-second.
+#define EXT_AUDIO_GET_FREE() audio_i2s_get_freebuffer_size()
 #endif
 
 // SPI audio is not supported in the current version of the code, but we keep the definition for future use.
@@ -48,6 +51,7 @@ extern audio_spi_hw_t *spi_audio_hw;
 #define EXT_AUDIO_MUTE_INTERNAL_SPEAKER(mute) (0)
 #define EXT_AUDIO_SETVOLUME(level) (0)
 #define EXT_AUDIO_POLL_HEADPHONE() (0)
+#define EXT_AUDIO_GET_FREE() (0)
 #endif
 // If neither I2S nor SPI audio is enabled, define the functions as no-ops
 #if !EXT_AUDIO_IS_ENABLED
@@ -62,5 +66,6 @@ extern audio_spi_hw_t *spi_audio_hw;
 #define EXT_AUDIO_MUTE_INTERNAL_SPEAKER(mute) (0)
 #define EXT_AUDIO_SETVOLUME(level) (0)
 #define EXT_AUDIO_POLL_HEADPHONE() (0)
+#define EXT_AUDIO_GET_FREE() (0)
 #endif
 #endif // __EXTERNAL_AUDIO_H__
