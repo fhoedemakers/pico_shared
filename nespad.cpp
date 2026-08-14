@@ -1,4 +1,5 @@
 #include "hardware/pio.h"
+#include "nespad.h"
 
 #define nespad_wrap_target 0
 
@@ -73,6 +74,8 @@ uint8_t nespad_states[2] = {0, 0};
 // A plain NES controller only populates bits 0-7 (A,B,Select,Start,dpad) —
 // for those pads this is identical to nespad_states[].
 uint16_t nespad_states_ext[2] = {0, 0};
+uint16_t nespad_raw_ext[2] = {0, 0};
+uint8_t nespad_padtype[2] = {NESPAD_TYPE_UNKNOWN, NESPAD_TYPE_UNKNOWN};
 uint8_t nespad_state = 0;
 bool nespad_begin(uint8_t padnum, uint32_t cpu_khz, uint8_t clkPin, uint8_t dataPin,
                   uint8_t latPin, PIO _pio)
@@ -147,12 +150,26 @@ static uint16_t nespad_decode(int padnum)
   // Right-shift was used in sm config so bit order matches NES controller
   // bits used elsewhere in picones, but does require shifting down...
   uint32_t raw = (pio_sm_get_blocking(pio[padnum], sm[padnum]) >> 16) ^ 0xFFFF;
+  nespad_raw_ext[padnum] = (uint16_t)raw;
   // NES controller: the 4021's serial input is grounded, so clocks 9-16
   // read low on the wire = 1 after inversion. A SNES controller drives the
   // 4 ID bits (13-16) high = 0 after inversion, so they can never all be
   // set. Disconnected port reads high via pull-up = all zeros.
   if ((raw & 0xF000) == 0xF000)
+  {
+    nespad_padtype[padnum] = NESPAD_TYPE_NES;
     raw &= 0x00FF; // NES pad: keep the 8 real buttons
+  }
+  else if (raw & 0x0F00)
+  {
+    // A, X, L or R is down, and only a SNES pad has those. Sticky: an idle
+    // SNES pad is indistinguishable from an empty port on the wire.
+    nespad_padtype[padnum] = NESPAD_TYPE_SNES;
+  }
+  else if (nespad_padtype[padnum] == NESPAD_TYPE_NES)
+  {
+    nespad_padtype[padnum] = NESPAD_TYPE_UNKNOWN; // ID nibble gone: no longer a NES pad
+  }
   return (uint16_t)(raw & 0x0FFF); // SNES pad: strip the ID bits
 }
 

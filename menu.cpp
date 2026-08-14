@@ -141,6 +141,31 @@ static constexpr int B = 1 << 1;
 static constexpr int X = 1 << 8;
 static constexpr int Y = 1 << 9;
 
+// Menu bits for one GPIO port. A NES pad shifts out its buttons in menu order
+// already (bit0=A, bit1=B, bit2=Select, ...), so that word is used as-is, the
+// way this port has always worked. A SNES pad puts B and Y where a NES pad has
+// A and B, and its A and X two bytes further up, so its four face buttons are
+// named rather than taken positionally: A chooses and B goes back, matching USB
+// and Wii Classic pads instead of moving "choose" onto B.
+//
+// Only a SNES pad ever drives bits 8-11, so a pad that has not proven itself one
+// keeps the NES order - correct for a NES pad (which announces itself every
+// frame through its ID nibble) and for a SNES->NES adapter cable, which reports
+// NES buttons in NES order. A real SNES pad settles it on the first A press.
+static inline int nespadMenuBits(uint16_t ext, uint8_t type)
+{
+    if (type != NESPAD_TYPE_SNES)
+    {
+        return (int)(ext & 0xFF);
+    }
+    int v = ext & (SELECT | START | UP | DOWN | LEFT | RIGHT); // same bits on both pads
+    if (ext & (1u << 8)) v |= A;
+    if (ext & (1u << 0)) v |= B;
+    if (ext & (1u << 9)) v |= X; // "button 3": opens the recently played list
+    if (ext & (1u << 1)) v |= Y;
+    return v;
+}
+
 void resetColors(int prevfgColor, int prevbgColor)
 {
     for (auto i = 0; i < SCREENBUFCELLS; i++)
@@ -314,10 +339,10 @@ void RomSelect_PadState(DWORD *pdwPad1, bool ignorepushed = false)
             0;
 
 #if NES_PIN_CLK != -1
-    v |= nespad_states[0];
+    v |= nespadMenuBits(nespad_states_ext[0], nespad_padtype[0]);
 #endif
 #if NES_PIN_CLK_1 != -1
-    v |= nespad_states[1];
+    v |= nespadMenuBits(nespad_states_ext[1], nespad_padtype[1]);
 #endif
 #if WII_PIN_SDA >= 0 and WII_PIN_SCL >= 0
     v |= wiipad_read();
@@ -1083,6 +1108,14 @@ static bool showOverclockWarning(uint32_t targetMHz, vreg_voltage targetVoltage)
 // tester is mashing buttons. Canonical button order is the SNES serial layout
 // of nespad_states_ext[]:
 // bit0=B 1=Y 2=Select 3=Start 4=Up 5=Down 6=Left 7=Right 8=A 9=X 10=L 11=R
+// A NES pad - including a SNES->NES adapter, which emulates one - shifts out
+// the same first 8 bits with different meanings: bit0=A, bit1=B, and it has no
+// A/X/L/R at all. So the two low buttons are named from nespad_padtype[]. Only
+// a SNES pad can prove itself (by A/X/L/R appearing on the wire); a NES pad
+// proves itself through the ID nibble, but an 8-bit adapter that idles the data
+// line high looks like an idle SNES pad, so an unproven port is named as a NES
+// pad - the common case on this port - while A/X/L/R stay on screen so pressing
+// one switches to SNES names.
 
 enum CtSource
 {
@@ -1165,19 +1198,68 @@ static const char *ctUsbStatus(int idx)
 
 struct CtButton
 {
-    const char *label;
+    const char *label;    // SNES name (canonical order)
+    const char *nesLabel; // name on a NES pad; nullptr = the pad lacks this button
     uint8_t col;
     uint8_t row;
     uint16_t mask;
 };
 static const CtButton ctButtons[12] = {
-    {"[ L ]", 3, 4, 1u << 10}, {"[ R ]", 32, 4, 1u << 11},
-    {"( ^ )", 5, 6, 1u << 4},  {"( X )", 29, 6, 1u << 9},
-    {"( < )", 2, 7, 1u << 6},  {"( > )", 8, 7, 1u << 7},
-    {"[SEL]", 14, 7, 1u << 2}, {"[STA]", 20, 7, 1u << 3},
-    {"( Y )", 26, 7, 1u << 1}, {"( A )", 32, 7, 1u << 8},
-    {"( v )", 5, 8, 1u << 5},  {"( B )", 29, 8, 1u << 0},
+    {"[ L ]", nullptr, 3, 4, 1u << 10}, {"[ R ]", nullptr, 32, 4, 1u << 11},
+    {"( ^ )", "( ^ )", 5, 6, 1u << 4},  {"( X )", nullptr, 29, 6, 1u << 9},
+    {"( < )", "( < )", 2, 7, 1u << 6},  {"( > )", "( > )", 8, 7, 1u << 7},
+    {"[SEL]", "[SEL]", 14, 7, 1u << 2}, {"[STA]", "[STA]", 20, 7, 1u << 3},
+    {"( Y )", "( B )", 26, 7, 1u << 1}, {"( A )", nullptr, 32, 7, 1u << 8},
+    {"( v )", "( v )", 5, 8, 1u << 5},  {"( B )", "( A )", 29, 8, 1u << 0},
 };
+
+// Name to print in a button cell. nullptr = the pad does not have that button.
+static const char *ctLabel(const CtButton &b, uint8_t type)
+{
+    if (type == NESPAD_TYPE_SNES)
+    {
+        return b.label;
+    }
+    if (type == NESPAD_TYPE_NES)
+    {
+        return b.nesLabel; // nullptr for A/X/L/R: a NES pad has none of them
+    }
+    // Not proven either way: NES names for the two shared buttons, but keep
+    // A/X/L/R on screen so pressing one identifies a SNES pad.
+    return b.nesLabel ? b.nesLabel : b.label;
+}
+// USB and Wii states are converted to canonical (SNES) order before they get
+// here, so only the two GPIO ports can be talking to something else.
+static uint8_t ctSourceType(int src)
+{
+    switch (src)
+    {
+#if NES_PIN_CLK != -1
+    case CT_SRC_GPIO1:
+        return nespad_padtype[0];
+#endif
+#if NES_PIN_CLK_1 != -1
+    case CT_SRC_GPIO2:
+        return nespad_padtype[1];
+#endif
+    default:
+        return NESPAD_TYPE_SNES;
+    }
+}
+
+static const char *ctPadTypeName(uint8_t type)
+{
+    switch (type)
+    {
+    case NESPAD_TYPE_NES:
+        return "NES pad, 8 buttons";
+    case NESPAD_TYPE_SNES:
+        return "SNES pad, 12 buttons";
+    default:
+        return "NES or SNES pad";
+    }
+}
+
 static const char *const ctPadTop = ".------------------------------------.";
 static const char *const ctPadMid = "|                                    |";
 static const char *const ctPadBot = "'------------------------------------'";
@@ -1229,6 +1311,8 @@ static void showControllerTestScreen()
             holdFrames = 0;
         }
 
+        uint8_t padType = (active >= 0) ? ctSourceType(active) : NESPAD_TYPE_UNKNOWN;
+
         ClearScreen(settings.bgcolor);
         const char *title = "-- Controller Test --";
         putText(centerColClamped(strlen(title)), 0, title, settings.fgcolor, settings.bgcolor);
@@ -1243,7 +1327,7 @@ static void showControllerTestScreen()
             {
             case CT_SRC_GPIO1:
             case CT_SRC_GPIO2:
-                snprintf(line, sizeof(line), "Testing: %s (SNES/NES pad)", ctSrcNames[active]);
+                snprintf(line, sizeof(line), "Testing: %s (%s)", ctSrcNames[active], ctPadTypeName(padType));
                 break;
             case CT_SRC_USB1:
             case CT_SRC_USB2:
@@ -1265,8 +1349,21 @@ static void showControllerTestScreen()
         uint16_t shown = (active >= 0) ? cur[active] : 0;
         for (const auto &b : ctButtons)
         {
+            const char *label = ctLabel(b, padType);
+            if (label == nullptr)
+            {
+                putText(b.col, b.row, "  -  ", settings.fgcolor, settings.bgcolor); // not on a NES pad
+                continue;
+            }
             bool on = (shown & b.mask) != 0;
-            putText(b.col, b.row, b.label, on ? CWHITE : settings.fgcolor, on ? CGREEN : settings.bgcolor);
+            putText(b.col, b.row, label, on ? CWHITE : settings.fgcolor, on ? CGREEN : settings.bgcolor);
+        }
+        if (padType == NESPAD_TYPE_UNKNOWN && (active == CT_SRC_GPIO1 || active == CT_SRC_GPIO2))
+        {
+            // Names shown are the NES ones; a SNES pad renames B/Y and lights
+            // A/X/L/R as soon as one of those four is pressed.
+            const char *note = "Press A,X,L,R to detect a SNES pad";
+            putText(centerColClamped(strlen(note)), 10, note, settings.fgcolor, settings.bgcolor);
         }
 
         putText(1, 11, "Sources:", settings.fgcolor, settings.bgcolor);
@@ -1282,6 +1379,16 @@ static void showControllerTestScreen()
 #if WII_PIN_SDA >= 0 and WII_PIN_SCL >= 0
         ctDrawSourceRow(row++, CT_SRC_WII, active, wiipad_is_connected() ? "connected" : "not detected");
 #endif
+
+        if (active == CT_SRC_GPIO1 || active == CT_SRC_GPIO2)
+        {
+            // The 16 bits as they came off the data line: what the pad sent us,
+            // before any interpretation. Tells a NES pad (top digit F) from a
+            // SNES pad, and shows whether a button reaches us at all.
+            snprintf(line, sizeof(line), "Sent by pad: %04X hex (1 = pressed)",
+                     nespad_raw_ext[active - CT_SRC_GPIO1]);
+            putText(1, 18, line, settings.fgcolor, settings.bgcolor);
+        }
 
         const char *hint = "Hold SELECT+START 2 sec to exit";
         putText(centerColClamped(strlen(hint)), 26, hint, settings.fgcolor, settings.bgcolor);
