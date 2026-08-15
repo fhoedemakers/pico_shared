@@ -124,6 +124,12 @@ namespace FrensSettings
         settings.flags.audioEnabled = 1; // audio on by default
         settings.flags.displayFrameRate = 0; // default: do not show FPS overlay
         settings.flags.frameSkip = 1; // default: frame skipping enabled (Genesis needs it)
+        // Legacy standalone scanline toggle, superseded by screenMode: every port
+        // hides MOPT_SCANLINES, so nothing writes this bit any more. Reset it
+        // anyway - leaving it out made "Reset to defaults" carry a stale value
+        // over from the loaded settings file instead of restoring the off state
+        // a fresh (zero-initialised) settings struct starts in.
+        settings.flags.scanlineOn = 0; // default: scanlines off (screenMode owns this now)
         //settings.flags.fruitJamEnableInternalSpeaker = 1; // default: enable Fruit Jam internal speaker
         settings.flags.rapidFireOnA = 0; // default: rapid fire off
         settings.flags.rapidFireOnB = 0; // default: rapid fire off
