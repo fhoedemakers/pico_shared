@@ -25,6 +25,7 @@
 #include "wiipad.h"
 #include "i2c_bus_recovery.h"
 #include "settings.h"
+#include "recentgames.h"
 #include "menu_settings.h" // for g_available_screen_modes visibility
 
 #include "PicoPlusPsram.h"
@@ -1073,7 +1074,12 @@ uint __not_in_flash_func(storage_get_flash_capacity)()
                 {
                     printf("Rom is byte swapped: Swapping bytes of rom in PSRAM\n");
                     // swap bytes in pMem
-                    for (size_t i = 0; i < filesize; i += 2)
+                    // A trailing odd byte has no partner: swapping it would read
+                    // and write p[filesize], one byte past the allocation, which
+                    // lands on the next lwmem block header. Cart images are
+                    // always word-sized, so leave a stray byte untouched (the
+                    // emulator rejects such files anyway).
+                    for (size_t i = 0; i + 1 < filesize; i += 2)
                     {
                         unsigned char *p = (unsigned char *)pMem;
                         unsigned char temp = p[i];
@@ -1108,6 +1114,54 @@ uint __not_in_flash_func(storage_get_flash_capacity)()
         return nullptr;
 #endif
     }
+    bool isRomAlreadyInFlash(const char *fullPath, bool swapbytes, uint32_t *sizeOut)
+    {
+        if (isPsramEnabled() || !fullPath || fullPath[0] == 0)
+        {
+            return false;
+        }
+        Recent::FlashedRomRecord *rec =
+            (Recent::FlashedRomRecord *)f_malloc(sizeof(Recent::FlashedRomRecord));
+        if (!rec)
+        {
+            return false;
+        }
+        bool ok = false;
+        if (Recent::readFlashedRomRecord(rec) &&
+            Recent::flashedRomMatches(rec, fullPath, swapbytes))
+        {
+            printf("Flash already holds %s (%u bytes), verifying image...\n",
+                   fullPath, (unsigned)rec->size);
+            // The cheap fields cannot catch the case that matters: under the
+            // emuLoader bootloader another emulator's binary shifts
+            // ROM_FILE_ADDR and may have overwritten this region while the
+            // record still describes it perfectly. Only reading the bytes back
+            // settles it, and at ~30 ms per 512 KB that is far cheaper than the
+            // erase and program it avoids.
+            uint32_t live = update_crc32(0, (const uint8_t *)rec->romFileAddr, rec->size);
+            if (live == rec->crcFlashImage)
+            {
+                // Restore the crc of the rom as read from the card. Without it
+                // every save state and artwork path would key off 00000000 and
+                // the user would lose sight of their saves for this game.
+                crcOfRom = rec->crcPreSwap;
+                if (sizeOut)
+                {
+                    *sizeOut = rec->size;
+                }
+                printf("Flash image verified (crc %08X).\n", (unsigned)live);
+                ok = true;
+            }
+            else
+            {
+                printf("Flash image crc mismatch (live %08X, recorded %08X).\n",
+                       (unsigned)live, (unsigned)rec->crcFlashImage);
+            }
+        }
+        f_free(rec);
+        return ok;
+    }
+
     void flashrom(char *selectedRom, bool swapbytes)
     {
         // Determine loaded rom
@@ -1150,11 +1204,29 @@ uint __not_in_flash_func(storage_get_flash_capacity)()
         if (selectedRom[0] != 0)
         {
             printf("Starting (%d) %s\n", strlen(selectedRom), selectedRom);
-            printf("Checking for /START file. (Is start pressed in Menu?)\n");
-            fr = f_unlink("/START");
-            if (fr == FR_NO_FILE)
+            int crcOffsetUsed = FrensSettings::getEmulatorType() == FrensSettings::emulators::NES ? 16 : 0;
+            crcOfRom = 0;
+
+            // Is the image already in flash the one being asked for? Same check
+            // the menu uses for START_FLASHED_ROM_WITHOUT_REBOOT, and it
+            // restores crcOfRom on success.
+            uint32_t flashedSize = 0;
+            if (isRomAlreadyInFlash(selectedRom, swapbytes, &flashedSize))
             {
-                printf("Start not pressed, flashing rom.\n");
+                printf("Not reflashing.\n");
+                Recent::add(selectedRom, FrensSettings::getEmulatorTypeString(),
+                            crcOfRom, flashedSize);
+                return;
+            }
+
+            Recent::FlashedRomRecord *rec =
+                (Recent::FlashedRomRecord *)f_malloc(sizeof(Recent::FlashedRomRecord));
+            {
+                printf("Flashing rom.\n");
+                // Drop the record before the first erase, so a record that
+                // survives always describes complete flash content - a power
+                // cut halfway through can never leave one that lies.
+                Recent::invalidateFlashedRomRecord();
 #if PICO_RP2040
                 size_t bufsize = 64 * 1024;
 #else
@@ -1169,8 +1241,9 @@ uint __not_in_flash_func(storage_get_flash_capacity)()
 #endif
                 fr = f_open(&fil, selectedRom, FA_READ);
                 bool onOff = true;
+                bool flashOK = false;
                 UINT bytesRead;
-                int crcOffset = FrensSettings::getEmulatorType() == FrensSettings::emulators::NES ? 16 : 0;
+                int crcOffset = crcOffsetUsed;
                 if (fr == FR_OK)
                 {
                     FSIZE_t filesize = f_size(&fil);
@@ -1193,7 +1266,10 @@ uint __not_in_flash_func(storage_get_flash_capacity)()
                                 crcOffset = 0; // only offset for first block
                                 if (swapbytes)
                                 {
-                                    for (int i = 0; i < bytesRead; i += 2)
+                                    // Stop before a trailing odd byte: it has no
+                                    // partner, and buffer[bytesRead] still holds
+                                    // stale data from the previous block.
+                                    for (UINT i = 0; i + 1 < bytesRead; i += 2)
                                     {
                                         const unsigned char temp = buffer[i];
                                         buffer[i] = buffer[i + 1];
@@ -1233,6 +1309,10 @@ uint __not_in_flash_func(storage_get_flash_capacity)()
                                 printf("%s\n", ErrorMessage);
                                 selectedRom[0] = 0;
                             }
+                            else
+                            {
+                                flashOK = true;
+                            }
                         }
                     }
                     else
@@ -1249,22 +1329,40 @@ uint __not_in_flash_func(storage_get_flash_capacity)()
                     printf("%s\n", ErrorMessage);
                     selectedRom[0] = 0;
                 }
+                // Release the 128 KB block buffer before allocating the much
+                // smaller recent-list structures, so the two never overlap.
                 f_free(buffer);
                 printf("Flashing done\n");
-            }
-            else
-            {
-                if (fr != FR_OK)
+
+                if (flashOK && rec)
                 {
-                    snprintf(ErrorMessage, 40, "Cannot delete /START file %d", fr);
-                    printf("%s\n", ErrorMessage);
-                    selectedRom[0] = 0;
-                }
-                else
-                {
-                    printf("Start pressed in menu, not flashing rom.\n");
+                    // Describe what is now in flash, so the next launch of this
+                    // same game can skip everything above.
+                    FILINFO *fno = (FILINFO *)f_malloc(sizeof(FILINFO));
+                    memset(rec, 0, sizeof(Recent::FlashedRomRecord));
+                    rec->romFileAddr = (uint32_t)ROM_FILE_ADDR;
+                    rec->size = totalBytes;
+                    rec->crcPreSwap = crcOfRom;
+                    // Covers exactly the rom bytes: the loop programs a full
+                    // block even for the last partial one, so anything past
+                    // size is stale buffer content.
+                    rec->crcFlashImage = update_crc32(0, (const uint8_t *)ROM_FILE_ADDR, totalBytes);
+                    if (fno && f_stat(selectedRom, fno) == FR_OK)
+                    {
+                        rec->fdate = fno->fdate;
+                        rec->ftime = fno->ftime;
+                    }
+                    f_free(fno);
+                    rec->byteSwapped = swapbytes ? 1 : 0;
+                    rec->crcOffset = (uint8_t)crcOffsetUsed;
+                    strncpy(rec->emu, FrensSettings::getEmulatorTypeString(true), sizeof(rec->emu) - 1);
+                    strncpy(rec->path, selectedRom, sizeof(rec->path) - 1);
+                    Recent::writeFlashedRomRecord(rec);
+                    Recent::add(selectedRom, FrensSettings::getEmulatorTypeString(),
+                                crcOfRom, totalBytes);
                 }
             }
+            f_free(rec);
         }
     }
 #if !HSTX

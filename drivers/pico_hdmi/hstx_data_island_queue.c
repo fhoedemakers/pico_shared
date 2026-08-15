@@ -131,3 +131,21 @@ uint32_t hstx_di_queue_get_underrun_count(void)
 {
     return di_underrun_count;
 }
+
+// Underruns since the previous call, for callers sampling on an interval.
+//
+// The cumulative count above is a poor health signal on its own: it is never
+// reset, and it counts the whole time before a producer starts feeding the
+// queue -- boot and rom-browsing alone contribute 11025 per second, so a
+// perfectly healthy stream can show hundreds of thousands. What matters is
+// whether it is still rising. Sampled once a second by the HSTX_DEBUG dump,
+// this reads directly as underruns per second, and unsigned arithmetic makes
+// the subtraction correct across the 32-bit wrap.
+uint32_t hstx_di_queue_get_underrun_delta(void)
+{
+    static uint32_t last = 0;
+    uint32_t now = di_underrun_count;
+    uint32_t delta = now - last;
+    last = now;
+    return delta;
+}

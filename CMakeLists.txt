@@ -4,6 +4,7 @@ set(LWMEM_OPTS_FILE ${CMAKE_CURRENT_LIST_DIR}/lwmem_opts_ppp.h)
 add_library( pico_shared INTERFACE)
 target_sources(pico_shared INTERFACE
 menu.cpp
+recentgames.cpp
 RomLister.cpp
 settings.cpp
 FrensHelpers.cpp

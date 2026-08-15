@@ -13,6 +13,7 @@
 #include "FrensFonts.h"
 #include "gamepad.h"
 #include "RomLister.h"
+#include "recentgames.h"
 #include "menu.h"
 #include "nespad.h"
 #include "wiipad.h"
@@ -93,6 +94,14 @@ charCell *screenBuffer;
 static char *selectedRomOrFolder;
 static bool errorInSavingRom = false;
 static char *globalErrorMessage;
+// Path picked in the recently played list, owned by menu() (heap, not stack -
+// this is FF_MAX_LFN + 1 bytes). Shared with showSettingsMenu, which can open
+// the same list. nullptr disables the feature rather than crashing.
+static char *recentLaunchPath = nullptr;
+// Set by startRom when the rom is already in flash and verified, so menu() can
+// return to the emulator instead of rebooting. Only ever true when
+// START_FLASHED_ROM_WITHOUT_REBOOT is enabled.
+static bool skipRebootAfterMenu = false;
 
 // static bool artworkEnabled = false;
 static uint8_t crcOffset = 0; // Default offset for CRC calculation
@@ -131,6 +140,31 @@ static constexpr int A = 1 << 0;
 static constexpr int B = 1 << 1;
 static constexpr int X = 1 << 8;
 static constexpr int Y = 1 << 9;
+
+// Menu bits for one GPIO port. A NES pad shifts out its buttons in menu order
+// already (bit0=A, bit1=B, bit2=Select, ...), so that word is used as-is, the
+// way this port has always worked. A SNES pad puts B and Y where a NES pad has
+// A and B, and its A and X two bytes further up, so its four face buttons are
+// named rather than taken positionally: A chooses and B goes back, matching USB
+// and Wii Classic pads instead of moving "choose" onto B.
+//
+// Only a SNES pad ever drives bits 8-11, so a pad that has not proven itself one
+// keeps the NES order - correct for a NES pad (which announces itself every
+// frame through its ID nibble) and for a SNES->NES adapter cable, which reports
+// NES buttons in NES order. A real SNES pad settles it on the first A press.
+static inline int nespadMenuBits(uint16_t ext, uint8_t type)
+{
+    if (type != NESPAD_TYPE_SNES)
+    {
+        return (int)(ext & 0xFF);
+    }
+    int v = ext & (SELECT | START | UP | DOWN | LEFT | RIGHT); // same bits on both pads
+    if (ext & (1u << 8)) v |= A;
+    if (ext & (1u << 0)) v |= B;
+    if (ext & (1u << 9)) v |= X; // "button 3": opens the recently played list
+    if (ext & (1u << 1)) v |= Y;
+    return v;
+}
 
 void resetColors(int prevfgColor, int prevbgColor)
 {
@@ -293,15 +327,22 @@ void RomSelect_PadState(DWORD *pdwPad1, bool ignorepushed = false)
             (combinedButtons & io::GamePadState::Button::B ? B : 0) |
             (combinedButtons & io::GamePadState::Button::SELECT ? SELECT : 0) |
             (combinedButtons & io::GamePadState::Button::START ? START : 0) |
-            (combinedButtons & io::GamePadState::Button::X ? X : 0) |
+            // Genesis pads report their C button as Button::C, not Button::X.
+            // Both are "button 3" as far as the menu is concerned (X on SNES,
+            // Y on XInput, Triangle on PlayStation, C on Genesis), so either
+            // one opens the recently played list. On the original 3-button
+            // Genesis Mini pad C doubles as SELECT (hid_app.cpp), and the
+            // browser tests SELECT first, so there it still opens the settings
+            // menu - unchanged, and never both at once.
+            (combinedButtons & (io::GamePadState::Button::X | io::GamePadState::Button::C) ? X : 0) |
             (combinedButtons & io::GamePadState::Button::Y ? Y : 0) |
             0;
 
 #if NES_PIN_CLK != -1
-    v |= nespad_states[0];
+    v |= nespadMenuBits(nespad_states_ext[0], nespad_padtype[0]);
 #endif
 #if NES_PIN_CLK_1 != -1
-    v |= nespad_states[1];
+    v |= nespadMenuBits(nespad_states_ext[1], nespad_padtype[1]);
 #endif
 #if WII_PIN_SDA >= 0 and WII_PIN_SCL >= 0
     v |= wiipad_read();
@@ -1067,6 +1108,14 @@ static bool showOverclockWarning(uint32_t targetMHz, vreg_voltage targetVoltage)
 // tester is mashing buttons. Canonical button order is the SNES serial layout
 // of nespad_states_ext[]:
 // bit0=B 1=Y 2=Select 3=Start 4=Up 5=Down 6=Left 7=Right 8=A 9=X 10=L 11=R
+// A NES pad - including a SNES->NES adapter, which emulates one - shifts out
+// the same first 8 bits with different meanings: bit0=A, bit1=B, and it has no
+// A/X/L/R at all. So the two low buttons are named from nespad_padtype[]. Only
+// a SNES pad can prove itself (by A/X/L/R appearing on the wire); a NES pad
+// proves itself through the ID nibble, but an 8-bit adapter that idles the data
+// line high looks like an idle SNES pad, so an unproven port is named as a NES
+// pad - the common case on this port - while A/X/L/R stay on screen so pressing
+// one switches to SNES names.
 
 enum CtSource
 {
@@ -1149,19 +1198,68 @@ static const char *ctUsbStatus(int idx)
 
 struct CtButton
 {
-    const char *label;
+    const char *label;    // SNES name (canonical order)
+    const char *nesLabel; // name on a NES pad; nullptr = the pad lacks this button
     uint8_t col;
     uint8_t row;
     uint16_t mask;
 };
 static const CtButton ctButtons[12] = {
-    {"[ L ]", 3, 4, 1u << 10}, {"[ R ]", 32, 4, 1u << 11},
-    {"( ^ )", 5, 6, 1u << 4},  {"( X )", 29, 6, 1u << 9},
-    {"( < )", 2, 7, 1u << 6},  {"( > )", 8, 7, 1u << 7},
-    {"[SEL]", 14, 7, 1u << 2}, {"[STA]", 20, 7, 1u << 3},
-    {"( Y )", 26, 7, 1u << 1}, {"( A )", 32, 7, 1u << 8},
-    {"( v )", 5, 8, 1u << 5},  {"( B )", 29, 8, 1u << 0},
+    {"[ L ]", nullptr, 3, 4, 1u << 10}, {"[ R ]", nullptr, 32, 4, 1u << 11},
+    {"( ^ )", "( ^ )", 5, 6, 1u << 4},  {"( X )", nullptr, 29, 6, 1u << 9},
+    {"( < )", "( < )", 2, 7, 1u << 6},  {"( > )", "( > )", 8, 7, 1u << 7},
+    {"[SEL]", "[SEL]", 14, 7, 1u << 2}, {"[STA]", "[STA]", 20, 7, 1u << 3},
+    {"( Y )", "( B )", 26, 7, 1u << 1}, {"( A )", nullptr, 32, 7, 1u << 8},
+    {"( v )", "( v )", 5, 8, 1u << 5},  {"( B )", "( A )", 29, 8, 1u << 0},
 };
+
+// Name to print in a button cell. nullptr = the pad does not have that button.
+static const char *ctLabel(const CtButton &b, uint8_t type)
+{
+    if (type == NESPAD_TYPE_SNES)
+    {
+        return b.label;
+    }
+    if (type == NESPAD_TYPE_NES)
+    {
+        return b.nesLabel; // nullptr for A/X/L/R: a NES pad has none of them
+    }
+    // Not proven either way: NES names for the two shared buttons, but keep
+    // A/X/L/R on screen so pressing one identifies a SNES pad.
+    return b.nesLabel ? b.nesLabel : b.label;
+}
+// USB and Wii states are converted to canonical (SNES) order before they get
+// here, so only the two GPIO ports can be talking to something else.
+static uint8_t ctSourceType(int src)
+{
+    switch (src)
+    {
+#if NES_PIN_CLK != -1
+    case CT_SRC_GPIO1:
+        return nespad_padtype[0];
+#endif
+#if NES_PIN_CLK_1 != -1
+    case CT_SRC_GPIO2:
+        return nespad_padtype[1];
+#endif
+    default:
+        return NESPAD_TYPE_SNES;
+    }
+}
+
+static const char *ctPadTypeName(uint8_t type)
+{
+    switch (type)
+    {
+    case NESPAD_TYPE_NES:
+        return "NES pad, 8 buttons";
+    case NESPAD_TYPE_SNES:
+        return "SNES pad, 12 buttons";
+    default:
+        return "NES or SNES pad";
+    }
+}
+
 static const char *const ctPadTop = ".------------------------------------.";
 static const char *const ctPadMid = "|                                    |";
 static const char *const ctPadBot = "'------------------------------------'";
@@ -1213,6 +1311,8 @@ static void showControllerTestScreen()
             holdFrames = 0;
         }
 
+        uint8_t padType = (active >= 0) ? ctSourceType(active) : NESPAD_TYPE_UNKNOWN;
+
         ClearScreen(settings.bgcolor);
         const char *title = "-- Controller Test --";
         putText(centerColClamped(strlen(title)), 0, title, settings.fgcolor, settings.bgcolor);
@@ -1227,7 +1327,7 @@ static void showControllerTestScreen()
             {
             case CT_SRC_GPIO1:
             case CT_SRC_GPIO2:
-                snprintf(line, sizeof(line), "Testing: %s (SNES/NES pad)", ctSrcNames[active]);
+                snprintf(line, sizeof(line), "Testing: %s (%s)", ctSrcNames[active], ctPadTypeName(padType));
                 break;
             case CT_SRC_USB1:
             case CT_SRC_USB2:
@@ -1249,8 +1349,21 @@ static void showControllerTestScreen()
         uint16_t shown = (active >= 0) ? cur[active] : 0;
         for (const auto &b : ctButtons)
         {
+            const char *label = ctLabel(b, padType);
+            if (label == nullptr)
+            {
+                putText(b.col, b.row, "  -  ", settings.fgcolor, settings.bgcolor); // not on a NES pad
+                continue;
+            }
             bool on = (shown & b.mask) != 0;
-            putText(b.col, b.row, b.label, on ? CWHITE : settings.fgcolor, on ? CGREEN : settings.bgcolor);
+            putText(b.col, b.row, label, on ? CWHITE : settings.fgcolor, on ? CGREEN : settings.bgcolor);
+        }
+        if (padType == NESPAD_TYPE_UNKNOWN && (active == CT_SRC_GPIO1 || active == CT_SRC_GPIO2))
+        {
+            // Names shown are the NES ones; a SNES pad renames B/Y and lights
+            // A/X/L/R as soon as one of those four is pressed.
+            const char *note = "Press A,X,L,R to detect a SNES pad";
+            putText(centerColClamped(strlen(note)), 10, note, settings.fgcolor, settings.bgcolor);
         }
 
         putText(1, 11, "Sources:", settings.fgcolor, settings.bgcolor);
@@ -1266,6 +1379,16 @@ static void showControllerTestScreen()
 #if WII_PIN_SDA >= 0 and WII_PIN_SCL >= 0
         ctDrawSourceRow(row++, CT_SRC_WII, active, wiipad_is_connected() ? "connected" : "not detected");
 #endif
+
+        if (active == CT_SRC_GPIO1 || active == CT_SRC_GPIO2)
+        {
+            // The 16 bits as they came off the data line: what the pad sent us,
+            // before any interpretation. Tells a NES pad (top digit F) from a
+            // SNES pad, and shows whether a button reaches us at all.
+            snprintf(line, sizeof(line), "Sent by pad: %04X hex (1 = pressed)",
+                     nespad_raw_ext[active - CT_SRC_GPIO1]);
+            putText(1, 18, line, settings.fgcolor, settings.bgcolor);
+        }
 
         const char *hint = "Hold SELECT+START 2 sec to exit";
         putText(centerColClamped(strlen(hint)), 26, hint, settings.fgcolor, settings.bgcolor);
@@ -1932,6 +2055,123 @@ uint32_t loadRomInPsRam(char *curdir, char *selectedRomOrFolder, char *rompath, 
 #endif
 }
 
+// Writes ROMINFOFILE with exactly "<dir>/<name>" - no newline, no terminating
+// NUL - which is byte for byte what the previous f_putc loop produced, so an
+// older firmware flashed back onto the same card still reads it. flashrom()
+// picks it up after the reboot. FIL comes off the heap: the menu call chain
+// runs close to PICO_STACK_SIZE.
+static bool writeRomInfoFile(const char *dir, const char *name)
+{
+    FIL *fil = (FIL *)Frens::f_malloc(sizeof(FIL));
+    char *path = (char *)Frens::f_malloc(RECENTGAMES_MAXPATH);
+    if (!fil || !path)
+    {
+        snprintf(globalErrorMessage, 40, "Out of memory starting game");
+        Frens::f_free(fil);
+        Frens::f_free(path);
+        return false;
+    }
+    int len = snprintf(path, RECENTGAMES_MAXPATH, "%s/%s", dir, name);
+    bool ok = false;
+    printf("Creating %s: %s\n", ROMINFOFILE, path);
+    FRESULT fr = f_open(fil, ROMINFOFILE, FA_CREATE_ALWAYS | FA_WRITE);
+    if (fr == FR_OK)
+    {
+        UINT bw = 0;
+        ok = (f_write(fil, path, len, &bw) == FR_OK && bw == (UINT)len);
+        if (!ok)
+        {
+            snprintf(globalErrorMessage, 40, "Error writing file %d", fr);
+            printf("%s\n", globalErrorMessage);
+        }
+        f_close(fil);
+    }
+    else
+    {
+        printf("Cannot create %s:%d\n", ROMINFOFILE, fr);
+        snprintf(globalErrorMessage, 40, "Cannot create %s:%d", ROMINFOFILE, fr);
+    }
+    Frens::f_free(fil);
+    Frens::f_free(path);
+    return ok;
+}
+
+// Loads the selected rom the way this board needs it: straight into PSRAM, or
+// via ROMINFOFILE plus a reboot into flashrom(). dir has no trailing slash,
+// name is the bare file name. Returns true when the caller should leave the
+// browser loop.
+static bool startRom(char *dir, char *name, char *rompath)
+{
+    errorInSavingRom = false;
+    skipRebootAfterMenu = false;
+    if (Frens::isPsramEnabled())
+    {
+        ErrorMessage[0] = 0;
+        loadRomInPsRam(dir, name, rompath, errorInSavingRom);
+        // ROM_FILE_ADDR stays 0 both when loading failed and when the file was
+        // too large to preload - which for a .cue/.chd disc image is a normal,
+        // successful launch that streams from the card. Only the error message
+        // tells the two apart: flashromtoPsram sets it on every failure path
+        // and leaves it alone for the streamed case.
+        if (!errorInSavingRom && ErrorMessage[0] == 0)
+        {
+            FILINFO *fno = (FILINFO *)Frens::f_malloc(sizeof(FILINFO));
+            uint32_t size = 0;
+            if (fno && f_stat(rompath, fno) == FR_OK)
+            {
+                size = (uint32_t)fno->fsize;
+            }
+            Frens::f_free(fno);
+            Frens::Recent::add(rompath, FrensSettings::getEmulatorTypeString(),
+                               Frens::getCrcOfLoadedRom(), size);
+        }
+    }
+    else
+    {
+        // No PSRAM: record the choice and reboot. flashrom() reads the file and
+        // either programs the rom into flash or, when the image already there
+        // is the one asked for, skips straight to running it. It also adds the
+        // game to the recently played list, because the crc it needs is only
+        // available while it reads the rom.
+        if (!writeRomInfoFile(dir, name))
+        {
+            printf("startRom: writing %s failed\n", ROMINFOFILE);
+            errorInSavingRom = true;
+        }
+#if START_FLASHED_ROM_WITHOUT_REBOOT
+        // Testing shortcut: the rom is already in flash and verified, so there
+        // is nothing to program and nothing the reboot has to set up that the
+        // PSRAM boards do not already do by returning here. ROMINFOFILE was
+        // written above regardless, so a later reset still comes back to this
+        // same game. Off by default - see START_FLASHED_ROM_WITHOUT_REBOOT.
+        else
+        {
+            char *fullPath = (char *)Frens::f_malloc(RECENTGAMES_MAXPATH);
+            if (fullPath)
+            {
+                snprintf(fullPath, RECENTGAMES_MAXPATH, "%s/%s", dir, name);
+                uint32_t size = 0;
+                // romIsByteSwapped() is the best the menu has; flashrom() was
+                // handed initAll()'s flag. If a build ever disagrees the check
+                // simply fails and we take the normal reboot, never the wrong
+                // image.
+                if (Frens::isRomAlreadyInFlash(fullPath, Frens::romIsByteSwapped(), &size))
+                {
+                    printf("Starting %s from flash without rebooting\n", fullPath);
+                    strncpy(rompath, fullPath, FF_MAX_LFN - 1);
+                    rompath[FF_MAX_LFN - 1] = 0;
+                    Frens::Recent::add(fullPath, FrensSettings::getEmulatorTypeString(),
+                                       Frens::getCrcOfLoadedRom(), size);
+                    skipRebootAfterMenu = true;
+                }
+            }
+            Frens::f_free(fullPath);
+        }
+#endif
+    }
+    return !errorInSavingRom;
+}
+
 // On Fruit Jam: SNES classic/Pro controller can cause audio DAC initialization to fail
 // Show instructions to the user on how to fix this.
 void DisplayDacError()
@@ -2550,10 +2790,241 @@ bool showSaveStateMenu(int (*savestatefunc)(const char *path), int (*loadstatefu
     return saveStateLoadedOK;
 }
 
+// --- Recently played games ---
+// Modal list of the games most recently started on this emulator, newest first.
+// Returns 1 when the user picked one (outPath receives its absolute path), 0
+// otherwise (B, idle timeout, empty list or out of memory).
+//
+// PRECONDITION: the caller already owns screenBuffer and has put the display in
+// NOSCANLINE_1_1 with zeroed margins - menu() does both before its loop. Unlike
+// showSaveStateMenu this function must therefore NOT allocate screenBuffer and
+// must NOT touch applyScreenMode / the dvi blank settings: doing so would leak
+// the menu's buffer and swap the pointer under it.
+static int showRecentGamesMenu(char *outPath, size_t outPathSize)
+{
+    Frens::Recent::List *list = Frens::Recent::load();
+    if (!list || list->count == 0)
+    {
+        showMessageBox(list ? "No recently played games yet." : "Out of memory.",
+                       list ? settings.fgcolor : CRED);
+        Frens::Recent::free(list);
+        return 0;
+    }
+
+    // -1 on PSRAM boards and whenever nothing recognisable is in flash.
+    const int flashedIdx = Frens::Recent::flashedIndex(list);
+    const bool showReady = (flashedIdx >= 0);
+    // Width of the name column; the [READY] tag claims the last 8 columns.
+    const int fieldw = showReady ? SCREEN_COLS - 9 : SCREEN_COLS - 2;
+
+    int selected = 0;
+    int scroll = 0; // horizontal scroll of the highlighted row only
+    int idleStart = -1;
+    int rc = 0;
+    // Deliberately not the file-static exitMenu: showSettingsMenu is sitting in
+    // while (!exitMenu) when it calls us.
+    bool done = false;
+    DWORD pad = 0;
+
+    auto redraw = [&](int confirmIndex = -1)
+    {
+        char linebuf[SCREEN_COLS + 8];
+        ClearScreen(settings.bgcolor);
+        getButtonLabels(buttonLabel1, buttonLabel2);
+        const char *title = "-- Recently Played --";
+        putText(centerColClamped(strlen(title)), 0, title, settings.fgcolor, settings.bgcolor);
+        snprintf(linebuf, sizeof(linebuf), "%d game%s%s", list->count,
+                 list->count == 1 ? "" : "s", showReady ? "___[READY]:already in flash" : "");
+        putText(1, 1, linebuf, settings.fgcolor, settings.bgcolor);
+        for (auto i = 1; i < SCREEN_COLS - 1; i++)
+        {
+            putText(i, STARTROW - 1, "-", settings.fgcolor, settings.bgcolor);
+        }
+
+        // RECENTGAMES_MAX rows fit between STARTROW and ENDROW, so the list
+        // never needs paging or scroll indicators.
+        for (int i = 0; i < list->count; i++)
+        {
+            const Frens::Recent::Entry &e = list->items[i];
+            // File name only, never the directory. A name too long for the
+            // column scrolls, but only on the highlighted row.
+            const char *name = Frens::Recent::displayName(e);
+            const char *src = (i == selected) ? name + scroll : name;
+            snprintf(linebuf, sizeof(linebuf), "%-*.*s%s", fieldw, fieldw, src,
+                     (i == flashedIdx) ? "_[READY]" : "");
+            // putText collapses runs of real spaces, which would pull the
+            // [READY] tag left out of its column and shift any name containing
+            // a double space. It renders '_' as a space without collapsing, so
+            // that is what the rest of this menu pads with.
+            for (char *c = linebuf; *c; c++)
+            {
+                if (*c == ' ')
+                {
+                    *c = '_';
+                }
+            }
+            int fg = settings.fgcolor;
+            int bg = settings.bgcolor;
+            if (i == confirmIndex)
+            {
+                fg = CWHITE;
+                bg = CRED;
+            }
+            else if (i == selected && confirmIndex < 0)
+            {
+                fg = settings.bgcolor;
+                bg = settings.fgcolor;
+            }
+            putText(1, STARTROW + i, linebuf, fg, bg);
+        }
+        for (auto i = 1; i < SCREEN_COLS - 1; i++)
+        {
+            putText(i, ENDROW - 1, "-", settings.fgcolor, settings.bgcolor);
+        }
+
+        if (confirmIndex >= 0)
+        {
+            putText(0, ENDROW + 1, "Remove this game from the list?", settings.fgcolor, settings.bgcolor);
+            snprintf(linebuf, sizeof(linebuf), "%s:Remove__%s:Cancel", buttonLabel1, buttonLabel2);
+            putText(0, ENDROW + 2, linebuf, settings.fgcolor, settings.bgcolor);
+        }
+        else
+        {
+            snprintf(linebuf, sizeof(linebuf), "%s_____:Start game", buttonLabel1);
+            putText(0, ENDROW + 1, linebuf, settings.fgcolor, settings.bgcolor);
+            putText(0, ENDROW + 2, "SELECT:Remove from list", settings.fgcolor, settings.bgcolor);
+            if (isArtWorkEnabled())
+            {
+                putText(0, ENDROW + 3, "START :Info", settings.fgcolor, settings.bgcolor);
+            }
+            snprintf(linebuf, sizeof(linebuf), "%s_____:Back", buttonLabel2);
+            putText(0, SCREEN_ROWS - 1, linebuf, settings.fgcolor, settings.bgcolor);
+        }
+        // Not DrawScreen(): that stamps the rom browser footer over these rows.
+        drawAllLines(-1);
+    };
+
+    waitForNoButtonPress();
+
+    while (!done)
+    {
+        redraw();
+        RomSelect_PadState(&pad);
+        int frame = Menu_LoadFrame();
+        if (idleStart < 0 || pad)
+        {
+            idleStart = frame;
+        }
+        if ((frame - idleStart) > 3600)
+        {
+            break;
+        }
+
+        if (pad & UP)
+        {
+            selected = (selected > 0) ? selected - 1 : list->count - 1;
+            scroll = 0;
+        }
+        else if (pad & DOWN)
+        {
+            selected = (selected + 1 < list->count) ? selected + 1 : 0;
+            scroll = 0;
+        }
+        else if (pad & A)
+        {
+            strncpy(outPath, list->items[selected].path, outPathSize - 1);
+            outPath[outPathSize - 1] = 0;
+            // Not Frens::fileExists(): that keeps its FILINFO (288 bytes) on
+            // the stack, and this runs one or two frames deep inside menu().
+            // When the allocation fails we cannot check, so assume the game is
+            // there and let the launch report any real problem - refusing to
+            // start over a failed malloc would be a lie about the SD card.
+            FILINFO *fno = (FILINFO *)Frens::f_malloc(sizeof(FILINFO));
+            FRESULT statResult = fno ? f_stat(outPath, fno) : FR_OK;
+            Frens::f_free(fno);
+            bool exists = (statResult == FR_OK);
+            if (!exists)
+            {
+                showMessageBox("Game is no longer on the SD card.", CRED,
+                               "Use SELECT to remove it.");
+                outPath[0] = 0;
+            }
+            else
+            {
+                rc = 1;
+                done = true;
+            }
+        }
+        else if (pad & B)
+        {
+            done = true;
+        }
+        else if (pad & SELECT)
+        {
+            // Nested confirm, same shape as the save state menu: reuse redraw()
+            // with the row flagged, and keep pumping exactly one frame per pass.
+            waitForNoButtonPress();
+            bool deciding = true;
+            while (deciding)
+            {
+                redraw(selected);
+                RomSelect_PadState(&pad);
+                Menu_LoadFrame();
+                if (pad & A)
+                {
+                    Frens::Recent::removeAt(list, selected);
+                    if (list->count == 0)
+                    {
+                        done = true;
+                    }
+                    else if (selected >= list->count)
+                    {
+                        selected = list->count - 1;
+                    }
+                    deciding = false;
+                }
+                else if (pad & B)
+                {
+                    deciding = false;
+                }
+            }
+            scroll = 0;
+            idleStart = -1;
+            waitForNoButtonPress();
+        }
+        else if ((pad & START) && isArtWorkEnabled())
+        {
+            if (showartwork(list->items[selected].crc, list->items[selected].size) == 1)
+            {
+                strncpy(outPath, list->items[selected].path, outPathSize - 1);
+                outPath[outPathSize - 1] = 0;
+                rc = 1;
+                done = true;
+            }
+            idleStart = -1; // frames spent in the artwork screen are not idle time
+        }
+        else if (frame % 30 == 0)
+        {
+            // Same cadence as the browser's horizontal scroll of the selected
+            // row. Resets to 0 as soon as the rest fits, so it never runs off
+            // the end of the name.
+            const char *p = Frens::Recent::displayName(list->items[selected]);
+            scroll = ((int)strlen(p + scroll) >= fieldw) ? scroll + 1 : 0;
+        }
+    }
+
+    ClearScreen(settings.bgcolor);
+    waitForNoButtonPress();
+    Frens::Recent::free(list);
+    return rc;
+}
+
 // --- Settings Menu Implementation ---
 // returns 0 if no changes, 1 if settings applied
 //         2 start screensaver
 //         3 exit to menu
+//         6 start the game in recentLaunchPath (rom browser only - the option
+//           is hidden when calledFromGame, so this never reaches an emulator)
 int showSettingsMenu(bool calledFromGame)
 {
     bool settingsChanged = false;
@@ -2655,9 +3126,22 @@ int showSettingsMenu(bool calledFromGame)
     {
         visibleIndices[visibleCount++] = MOPT_FDS_DISK_SWAP;
     }
+    // Recently played is a rom-browser feature and is never offered in-game:
+    // starting another game from inside a running one has no clean teardown
+    // path. Gating it here keeps it out of visibleIndices entirely when the
+    // in-game menu is open, so it cannot be highlighted and its handler cannot
+    // run. It is forced visible instead of read from g_settings_visibility[]
+    // because every emulator sizes that array [MOPT_COUNT] with a positional
+    // initializer list and so leaves the new trailing entry zero. It goes near
+    // the top because it is the one entry that starts a game.
+    if (!calledFromGame && g_settings_visibility[MOPT_RECENT_GAMES] >= 0)
+    {
+        visibleIndices[visibleCount++] = MOPT_RECENT_GAMES;
+    }
     for (int i = 0; i < MOPT_COUNT; ++i)
     {
         if (i == MOPT_FDS_DISK_SWAP) continue; // already handled above
+        if (i == MOPT_RECENT_GAMES) continue;  // already handled above
         // Overclock is reachable only from the file-browser menu — applying it
         // mid-game would reboot the box and drop unsaved emulator state.
         if (i == MOPT_OVERCLOCK && calledFromGame) continue;
@@ -2758,6 +3242,12 @@ int showSettingsMenu(bool calledFromGame)
             case MenuSettingsIndex::MOPT_CONTROLLER_TEST:
             {
                 label = "Controller Test";
+                value = "";
+                break;
+            }
+            case MenuSettingsIndex::MOPT_RECENT_GAMES:
+            {
+                label = "Recently played";
                 value = "";
                 break;
             }
@@ -3031,7 +3521,7 @@ int showSettingsMenu(bool calledFromGame)
                 value = "";
                 break;
             }
-            snprintf(line, sizeof(line), "%s%s%s", label, (optIndex == MOPT_EXIT_GAME || optIndex == MOPT_SAVE_RESTORE_STATE || optIndex == MOPT_ENTER_BOOTSEL_MODE || optIndex == MOPT_REBOOT_TO_LOADER || optIndex == MOPT_RESET_GAME || optIndex == MOPT_CONTROLLER_TEST) ? "" : ": ", value);
+            snprintf(line, sizeof(line), "%s%s%s", label, (optIndex == MOPT_EXIT_GAME || optIndex == MOPT_SAVE_RESTORE_STATE || optIndex == MOPT_ENTER_BOOTSEL_MODE || optIndex == MOPT_REBOOT_TO_LOADER || optIndex == MOPT_RESET_GAME || optIndex == MOPT_CONTROLLER_TEST || optIndex == MOPT_RECENT_GAMES) ? "" : ": ", value);
             putText(0, row++, line, CBLACK, CWHITE);
         }
         // Down-scroll indicator (centered): shown when there are options below the window
@@ -3102,7 +3592,8 @@ int showSettingsMenu(bool calledFromGame)
                 curOpt == MOPT_ENTER_BOOTSEL_MODE ||
                 curOpt == MOPT_REBOOT_TO_LOADER ||
                 curOpt == MOPT_RESET_GAME ||
-                curOpt == MOPT_CONTROLLER_TEST)
+                curOpt == MOPT_CONTROLLER_TEST ||
+                curOpt == MOPT_RECENT_GAMES)
             {
                 snprintf(line, sizeof(line), "UP/DOWN: Move, %s: select", buttonLabel1);
             }
@@ -3284,7 +3775,7 @@ int showSettingsMenu(bool calledFromGame)
                         firstVisibleOption = selectedOptionIndex - optionWindowSize + 1; // scroll down
                 }
             }
-            else if (pad & LEFT || pad & RIGHT || ((pad & A) && (optIndex == MOPT_EXIT_GAME || optIndex == MOPT_SAVE_RESTORE_STATE || optIndex == MOPT_ENTER_BOOTSEL_MODE || optIndex == MOPT_REBOOT_TO_LOADER || optIndex == MOPT_RESET_GAME || optIndex == MOPT_FDS_DISK_SWAP || optIndex == MOPT_CONTROLLER_TEST)))
+            else if (pad & LEFT || pad & RIGHT || ((pad & A) && (optIndex == MOPT_EXIT_GAME || optIndex == MOPT_SAVE_RESTORE_STATE || optIndex == MOPT_ENTER_BOOTSEL_MODE || optIndex == MOPT_REBOOT_TO_LOADER || optIndex == MOPT_RESET_GAME || optIndex == MOPT_FDS_DISK_SWAP || optIndex == MOPT_CONTROLLER_TEST || optIndex == MOPT_RECENT_GAMES)))
             {
                 // LEFT/RIGHT on the action row cycles sub-selection
                 if (onActionRow && (pad & (LEFT | RIGHT)))
@@ -3334,6 +3825,23 @@ int showSettingsMenu(bool calledFromGame)
                             showControllerTestScreen();
                             startFrames = -1; // re-seed idle counter: frames spent in the
                                               // test screen must not trip the screensaver
+                        }
+                        break;
+                    }
+                    case MOPT_RECENT_GAMES:
+                    {
+                        // Only reachable from the rom browser: the option is not
+                        // added to visibleIndices when calledFromGame, so rval 6
+                        // can never be returned to an emulator's main loop.
+                        if (pad & A)
+                        {
+                            if (recentLaunchPath &&
+                                showRecentGamesMenu(recentLaunchPath, RECENTGAMES_MAXPATH) == 1)
+                            {
+                                rval = 6; // menu() starts recentLaunchPath
+                                exitMenu = true;
+                            }
+                            startFrames = -1;
                         }
                         break;
                     }
@@ -3595,7 +4103,13 @@ int showSettingsMenu(bool calledFromGame)
                 exitMenu = true;
             }
         }
-        if (frameCount - startFrames > 3600)
+        // startFrames == -1 means "re-seed on the next pass" - set by the
+        // handlers that open a screen of their own, because the frames spent
+        // in there are not idle time. It must not be treated as a timestamp:
+        // frameCount - (-1) is over 3600 for all but the first minute of
+        // uptime, which silently turned any result those handlers had just
+        // set into rval 2 (screensaver).
+        if (startFrames != -1 && frameCount - startFrames > 3600)
         {
             // if no input for 3600 frames, start screensaver
             rval = 2;
@@ -3701,7 +4215,9 @@ void setclockInFlashAndReboot(uint32_t freq, vreg_voltage voltage)
 void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, const char *allowedExtensions, char *rompath)
 {
     FRESULT fr;
-    FIL fil;
+    // No FIL here on purpose: it is 592 bytes and this frame lives for the
+    // whole menu, on a 3 KB stack. File access goes through helpers that take
+    // their FIL off the heap.
     DWORD PAD1_Latch;
     char curdir[FF_MAX_LFN];
     auto clockFreq = clock_get_hz(clk_sys) / 1000; // in kHz
@@ -3772,9 +4288,18 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
 #endif
     }
     srand(get_rand_32()); // Seed the random number generator for screensaver
+    // Scratch for the path picked in the recently played list. Allocated after
+    // the error handling above, which can call DisplayFatalError and never
+    // return. Feature degrades gracefully when it cannot be allocated.
+    recentLaunchPath = (char *)Frens::f_malloc(RECENTGAMES_MAXPATH);
+    if (recentLaunchPath)
+    {
+        recentLaunchPath[0] = 0;
+    }
     romlister.list(settings.currentDir);
     displayRoms(romlister, settings.firstVisibleRowINDEX);
     bool startGame = false;
+    bool startRecent = false;
     int oldIndex = -1;
     bool isWav = false;
     waitForNoButtonPress();
@@ -4087,60 +4612,32 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
                     // start screensaver
                     screenSaver();
                 }
+                if (settingsResult == 6)
+                {
+                    // A game was picked in the recently played list.
+                    startRecent = true;
+                    break;
+                }
                 displayRoms(romlister, settings.firstVisibleRowINDEX);
-                continue; // skip other processing this frame
+                totalFrames = -1; // re-seed: frames spent in the settings menu are not idle time
+                continue;         // skip other processing this frame
+            }
+            else if ((PAD1_Latch & X) == X)
+            {
+                // Recently played games. Also reachable from the settings menu
+                // (SELECT), which is the route for pads without an X button -
+                // notably a NES pad on the GPIO port.
+                if (recentLaunchPath && showRecentGamesMenu(recentLaunchPath, RECENTGAMES_MAXPATH) == 1)
+                {
+                    startRecent = true;
+                    break; // launch it below, outside the browser loop
+                }
+                displayRoms(romlister, settings.firstVisibleRowINDEX);
+                totalFrames = -1; // re-seed: frames spent in the list are not idle time
+                continue;         // skip other processing this frame
             }
             else if ((PAD1_Latch & START) == START && ((PAD1_Latch & SELECT) != SELECT) && !isWav)
             {
-#if 0
-                showLoadingScreen();
-                // reboot and start emulator with currently loaded game
-                // Create a file /START indicating not to reflash the already flashed game
-                // The emulator will delete this file after loading the game
-                printf("Creating /START\n");
-                fr = f_open(&fil, "/START", FA_CREATE_ALWAYS | FA_WRITE);
-                if (fr == FR_OK)
-                {
-                    auto bytes = f_puts("START", &fil);
-                    printf("Wrote %d bytes\n", bytes);
-                    fr = f_close(&fil);
-                    if (fr != FR_OK)
-                    {
-                        printf("Cannot close file /START:%d\n", fr);
-                    }
-                }
-                else
-                {
-                    printf("Cannot create file /START:%d\n", fr);
-                }
-                break; // reboot
-
-#else
-
-#if 0
-                    showLoadingScreen();
-                    // reboot and start emulator with currently loaded game
-                    // Create a file /START indicating not to reflash the already flashed game
-                    // The emulator will delete this file after loading the game
-                    printf("Creating /START\n");
-                    fr = f_open(&fil, "/START", FA_CREATE_ALWAYS | FA_WRITE);
-                    if (fr == FR_OK)
-                    {
-                        auto bytes = f_puts("START", &fil);
-                        printf("Wrote %d bytes\n", bytes);
-                        fr = f_close(&fil);
-                        if (fr != FR_OK)
-                        {
-                            printf("Cannot close file /START:%d\n", fr);
-                        }
-                    }
-                    else
-                    {
-                        printf("Cannot create file /START:%d\n", fr);
-                    }
-                    break; // reboot
-#endif
-
                 // show screen with ArtWork
 
                 if (!entries[index].IsDirectory && selectedRomOrFolder && isArtWorkEnabled())
@@ -4173,8 +4670,6 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
                     romlister.list(curdir);
                     displayRoms(romlister, settings.firstVisibleRowINDEX);
                 }
-
-#endif
             }
             else if ((startGame || (PAD1_Latch & A) == A) && selectedRomOrFolder && !isWav)
             {
@@ -4203,58 +4698,7 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
                     showLoadingScreen();
                     fr = f_getcwd(curdir, sizeof(curdir)); // f_getcwd(curdir, sizeof(curdir));
                     printf("Current dir: %s\n", curdir);
-                    if (Frens::isPsramEnabled())
-                    {
-                        loadRomInPsRam(curdir, selectedRomOrFolder, rompath, errorInSavingRom);
-                    }
-                    else
-                    {
-                        // If PSRAM is not enabled, we need to create a file with the full path name of the rom and reboot.
-                        // The emulator will read this file and flash the rom in main.cpp.
-                        // The contents of this file will be used by the emulator to flash and start the correct rom in main.cpp
-                        printf("Creating %s\n", ROMINFOFILE);
-                        fr = f_open(&fil, ROMINFOFILE, FA_CREATE_ALWAYS | FA_WRITE);
-                        if (fr == FR_OK)
-                        {
-                            for (auto i = 0; i < strlen(curdir); i++)
-                            {
-
-                                int x = f_putc(curdir[i], &fil);
-                                printf("%c", curdir[i]);
-                                if (x < 0)
-                                {
-                                    snprintf(globalErrorMessage, 40, "Error writing file %d", fr);
-                                    printf("%s\n", globalErrorMessage);
-                                    errorInSavingRom = true;
-                                    break;
-                                }
-                            }
-                            f_putc('/', &fil);
-                            printf("%c", '/');
-                            for (auto i = 0; i < strlen(selectedRomOrFolder); i++)
-                            {
-
-                                int x = f_putc(selectedRomOrFolder[i], &fil);
-                                printf("%c", selectedRomOrFolder[i]);
-                                if (x < 0)
-                                {
-                                    snprintf(globalErrorMessage, 40, "Error writing file %d", fr);
-                                    printf("%s\n", globalErrorMessage);
-                                    errorInSavingRom = true;
-                                    break;
-                                }
-                            }
-                            printf("\n");
-                        }
-                        else
-                        {
-                            printf("Cannot create %s:%d\n", ROMINFOFILE, fr);
-                            snprintf(globalErrorMessage, 40, "Cannot create %s:%d", ROMINFOFILE, fr);
-                            errorInSavingRom = true;
-                        }
-                        f_close(&fil);
-                    }
-                    if (!errorInSavingRom)
+                    if (startRom(curdir, selectedRomOrFolder, rompath))
                     {
                         break; // from while(1) loop, so we can reboot or return to main.cpp
                     }
@@ -4334,10 +4778,32 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
         }
     } // while 1
 
+    // A game picked from the recently played list is started here, outside the
+    // browser loop, so it takes exactly the same path as a normal launch.
+    if (startRecent)
+    {
+        printf("Recent: launching '%s'\n", recentLaunchPath ? recentLaunchPath : "(null)");
+        showLoadingScreen();
+        char *slash = recentLaunchPath ? strrchr(recentLaunchPath, '/') : nullptr;
+        if (slash)
+        {
+            *slash = 0; // split "<dir>/<name>" in place; dir is "" in the root
+            bool ok = startRom(recentLaunchPath, slash + 1, rompath);
+            printf("Recent: startRom(dir='%s', name='%s') -> %d, rompath='%s'\n",
+                   recentLaunchPath, slash + 1, ok, rompath);
+        }
+        else
+        {
+            printf("Recent: no directory separator in path, cannot start\n");
+        }
+    }
+
     ClearScreen(CBLACK); // Removes artifacts from previous screen
                          // Wait until user has released all buttons
     waitForNoButtonPress();
     Frens::f_free(screenBuffer);
+    Frens::f_free(recentLaunchPath);
+    recentLaunchPath = nullptr;
     // Frens::f_free(buffer);
 
     FrensSettings::savesettings();
@@ -4356,7 +4822,9 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
     // When PSRAM is not enabled, we need to reboot the system to start the emulator with the selected rom. In this case
     // a reboot is neccessary to avoid lockups.
     // If PSRAM is enabled, the rom is already loaded in PSRAM and the emulator will start the rom directly and we don't need to reboot.
-    if (!Frens::isPsramEnabled())
+    // skipRebootAfterMenu is the START_FLASHED_ROM_WITHOUT_REBOOT testing path:
+    // the rom is already in flash and verified, so there is nothing to program.
+    if (!Frens::isPsramEnabled() && !skipRebootAfterMenu)
     {
 #if WII_PIN_SDA >= 0 and WII_PIN_SCL >= 0
         wiipad_end();
@@ -4364,7 +4832,7 @@ void menu(const char *title, char *errorMessage, bool isFatal, bool showSplash, 
         // Don't return from this function call, but reboot in order to get avoid several problems with sound and lockups (WII-pad)
         // After reboot the emulator will flash the rom and start the selected game.
         Frens::resetWifi();
-        printf("Rebooting...\n");
+        printf("Rebooting to start %s\n", rompath[0] ? rompath : "(rom named in " ROMINFOFILE ")");
         watchdog_enable(1, 1);
         while (1)
         {

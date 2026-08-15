@@ -47,4 +47,12 @@ const uint32_t *hstx_di_queue_get_audio_packet(void);
  */
 uint32_t hstx_di_queue_get_underrun_count(void);
 
+/**
+ * Underruns since the previous call to this function. The cumulative count
+ * above includes everything before a producer started feeding the queue, so
+ * sample this instead when the question is whether underruns are still
+ * happening. Sampled once a second, it reads as underruns per second.
+ */
+uint32_t hstx_di_queue_get_underrun_delta(void);
+
 #endif // HSTX_DATA_ISLAND_QUEUE_H
