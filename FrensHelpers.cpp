@@ -2054,6 +2054,11 @@ const char *storage_get_flash_manufacturer_name(uint8_t manufacturerId)
         // Set voltage and clock frequency
         vreg_disable_voltage_limit();
         vreg_set_voltage(voltage);
+        // Let the core rail reach the new voltage before asking the chip to run at
+        // an overclocked speed. PicoDVI's examples do the same before their 252 MHz
+        // switch; without it the whole chip, flash interface included, is briefly
+        // running fast at the old voltage. The HSTX path below already waits.
+        sleep_ms(10);
 #if !HSTX
 #if !PICO_RP2350
         // Slow the flash down before clk_sys goes up, or clone boards with a 104 MHz
