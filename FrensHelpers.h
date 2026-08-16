@@ -209,6 +209,9 @@ namespace Frens
     uint32_t getFrameCount();
     const char* ms_to_d_hhmmss(uint64_t ms, char* buf, size_t bufSize);
     void setClocksAndStartStdio(uint32_t cpuFreqKHz, vreg_voltage voltage);
+    uint32_t storage_get_flash_jedec_id();
+    const char *storage_get_flash_manufacturer_name(uint8_t manufacturerId);
+    uint32_t getFlashClockHz();
     //extern volatile ProcessScanLineFunction processScanLineFunction;
     void loadOverLay(const char *filename, const char *overlay);
     FRESULT pick_random_file_fullpath(const char *path, char *chosen, size_t bufsize);
