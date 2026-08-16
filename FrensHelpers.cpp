@@ -1314,11 +1314,10 @@ const char *storage_get_flash_manufacturer_name(uint8_t manufacturerId)
 #if 0
                                 printf("Writing block %d (%d bytes) to flash at %x\n", blockCount++, bytesRead, ofs);
 #endif
-                                // Disable interupts, erase, flash and enable interrupts
-                                uint32_t ints = save_and_disable_interrupts();
-                                flash_range_erase(ofs, bufsize);
-                                flash_range_program(ofs, buffer, bufsize);
-                                restore_interrupts(ints);
+                                // Erase and flash. These disable interrupts around the
+                                // operation and preserve the startup flash timing.
+                                flashEraseSafe(ofs, bufsize);
+                                flashProgramSafe(ofs, buffer, bufsize);
                                 ofs += bufsize;
                                 totalBytes += bytesRead;
                                 // keep the usb stack running
@@ -1335,7 +1334,11 @@ const char *storage_get_flash_manufacturer_name(uint8_t manufacturerId)
                         }
                         if (!readError)
                         {
-                            printf("Wrote %d bytes to flash\n", totalBytes);
+                            // Flash freq is reported again here because erase/program
+                            // re-run boot2, which resets the divisor chosen at startup.
+                            // This must match the value printed in the startup banner.
+                            printf("Wrote %d bytes to flash (flash freq: %d kHz)\n",
+                                   totalBytes, getFlashClockHz() / 1000);
                             if (totalBytes != filesize)
                             {
                                 snprintf(ErrorMessage, 40, "Size mismatch: %d != %d\n", totalBytes, filesize);
@@ -1908,6 +1911,11 @@ const char *storage_get_flash_manufacturer_name(uint8_t manufacturerId)
     }
 
 #if !PICO_RP2350
+    // Divisor relaxFlashTimingForClock() installed, or 0 if it left boot2's choice
+    // alone. Anything that re-runs boot2 undoes it, so we need to know what to
+    // put back -- see flashEraseSafe()/flashProgramSafe() below.
+    static uint32_t appliedFlashDivisor = 0;
+
     // Write the XIP SSI baud rate divisor. BAUDR is only writable while the SSI is
     // disabled, and XIP is dead for that window, so this must execute from RAM and
     // must not be interrupted. Core1 is not running yet when this is called.
@@ -1972,9 +1980,55 @@ const char *storage_get_flash_manufacturer_name(uint8_t manufacturerId)
         }
         uint32_t irq = save_and_disable_interrupts();
         setFlashDivisor(div);
+        appliedFlashDivisor = div;
         restore_interrupts(irq);
     }
+
+    // Put our divisor back after something has re-run boot2. Must itself live in
+    // RAM: the caller may not touch XIP between the boot2 re-run and this call.
+    static void __no_inline_not_in_flash_func(restoreFlashDivisor)()
+    {
+        if (appliedFlashDivisor != 0 && ssi_hw->baudr != appliedFlashDivisor)
+        {
+            setFlashDivisor(appliedFlashDivisor);
+        }
+    }
 #endif
+
+    /*
+     * flash_range_erase() and flash_range_program() finish by calling
+     * flash_enable_xip_via_boot2(), which re-runs boot2 and reprograms BAUDR to
+     * PICO_FLASH_SPI_CLKDIV -- silently undoing relaxFlashTimingForClock(). The
+     * SDK's flash_restore_hardware_state() does not cover this: on RP2040 it
+     * saves the QSPI pads and nothing else.
+     *
+     * Left alone, a clone board would boot safely and then be put back to
+     * clk_sys/2 by the first ROM write, for the rest of the session.
+     *
+     * Restoring the divisor after these calls return is not enough -- execution
+     * returns to XIP immediately, so the fetch of the very next instruction
+     * already happens at the unsafe rate. These wrappers run from RAM so the
+     * divisor is back in place before any flash access can occur.
+     */
+    void __no_inline_not_in_flash_func(flashEraseSafe)(uint32_t flashOffset, size_t count)
+    {
+        uint32_t irq = save_and_disable_interrupts();
+        flash_range_erase(flashOffset, count);
+#if !PICO_RP2350
+        restoreFlashDivisor();
+#endif
+        restore_interrupts(irq);
+    }
+
+    void __no_inline_not_in_flash_func(flashProgramSafe)(uint32_t flashOffset, const uint8_t *data, size_t count)
+    {
+        uint32_t irq = save_and_disable_interrupts();
+        flash_range_program(flashOffset, data, count);
+#if !PICO_RP2350
+        restoreFlashDivisor();
+#endif
+        restore_interrupts(irq);
+    }
 
     // Rate the QSPI flash is actually being clocked at, i.e. clk_sys divided by
     // whatever the flash interface is programmed to. Reported at startup so a bug
