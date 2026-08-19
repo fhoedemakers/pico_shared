@@ -81,6 +81,30 @@ static volatile uint32_t irq_count = 0;
 // Some monitors have trouble syncing with HDMI Data Islands
 static bool dvi_mode = false; // Default to HDMI mode (full features with audio)
 
+// What DVI mode actually puts on the wire.
+//
+//   0 (default) real DVI 1.0 -- sync symbols only, no data-island preamble, no
+//               TERC4 island, no video preamble or guard band. What DVI mode
+//               emitted up to v0.42.
+//   1           "silent HDMI" -- the HDMI cmdlist shape carrying a null DI
+//               packet. Introduced in v0.43 and made unconditional there.
+//
+// v0.43 switched everyone to 1 because the uniform 96-cycle hsync of real DVI
+// outran the TMDS clock-recovery PLL on some sinks, which then needed the
+// watchdog to resync. But a DVI 1.0 receiver has no rule for TERC4 in the
+// blanking interval, so that change made DVI-only monitors reject the signal
+// outright (issue #217: BenQ FP72E and Dell 1908FPb, both no picture at all).
+// Adding the AVI InfoFrame to the island stream did not help them, so the
+// objection is to the islands themselves, not to a missing InfoFrame -- there
+// is no single bitstream that satisfies both kinds of sink.
+//
+// Back to 0 here, because "DVI mode" that does not emit DVI is the wrong
+// default. Emulators whose sinks needed the v0.43 behaviour should set this to
+// 1 for their own build rather than changing it back for everybody.
+#ifndef PICO_HDMI_DVI_USE_DATA_ISLANDS
+#define PICO_HDMI_DVI_USE_DATA_ISLANDS 0
+#endif
+
 // Double-buffered line buffer. While DMA reads line_buffer[dma_idx] for the
 // current active line, the scanline callback fills line_buffer[fill_idx] with
 // the next line's pixels. This removes the write/read race and lets us
@@ -295,15 +319,15 @@ static inline void __not_in_flash_func(get_scanline_state)(uint32_t v_scanline, 
 static inline void __not_in_flash_func(video_output_handle_vsync)(dma_channel_hw_t *ch, uint32_t v_scanline)
 {
     if (dvi_mode) {
-        // DVI mode: use the same HDMI-structured cmdlist (data-island period
-        // + video preamble + guard band) as HDMI mode, but with a null DI
-        // packet so no audio / AVI / ACR data is actually transmitted. The
-        // longer cmdlist produces a much richer control-period before each
-        // active region, which several sinks (notably the Murmulator M2's
-        // monitor) need to maintain TMDS lock — the bare 9-word DVI cmdlist
-        // caused frequent lock loss and watchdog resyncs.
+        // See PICO_HDMI_DVI_USE_DATA_ISLANDS above for why there are two of
+        // these and why the plain DVI line is the default.
+#if PICO_HDMI_DVI_USE_DATA_ISLANDS
         ch->read_addr = (uintptr_t)vblank_di_null_vsync_on;
         ch->transfer_count = vblank_di_null_vsync_on_len;
+#else
+        ch->read_addr = (uintptr_t)vblank_line_vsync_on;
+        ch->transfer_count = count_of(vblank_line_vsync_on);
+#endif
         if (v_scanline == MODE_V_FRONT_PORCH) {
             video_frame_count++;
             if (vsync_callback)
@@ -331,11 +355,13 @@ static inline void __not_in_flash_func(video_output_handle_active_start)(dma_cha
     //    even if the scanline callback below overruns, the cmdlist chain is
     //    safe and HSTX keeps emitting valid sync.
     if (dvi_mode) {
-        // DVI mode: share HDMI's active-line cmdlist (with null DI) so the
-        // sink sees the same control-period structure on every line. See
-        // video_output_handle_vsync for rationale.
+#if PICO_HDMI_DVI_USE_DATA_ISLANDS
         ch->read_addr = (uintptr_t)vactive_di_null;
         ch->transfer_count = vactive_di_null_len;
+#else
+        ch->read_addr = (uintptr_t)vactive_line_dvi;
+        ch->transfer_count = count_of(vactive_line_dvi);
+#endif
     } else {
         uint32_t *buf = dma_pong ? vactive_di_ping : vactive_di_pong;
         const uint32_t *di_words = hstx_di_queue_get_audio_packet();
@@ -374,14 +400,16 @@ static inline void __not_in_flash_func(video_output_handle_active_start)(dma_cha
 static inline void __not_in_flash_func(video_output_handle_blanking)(dma_channel_hw_t *ch, uint32_t v_scanline, bool send_acr, bool dma_pong)
 {
     if (dvi_mode) {
-        // DVI mode: HDMI-structured blanking cmdlist with a null DI packet
-        // (no audio / no ACR / no AVI InfoFrame). See video_output_handle_vsync
-        // for why the cmdlist shape is shared with HDMI mode.
         (void)send_acr;
         (void)dma_pong;
         (void)v_scanline;
+#if PICO_HDMI_DVI_USE_DATA_ISLANDS
         ch->read_addr = (uintptr_t)vblank_di_null;
         ch->transfer_count = vblank_di_null_len;
+#else
+        ch->read_addr = (uintptr_t)vblank_line_vsync_off;
+        ch->transfer_count = count_of(vblank_line_vsync_off);
+#endif
     } else {
         if (send_acr) {
             ch->read_addr = (uintptr_t)vblank_acr_vsync_off;
