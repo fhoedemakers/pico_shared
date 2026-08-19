@@ -98,9 +98,12 @@ static bool dvi_mode = false; // Default to HDMI mode (full features with audio)
 // objection is to the islands themselves, not to a missing InfoFrame -- there
 // is no single bitstream that satisfies both kinds of sink.
 //
-// Back to 0 here, because "DVI mode" that does not emit DVI is the wrong
-// default. Emulators whose sinks needed the v0.43 behaviour should set this to
-// 1 for their own build rather than changing it back for everybody.
+// 1 is kept for reference only -- do not reach for it. It is not DVI, so it
+// buys a sink nothing that Display Mode = HDMI does not already give: that
+// sends the same island structure with real packets, and carries audio too.
+// A display that cannot hold sync on real DVI should simply be run in HDMI
+// mode. Hence 0 is the default and there is no reason for a shared-driver
+// consumer to override it.
 #ifndef PICO_HDMI_DVI_USE_DATA_ISLANDS
 #define PICO_HDMI_DVI_USE_DATA_ISLANDS 0
 #endif
