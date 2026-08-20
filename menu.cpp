@@ -245,6 +245,12 @@ static bool isArtWorkEnabled()
      case FrensSettings::emulators::SNES:
         snprintf(PATH, sizeof(PATH), "/Metadata/%s/Images/160/0/00FAD8FD.444", emulator);
         break;
+    case FrensSettings::emulators::TI99:
+        // The other emulators probe for one known title's artwork file. There is no
+        // published TI-99/4A metadata pack to pick a CRC from yet, so probe the image
+        // directory itself - present only when a pack has been installed.
+        snprintf(PATH, sizeof(PATH), "/Metadata/%s/Images/160", emulator);
+        break;
     default:
         return false;
     }

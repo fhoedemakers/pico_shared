@@ -1,10 +1,12 @@
 #include <stdio.h>
 #include <string.h>
+#include <ctype.h>
 #include <algorithm>
 #include "pico.h"
 #include "RomLister.h"
 #include "ff.h"
 #include "ffwrappers.h"
+#include "settings.h"
 
 // class to listing directories and files for a given extension on sd card
 namespace Frens
@@ -239,6 +241,59 @@ namespace Frens
 					       "(presumed BIOS)\n",
 					       (unsigned)hidden, directoryname);
 				}
+			}
+		}
+
+		// TI-99/4A: a cartridge is often several files - GAMEC.bin (ROM), GAMED.bin
+		// (second bank), GAMEG.bin (GROM), GAME0.bin (console GROM replacement).
+		// Selecting any one of them loads the whole set, so listing every part turns
+		// one cartridge into three or four confusing menu entries. Hide the secondary
+		// parts when their primary is present in the same folder; a GROM-only cartridge
+		// has no primary and stays visible.
+		//
+		// Gated on the emulator type so this is a strict no-op everywhere else - other
+		// emulators use .bin too.
+		if (FrensSettings::getEmulatorTypeForSettings() == FrensSettings::emulators::TI99)
+		{
+			auto primary_exists = [&](const char *name, size_t len) -> bool {
+				// name/len describe "<base>X.bin"; look for the same base with a
+				// primary suffix. 8 and 9 are single-file multi-bank images.
+				static const char primaries[] = { 'C', '8', '9' };
+				char candidate[ROMLISTER_MAXPATH];
+				if (len >= sizeof(candidate)) return false;
+				for (size_t p = 0; p < sizeof(primaries); p++) {
+					memcpy(candidate, name, len + 1);
+					candidate[len - 5] = primaries[p];
+					for (size_t i = 0; i < numberOfEntries; i++) {
+						if (entries[i].IsDirectory) continue;
+						if (strcasecmp(entries[i].Path, candidate) == 0) return true;
+					}
+				}
+				return false;
+			};
+
+			size_t write = 0, hidden = 0;
+			for (size_t read = 0; read < numberOfEntries; read++) {
+				const char *name = entries[read].Path;
+				size_t len = strlen(name);
+				if (!entries[read].IsDirectory && len >= 6 &&
+				    strcasecmp(name + len - 4, ".bin") == 0)
+				{
+					char part = (char)toupper((unsigned char)name[len - 5]);
+					if ((part == 'D' || part == 'G' || part == '0') &&
+					    primary_exists(name, len))
+					{
+						hidden++;
+						continue;
+					}
+				}
+				if (write != read) entries[write] = entries[read];
+				write++;
+			}
+			numberOfEntries = write;
+			if (hidden > 0) {
+				printf("RomLister: hiding %u TI-99/4A cartridge part file(s) in %s\n",
+				       (unsigned)hidden, directoryname);
 			}
 		}
 
