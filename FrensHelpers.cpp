@@ -9,6 +9,8 @@
 #include "hardware/watchdog.h"
 #if PICO_RP2350
 #include "hardware/structs/qmi.h"
+#else
+#include "hardware/structs/ssi.h"
 #endif
 #include "util/exclusive_proc.h"
 #include "FrensHelpers.h"
@@ -235,9 +237,10 @@ namespace Frens
 #define STORAGE_CMD_DUMMY_BYTES 1
 #define STORAGE_CMD_DATA_BYTES 3
 #define STORAGE_CMD_TOTAL_BYTES (STORAGE_CMD_DUMMY_BYTES + STORAGE_CMD_DATA_BYTES)
+static uint32_t flashJedecId = 0;
 uint __not_in_flash_func(storage_get_flash_capacity)()
 {
-    // This function needs to be called before any overclock settings are applied, 
+    // This function needs to be called before any overclock settings are applied,
     // this may crash when PSRAM is also on the board.
     static uint capacity = 0;
     if (capacity != 0)
@@ -249,8 +252,38 @@ uint __not_in_flash_func(storage_get_flash_capacity)()
     auto irq = save_and_disable_interrupts();
     flash_do_cmd(txbuf, rxbuf, STORAGE_CMD_TOTAL_BYTES);
     restore_interrupts(irq);
+    // rxbuf[0] is clocked out while the command byte goes in; the ID follows.
+    flashJedecId = (rxbuf[1] << 16) | (rxbuf[2] << 8) | rxbuf[3];
     capacity = 1 << rxbuf[3];
     return capacity;
+}
+
+// Full JEDEC (0x9F) ID as 0xMMTTCC: manufacturer, type, capacity exponent.
+// Which flash part a board carries decides how far it can be overclocked, so
+// this is the first thing to ask for in a "crashes only on my board" report.
+uint32_t storage_get_flash_jedec_id()
+{
+    storage_get_flash_capacity(); // no-op once cached; does the read on first call
+    return flashJedecId;
+}
+
+// JEDEC manufacturer IDs seen on Picos and Pico-compatible clones. Genuine
+// boards are Winbond; anything else is a clone and likely a slower part.
+const char *storage_get_flash_manufacturer_name(uint8_t manufacturerId)
+{
+    switch (manufacturerId)
+    {
+    case 0xEF: return "Winbond";
+    case 0xC8: return "GigaDevice";
+    case 0x5E: return "Zbit";
+    case 0x0B: return "XTX";
+    case 0x68: return "Boya";
+    case 0x85: return "Puya";
+    case 0xC2: return "Macronix";
+    case 0x1F: return "Adesto/Atmel";
+    case 0x20: return "Micron";
+    default: return "unknown";
+    }
 }
 #if !HSTX
     /// @brief Wait for vertical sync
@@ -1281,11 +1314,10 @@ uint __not_in_flash_func(storage_get_flash_capacity)()
 #if 0
                                 printf("Writing block %d (%d bytes) to flash at %x\n", blockCount++, bytesRead, ofs);
 #endif
-                                // Disable interupts, erase, flash and enable interrupts
-                                uint32_t ints = save_and_disable_interrupts();
-                                flash_range_erase(ofs, bufsize);
-                                flash_range_program(ofs, buffer, bufsize);
-                                restore_interrupts(ints);
+                                // Erase and flash. These disable interrupts around the
+                                // operation and preserve the startup flash timing.
+                                flashEraseSafe(ofs, bufsize);
+                                flashProgramSafe(ofs, buffer, bufsize);
                                 ofs += bufsize;
                                 totalBytes += bytesRead;
                                 // keep the usb stack running
@@ -1302,7 +1334,11 @@ uint __not_in_flash_func(storage_get_flash_capacity)()
                         }
                         if (!readError)
                         {
-                            printf("Wrote %d bytes to flash\n", totalBytes);
+                            // Flash freq is reported again here because erase/program
+                            // re-run boot2, which resets the divisor chosen at startup.
+                            // This must match the value printed in the startup banner.
+                            printf("Wrote %d bytes to flash (flash freq: %d kHz)\n",
+                                   totalBytes, getFlashClockHz() / 1000);
                             if (totalBytes != filesize)
                             {
                                 snprintf(ErrorMessage, 40, "Size mismatch: %d != %d\n", totalBytes, filesize);
@@ -1874,6 +1910,139 @@ uint __not_in_flash_func(storage_get_flash_capacity)()
 #endif
     }
 
+#if !PICO_RP2350
+    // Divisor relaxFlashTimingForClock() installed, or 0 if it left boot2's choice
+    // alone. Anything that re-runs boot2 undoes it, so we need to know what to
+    // put back -- see flashEraseSafe()/flashProgramSafe() below.
+    static uint32_t appliedFlashDivisor = 0;
+
+    // Write the XIP SSI baud rate divisor. BAUDR is only writable while the SSI is
+    // disabled, and XIP is dead for that window, so this must execute from RAM and
+    // must not be interrupted. Core1 is not running yet when this is called.
+    static void __no_inline_not_in_flash_func(setFlashDivisor)(uint32_t div)
+    {
+        ssi_hw->ssienr = 0;
+        ssi_hw->baudr = div;
+        ssi_hw->ssienr = 1;
+        (void)ssi_hw->ssienr; // let the enable land before we return to XIP
+    }
+
+    // How fast the fitted flash part may be clocked, by JEDEC manufacturer.
+    static uint32_t flashMaxClockKHz(uint8_t manufacturerId)
+    {
+        switch (manufacturerId)
+        {
+        case 0xEF:
+            // Winbond W25Q, what genuine Picos ship. Rated 133 MHz, and Raspberry Pi
+            // validated clk_sys/2 against it, so leave those boards exactly as they
+            // have always run: 126 MHz at a 252 MHz overclock.
+            return 133000;
+        default:
+            // Clone parts are typically rated 100-108 MHz (the BoyaMicro BY25Q16 that
+            // prompted this is 108). Stay below the slowest of them. Also covers a
+            // failed/absent JEDEC read, which reports manufacturer 0.
+            return 94500;
+        }
+    }
+
+    /*
+     * RP2040 counterpart of the RP2350 QMI timing fix below.
+     *
+     * boot2 drives the flash at clk_sys / PICO_FLASH_SPI_CLKDIV, and boards/pico.h
+     * overrides the SDK's generic default of 4 with 2 because a genuine Pico carries a
+     * 133 MHz W25Q16JV. Clone boards commonly carry a ~104 MHz part instead, so at
+     * 252 MHz clk_sys the flash would be clocked at 126 MHz. Beyond spec the reads do
+     * not fault, they return garbage: the very first instruction fetched after the
+     * clk_sys mux switches decodes to nonsense and the core hard-faults inside
+     * clock_configure(), which looks like a crash in set_sys_clock_khz() itself.
+     *
+     * So pick the smallest (even) divisor that keeps the flash within what the fitted
+     * part is rated for, and apply it *before* raising clk_sys. A genuine Winbond board
+     * lands back on the divisor boot2 already programmed and is left untouched; the
+     * Boya clone gets divisor 4, i.e. 63 MHz instead of 126.
+     *
+     * This only ever slows the flash down. If boot2 chose a more conservative divisor
+     * than we compute -- board headers know things we do not -- we defer to it.
+     */
+    static void relaxFlashTimingForClock(uint32_t cpuFreqKHz)
+    {
+        uint8_t manufacturer = (storage_get_flash_jedec_id() >> 16) & 0xff;
+        uint32_t max_flash_khz = flashMaxClockKHz(manufacturer);
+        uint32_t div = (cpuFreqKHz + max_flash_khz - 1) / max_flash_khz;
+        div = (div + 1) & ~1u; // BAUDR must be even
+        if (div < 2)
+        {
+            div = 2;
+        }
+        if (div <= ssi_hw->baudr)
+        {
+            return; // already at or below the rate this part can take
+        }
+        uint32_t irq = save_and_disable_interrupts();
+        setFlashDivisor(div);
+        appliedFlashDivisor = div;
+        restore_interrupts(irq);
+    }
+
+    // Put our divisor back after something has re-run boot2. Must itself live in
+    // RAM: the caller may not touch XIP between the boot2 re-run and this call.
+    static void __no_inline_not_in_flash_func(restoreFlashDivisor)()
+    {
+        if (appliedFlashDivisor != 0 && ssi_hw->baudr != appliedFlashDivisor)
+        {
+            setFlashDivisor(appliedFlashDivisor);
+        }
+    }
+#endif
+
+    /*
+     * flash_range_erase() and flash_range_program() finish by calling
+     * flash_enable_xip_via_boot2(), which re-runs boot2 and reprograms BAUDR to
+     * PICO_FLASH_SPI_CLKDIV -- silently undoing relaxFlashTimingForClock(). The
+     * SDK's flash_restore_hardware_state() does not cover this: on RP2040 it
+     * saves the QSPI pads and nothing else.
+     *
+     * Left alone, a clone board would boot safely and then be put back to
+     * clk_sys/2 by the first ROM write, for the rest of the session.
+     *
+     * Restoring the divisor after these calls return is not enough -- execution
+     * returns to XIP immediately, so the fetch of the very next instruction
+     * already happens at the unsafe rate. These wrappers run from RAM so the
+     * divisor is back in place before any flash access can occur.
+     */
+    void __no_inline_not_in_flash_func(flashEraseSafe)(uint32_t flashOffset, size_t count)
+    {
+        uint32_t irq = save_and_disable_interrupts();
+        flash_range_erase(flashOffset, count);
+#if !PICO_RP2350
+        restoreFlashDivisor();
+#endif
+        restore_interrupts(irq);
+    }
+
+    void __no_inline_not_in_flash_func(flashProgramSafe)(uint32_t flashOffset, const uint8_t *data, size_t count)
+    {
+        uint32_t irq = save_and_disable_interrupts();
+        flash_range_program(flashOffset, data, count);
+#if !PICO_RP2350
+        restoreFlashDivisor();
+#endif
+        restore_interrupts(irq);
+    }
+
+    // Rate the QSPI flash is actually being clocked at, i.e. clk_sys divided by
+    // whatever the flash interface is programmed to. Reported at startup so a bug
+    // report shows straight away whether the flash is being driven out of spec.
+    uint32_t getFlashClockHz()
+    {
+#if PICO_RP2350
+        uint32_t div = qmi_hw->m[0].timing & QMI_M0_TIMING_CLKDIV_BITS;
+#else
+        uint32_t div = ssi_hw->baudr;
+#endif
+        return div ? clock_get_hz(clk_sys) / div : 0;
+    }
+
     // Set CPU clock to desired speed
     // Set HSTX clock to 126 MHz if HSTX is used so the HSTX display driver can output at no more than 60Hz
     void setClocksAndStartStdio(uint32_t cpuFreqKHz, vreg_voltage voltage)
@@ -1885,7 +2054,17 @@ uint __not_in_flash_func(storage_get_flash_capacity)()
         // Set voltage and clock frequency
         vreg_disable_voltage_limit();
         vreg_set_voltage(voltage);
+        // Let the core rail reach the new voltage before asking the chip to run at
+        // an overclocked speed. PicoDVI's examples do the same before their 252 MHz
+        // switch; without it the whole chip, flash interface included, is briefly
+        // running fast at the old voltage. The HSTX path below already waits.
+        sleep_ms(10);
 #if !HSTX
+#if !PICO_RP2350
+        // Slow the flash down before clk_sys goes up, or clone boards with a 104 MHz
+        // QSPI part hard-fault on the first instruction fetched at the new clock.
+        relaxFlashTimingForClock(cpuFreqKHz);
+#endif
         set_sys_clock_khz(cpuFreqKHz, true);
         sleep_ms(100);
 #else

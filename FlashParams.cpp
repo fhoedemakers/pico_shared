@@ -106,10 +106,8 @@ namespace Frens
         printf("Setting watchdog timer to reboot in 100 ms\n");
         watchdog_enable(100, 0);
 
-        uint32_t ints = save_and_disable_interrupts();
-        flash_range_erase(ofs, 4096);
-        flash_range_program(ofs, (const uint8_t *)&params, sizeof(FlashParams));
-        restore_interrupts(ints);
+        flashEraseSafe(ofs, 4096);
+        flashProgramSafe(ofs, (const uint8_t *)&params, sizeof(FlashParams));
         // Will likely to crash here.
         while (1)
         {

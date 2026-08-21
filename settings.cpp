@@ -7,7 +7,7 @@ struct settings settings;
 namespace FrensSettings
 {
     #define SETTINGSFILE "/settings_%s.dat" // File to store settings
-    static const char *emulatorstrings[8] = { "NES", "SMS", "GB", "MD", "MUL", "PCE", "O2E", "SNES" };
+    static const char *emulatorstrings[9] = { "NES", "SMS", "GB", "MD", "MUL", "PCE", "O2E", "SNES", "TI99" };
     static char settingsFileName[21] = {};
     static emulators emulatorTypeForSettings = emulators::MULTI;
     char *getSettingsFileName()
@@ -53,12 +53,30 @@ namespace FrensSettings
             emulatorType = emulators::PCE;
             g_settings_visibility = g_settings_visibility_pce;
         }
+        else if (strcasecmp(fileextension, ".rpk") == 0 || strcasecmp(fileextension, ".tib") == 0)
+        {
+            if ( emulatorType == emulators::TI99 ) return;
+            emulatorType = emulators::TI99;
+            g_settings_visibility = g_settings_visibility_ti99;
+        }
         else if (strcasecmp(fileextension, ".gen") == 0 || strcasecmp(fileextension, ".md") == 0|| strcasecmp(fileextension, ".bin") == 0)
         {
-
-            if ( emulatorType == emulators::GENESIS ) return;
-            emulatorType = emulators::GENESIS;
-            g_settings_visibility = g_settings_visibility_md;
+            // .bin is ambiguous - Mega Drive images and TI-99/4A C/D/G cartridge parts
+            // both use it. A single-emulator build has already pinned its type through
+            // initSettings(), so honour that; multi-emulator builds keep the old
+            // Mega Drive default.
+            if ( emulatorTypeForSettings == emulators::TI99 )
+            {
+                if ( emulatorType == emulators::TI99 ) return;
+                emulatorType = emulators::TI99;
+                g_settings_visibility = g_settings_visibility_ti99;
+            }
+            else
+            {
+                if ( emulatorType == emulators::GENESIS ) return;
+                emulatorType = emulators::GENESIS;
+                g_settings_visibility = g_settings_visibility_md;
+            }
         }
         else if (strcasecmp(fileextension, ".smc") == 0 || strcasecmp(fileextension, ".sfc") == 0)
         {
