@@ -18,6 +18,7 @@
 #include "nespad.h"
 #include "wiipad.h"
 #include "menu_settings.h"
+#include "usb_msc.h"
 
 #include "font_8x8.h"
 #include "settings.h"
@@ -1427,6 +1428,153 @@ static void showControllerTestScreen()
         merged = ctSampleSources(cur);
     } while (merged != 0);
 }
+
+#if FRENS_USB_MSC
+static void showLoadingScreen(const char *message, int framesToWait); // defined below
+
+// USB drive mode: hand the SD card to a PC as a mass storage device and sit
+// here until the host lets go or the user presses B. Rom browser only - the
+// settings menu never offers this entry when it was opened from a game.
+//
+// Nothing in this loop may touch FatFs: Frens::usbMscBegin() unmounted the
+// volume and the host owns the filesystem until Frens::usbMscEnd() puts it
+// back. Returns true when the host wrote to the card, so the caller can make
+// the browser re-read the directory.
+static bool showUsbDriveScreen()
+{
+    // Long enough for a PC to notice and enumerate a new device, short enough
+    // that a board with no other input is never stuck here. Needed because on
+    // boards without PIO USB the host stack is down while we are mounted, and
+    // HW_CONFIG 10 has no NES port either, so B is not always reachable.
+    constexpr uint32_t noHostTimeoutMs = 20000;
+    char buttonLabel1[10], buttonLabel2[10];
+    char line[SCREEN_COLS + 1];
+    DWORD pad;
+
+    waitForNoButtonPress(); // absorb the A press that opened the screen
+
+    ClearScreen(settings.bgcolor);
+    drawAllLines(-1);
+    Menu_LoadFrame();
+
+    if (!Frens::usbMscBegin())
+    {
+        showMessageBox("Cannot read SD card", CRED, "USB drive mode unavailable");
+        return false;
+    }
+
+    getButtonLabels(buttonLabel1, buttonLabel2);
+    uint32_t started = Frens::time_ms();
+    bool done = false;
+
+    while (!done)
+    {
+        bool mounted = Frens::usbMscHostConnected();
+
+        ClearScreen(settings.bgcolor);
+        const char *title = "-- USB Drive Mode --";
+        putText(centerColClamped(strlen(title)), 0, title, settings.fgcolor, settings.bgcolor);
+
+        if (mounted)
+        {
+            const char *l1 = Frens::usbMscHostSuspended()
+                                 ? "SD card is mounted (computer asleep)."
+                                 : "SD card is mounted on your computer.";
+            const char *l2 = "Copy or delete files, then eject the";
+            const char *l3 = "drive on your computer.";
+            putText(centerColClamped(strlen(l1)), 8, l1, settings.fgcolor, settings.bgcolor);
+            putText(centerColClamped(strlen(l2)), 10, l2, settings.fgcolor, settings.bgcolor);
+            putText(centerColClamped(strlen(l3)), 11, l3, settings.fgcolor, settings.bgcolor);
+        }
+        else
+        {
+            const char *l1 = "Connect the USB port to a computer.";
+            const char *l2 = "Waiting for the computer...";
+            putText(centerColClamped(strlen(l1)), 8, l1, settings.fgcolor, settings.bgcolor);
+            putText(centerColClamped(strlen(l2)), 10, l2, settings.fgcolor, settings.bgcolor);
+        }
+
+        snprintf(line, sizeof(line), "Eject on the computer, or press %s.", buttonLabel2);
+        putText(centerColClamped(strlen(line)), 15, line, settings.fgcolor, settings.bgcolor);
+#if !CFG_TUH_RPI_PIO_USB
+        const char *warn = "USB controllers are off until you exit.";
+        putText(centerColClamped(strlen(warn)), 17, warn, settings.fgcolor, settings.bgcolor);
+#endif
+
+        // Repaint with the device stack pumped between scanlines. On the
+        // line-buffer video path drawline() blocks waiting for a free buffer,
+        // so that loop is where the frame's idle time actually is; pumping
+        // here keeps transfers moving without disturbing frame pacing.
+        for (int lineNr = 0; lineNr < 240; ++lineNr)
+        {
+            drawline(lineNr, -1);
+            Frens::usbMscTask();
+        }
+        // On the framebuffer paths drawing is nearly free and the wait sits in
+        // Menu_LoadFrame() instead, which would cap tud_task() at 60 calls a
+        // second and throttle the transfer to a crawl. Spend that time on USB.
+        absolute_time_t until = make_timeout_time_ms(8);
+        while (!time_reached(until))
+        {
+            Frens::usbMscTask();
+        }
+        // Safe with the host torn down: tuh_task() returns at once when the
+        // host stack is not initialised.
+        Menu_LoadFrame();
+
+        RomSelect_PadState(&pad);
+        if (pad & B)
+        {
+            done = true;
+        }
+        else if (Frens::usbMscEverConnected())
+        {
+            // A computer had the drive; leave the moment it lets go. A bus
+            // suspend does not count as letting go, so a sleeping host does
+            // not drop us out mid-copy.
+            done = !Frens::usbMscHostConnected();
+        }
+        else if (Frens::time_ms() - started > noHostTimeoutMs)
+        {
+            done = true; // no computer on the other end
+        }
+    }
+
+    bool wrote = Frens::usbMscMediaDirty();
+    Frens::usbMscEnd();
+
+    if (Frens::usbMscNeedsRebootOnExit())
+    {
+        // Boards without PIO USB cannot leave USB drive mode cleanly: handing
+        // rhport 0 back to the USB host forces a tud_deinit() that leaks two
+        // hardware spinlocks TinyUSB never frees, and only eight are claimable
+        // in total. Rebooting costs a couple of seconds, rebuilds the USB host
+        // and the FatFs mount from scratch, and re-reads the card the PC just
+        // wrote to - which is what we would be doing on the way out anyway.
+        showLoadingScreen("Restarting", 60);
+        Frens::resetWifi();
+        // watchdog_reboot(), not watchdog_enable(): watchdog_enable() stamps
+        // scratch[4] with the SDK magic that watchdog_enable_caused_reboot()
+        // looks for, which is how menu() tells the emulator "a rom was picked,
+        // flash it and start it" (FrensHelpers.cpp initAll). Rebooting that
+        // way out of USB drive mode made the next boot call flashrom() on a
+        // stale path and report "Not a NES rom file". watchdog_reboot(0,0,0)
+        // clears that magic, so this comes back up in the rom browser - the
+        // same thing rebootToBootloader() relies on.
+        watchdog_reboot(0, 0, 0);
+        while (1)
+        {
+            tight_loop_contents();
+        }
+    }
+
+    ClearScreen(settings.bgcolor);
+    drawAllLines(-1);
+    Menu_LoadFrame();
+    waitForNoButtonPress(); // do not let the exit press fall through to the menu
+    return wrote;
+}
+#endif // FRENS_USB_MSC
 
 void DisplayFatalError(char *error)
 {
@@ -3144,10 +3292,25 @@ int showSettingsMenu(bool calledFromGame)
     {
         visibleIndices[visibleCount++] = MOPT_RECENT_GAMES;
     }
+#if FRENS_USB_MSC
+    // USB drive mode hands the raw SD card to a PC, so it is a rom-browser
+    // feature only: in-game there are save files open and the rom is mapped out
+    // of flash, and letting a host rewrite the card underneath that corrupts
+    // both. Gating it here keeps it out of visibleIndices entirely when the
+    // in-game menu is open, so it cannot be highlighted and its handler cannot
+    // run. Force-shown for the same reason as MOPT_RECENT_GAMES above: sibling
+    // emulators size g_settings_visibility[] positionally and leave the new
+    // trailing entry zero.
+    if (!calledFromGame)
+    {
+        visibleIndices[visibleCount++] = MOPT_USB_DRIVE_MODE;
+    }
+#endif
     for (int i = 0; i < MOPT_COUNT; ++i)
     {
         if (i == MOPT_FDS_DISK_SWAP) continue; // already handled above
         if (i == MOPT_RECENT_GAMES) continue;  // already handled above
+        if (i == MOPT_USB_DRIVE_MODE) continue; // already handled above
         // Overclock is reachable only from the file-browser menu — applying it
         // mid-game would reboot the box and drop unsaved emulator state.
         if (i == MOPT_OVERCLOCK && calledFromGame) continue;
@@ -3187,6 +3350,7 @@ int showSettingsMenu(bool calledFromGame)
     int  actionSubSelect     = 0;                   // 0=SAVE, 1=CANCEL, 2=DEFAULT
     exitMenu = false;
     bool applySettings = false; // true when SAVE, false when CANCEL
+    bool mediaChanged = false;  // a PC wrote to the card in USB drive mode
     // lambda to redraw the entire menu
     auto redraw = [&]()
     {
@@ -3254,6 +3418,12 @@ int showSettingsMenu(bool calledFromGame)
             case MenuSettingsIndex::MOPT_RECENT_GAMES:
             {
                 label = "Recently played";
+                value = "";
+                break;
+            }
+            case MenuSettingsIndex::MOPT_USB_DRIVE_MODE:
+            {
+                label = "USB drive mode";
                 value = "";
                 break;
             }
@@ -3527,7 +3697,7 @@ int showSettingsMenu(bool calledFromGame)
                 value = "";
                 break;
             }
-            snprintf(line, sizeof(line), "%s%s%s", label, (optIndex == MOPT_EXIT_GAME || optIndex == MOPT_SAVE_RESTORE_STATE || optIndex == MOPT_ENTER_BOOTSEL_MODE || optIndex == MOPT_REBOOT_TO_LOADER || optIndex == MOPT_RESET_GAME || optIndex == MOPT_CONTROLLER_TEST || optIndex == MOPT_RECENT_GAMES) ? "" : ": ", value);
+            snprintf(line, sizeof(line), "%s%s%s", label, (optIndex == MOPT_EXIT_GAME || optIndex == MOPT_SAVE_RESTORE_STATE || optIndex == MOPT_ENTER_BOOTSEL_MODE || optIndex == MOPT_REBOOT_TO_LOADER || optIndex == MOPT_RESET_GAME || optIndex == MOPT_CONTROLLER_TEST || optIndex == MOPT_RECENT_GAMES || optIndex == MOPT_USB_DRIVE_MODE) ? "" : ": ", value);
             putText(0, row++, line, CBLACK, CWHITE);
         }
         // Down-scroll indicator (centered): shown when there are options below the window
@@ -3599,7 +3769,8 @@ int showSettingsMenu(bool calledFromGame)
                 curOpt == MOPT_REBOOT_TO_LOADER ||
                 curOpt == MOPT_RESET_GAME ||
                 curOpt == MOPT_CONTROLLER_TEST ||
-                curOpt == MOPT_RECENT_GAMES)
+                curOpt == MOPT_RECENT_GAMES ||
+                curOpt == MOPT_USB_DRIVE_MODE)
             {
                 snprintf(line, sizeof(line), "UP/DOWN: Move, %s: select", buttonLabel1);
             }
@@ -3781,7 +3952,7 @@ int showSettingsMenu(bool calledFromGame)
                         firstVisibleOption = selectedOptionIndex - optionWindowSize + 1; // scroll down
                 }
             }
-            else if (pad & LEFT || pad & RIGHT || ((pad & A) && (optIndex == MOPT_EXIT_GAME || optIndex == MOPT_SAVE_RESTORE_STATE || optIndex == MOPT_ENTER_BOOTSEL_MODE || optIndex == MOPT_REBOOT_TO_LOADER || optIndex == MOPT_RESET_GAME || optIndex == MOPT_FDS_DISK_SWAP || optIndex == MOPT_CONTROLLER_TEST || optIndex == MOPT_RECENT_GAMES)))
+            else if (pad & LEFT || pad & RIGHT || ((pad & A) && (optIndex == MOPT_EXIT_GAME || optIndex == MOPT_SAVE_RESTORE_STATE || optIndex == MOPT_ENTER_BOOTSEL_MODE || optIndex == MOPT_REBOOT_TO_LOADER || optIndex == MOPT_RESET_GAME || optIndex == MOPT_FDS_DISK_SWAP || optIndex == MOPT_CONTROLLER_TEST || optIndex == MOPT_RECENT_GAMES || optIndex == MOPT_USB_DRIVE_MODE)))
             {
                 // LEFT/RIGHT on the action row cycles sub-selection
                 if (onActionRow && (pad & (LEFT | RIGHT)))
@@ -3832,6 +4003,34 @@ int showSettingsMenu(bool calledFromGame)
                             startFrames = -1; // re-seed idle counter: frames spent in the
                                               // test screen must not trip the screensaver
                         }
+                        break;
+                    }
+                    case MOPT_USB_DRIVE_MODE:
+                    {
+#if FRENS_USB_MSC
+                        // LEFT/RIGHT also reach this case via the OR-list above;
+                        // only A opens the screen. Rom browser only - see the
+                        // visibleIndices gate at the top of this function.
+                        if (pad & A)
+                        {
+                            // Close the menu music file first. USB drive mode
+                            // unmounts FatFs and hands the raw card to a PC, so
+                            // no file handle may stay open across it - and this
+                            // function opened one itself further up.
+                            wavplayer::reset();
+                            if (showUsbDriveScreen())
+                            {
+                                mediaChanged = true;
+                            }
+#if USE_I2S_AUDIO == PICO_AUDIO_I2S_DRIVER_TLV320
+                            // Re-open it against the remounted volume so the
+                            // volume option still previews audio.
+                            wavplayer::use_file(wavPath);
+#endif
+                            startFrames = -1; // re-seed idle counter: frames spent
+                                              // in USB drive mode are not idle time
+                        }
+#endif
                         break;
                     }
                     case MOPT_RECENT_GAMES:
@@ -4173,6 +4372,14 @@ int showSettingsMenu(bool calledFromGame)
             }
         }
 #endif
+    }
+    // A PC wrote to the card while in USB drive mode, so the rom list on screen
+    // is out of date. rval 1 is what makes the browser re-run romlister.list()
+    // for the current directory. Done after the commit block above so pending
+    // setting edits are still saved normally.
+    if (mediaChanged && rval == 0)
+    {
+        rval = 1;
     }
     Frens::f_free(workingDyn);
     // restore contents of swap file back to altScreenbuffer when not nullptr

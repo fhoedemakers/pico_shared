@@ -77,8 +77,15 @@
 #define CFG_TUSB_DEBUG        0
 #endif
 
-// Disable Device stack
-#define CFG_TUD_ENABLED       0
+// Device stack. Off unless USB drive mode is built in (FRENS_USB_MSC, set by
+// the top-level CMakeLists for RP2350 builds). Even when it is on, the stack is
+// only brought up by Frens::usbMscBegin() while the user is on the USB drive
+// screen; it is torn down again on the way out.
+#ifndef FRENS_USB_MSC
+#define FRENS_USB_MSC 0
+#endif
+
+#define CFG_TUD_ENABLED       FRENS_USB_MSC
 #define CFG_TUD_MAX_SPEED     BOARD_TUD_MAX_SPEED
 
 // Enable Host stack, Default is max speed that hardware controller could support with on-chip PHY
@@ -89,7 +96,10 @@
 #ifndef CFG_TUH_RPI_PIO_USB
 #define CFG_TUH_RPI_PIO_USB   0 
 #endif
-#if !CFG_TUH_RPI_PIO_USB
+// Without PIO USB the host owns RHPort 0. Pin it to host mode only when USB
+// drive mode is not built in: with FRENS_USB_MSC that port changes role at
+// runtime (tuh_deinit -> tud_init and back), so it must not be nailed down here.
+#if !CFG_TUH_RPI_PIO_USB && !FRENS_USB_MSC
 #define CFG_TUSB_RHPORT0_MODE OPT_MODE_HOST
 #endif
 
@@ -117,6 +127,17 @@
 #endif
 
 //------------- CLASS -------------//
+#if FRENS_USB_MSC
+// USB drive mode is a mass storage device and nothing else. CDC has to be off:
+// it was harmless while CFG_TUD_ENABLED was 0, but with the device stack live
+// it would add a second interface to the configuration descriptor.
+#define CFG_TUD_CDC              0
+#define CFG_TUD_MSC              1
+// 512 bytes is one SD sector. tud_task() is pumped in a tight loop by the USB
+// drive screen rather than once per frame, so a bigger endpoint buffer would
+// only cost .bss without buying throughput.
+#define CFG_TUD_MSC_EP_BUFSIZE   512
+#else
 #define CFG_TUD_CDC              1
 
 // CDC FIFO size of TX and RX
@@ -125,6 +146,7 @@
 
 // CDC Endpoint transfer buffer size, more is faster
 #define CFG_TUD_CDC_EP_BUFSIZE   (TUD_OPT_HIGH_SPEED ? 512 : 64)
+#endif
 
 //--------------------------------------------------------------------
 // HOST CONFIGURATION

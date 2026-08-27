@@ -137,6 +137,17 @@ namespace Frens
     void getextensionfromfilename(const char *filename, char *extension, size_t extSize);
     char *GetfileNameFromFullPath(char *fullPath);
     bool initSDCard();
+    // Release / re-acquire the FatFs volume around USB drive mode, which hands
+    // the raw card to a PC and so must not leave a cached FAT sector behind.
+    // The SPI setup done by initSDCard() stays valid across the pair.
+    void unmountSDCard();
+    bool remountSDCard();
+    // USB drive mode needs PLL_USB at 48 MHz, but HSTX builds with PIO USB
+    // repurpose it as the 126 MHz TMDS source. Acquire borrows it back (moving
+    // HSTX onto clk_sys) and returns false if the live clk_sys cannot source
+    // HSTX; release puts both back. No-ops on builds that never took PLL_USB.
+    bool usbDeviceClockAcquire();
+    void usbDeviceClockRelease();
     bool applyScreenMode(ScreenMode screenMode_);
     bool screenMode(int incr);
     // Flashes the rom named in ROMINFOFILE into the xip flash region, unless
