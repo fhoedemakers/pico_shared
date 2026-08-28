@@ -3292,25 +3292,15 @@ int showSettingsMenu(bool calledFromGame)
     {
         visibleIndices[visibleCount++] = MOPT_RECENT_GAMES;
     }
-#if FRENS_USB_MSC
-    // USB drive mode hands the raw SD card to a PC, so it is a rom-browser
-    // feature only: in-game there are save files open and the rom is mapped out
-    // of flash, and letting a host rewrite the card underneath that corrupts
-    // both. Gating it here keeps it out of visibleIndices entirely when the
-    // in-game menu is open, so it cannot be highlighted and its handler cannot
-    // run. Force-shown for the same reason as MOPT_RECENT_GAMES above: sibling
-    // emulators size g_settings_visibility[] positionally and leave the new
-    // trailing entry zero.
-    if (!calledFromGame)
-    {
-        visibleIndices[visibleCount++] = MOPT_USB_DRIVE_MODE;
-    }
-#endif
     for (int i = 0; i < MOPT_COUNT; ++i)
     {
         if (i == MOPT_FDS_DISK_SWAP) continue; // already handled above
         if (i == MOPT_RECENT_GAMES) continue;  // already handled above
-        if (i == MOPT_USB_DRIVE_MODE) continue; // already handled above
+        // The three action entries that close the list are appended after this
+        // loop in a fixed order, so skip them here.
+        if (i == MOPT_CONTROLLER_TEST) continue;
+        if (i == MOPT_ENTER_BOOTSEL_MODE) continue;
+        if (i == MOPT_USB_DRIVE_MODE) continue;
         // Overclock is reachable only from the file-browser menu — applying it
         // mid-game would reboot the box and drop unsaved emulator state.
         if (i == MOPT_OVERCLOCK && calledFromGame) continue;
@@ -3323,6 +3313,33 @@ int showSettingsMenu(bool calledFromGame)
             }
         }
     }
+    // Fixed tail of the list: Controller test, Enter BOOTSEL mode, USB drive
+    // mode. Their order cannot come from the loop above because the enum in
+    // menu_settings.h is append-only - every emulator sizes its
+    // g_settings_visibility_* array [MOPT_COUNT] with a positional initializer
+    // list, so renumbering MOPT_* values would silently shift their settings.
+    // Appending here keeps the enum untouched and pins the display order.
+    if (g_settings_visibility[MOPT_CONTROLLER_TEST] > 0)
+    {
+        visibleIndices[visibleCount++] = MOPT_CONTROLLER_TEST;
+    }
+    if (g_settings_visibility[MOPT_ENTER_BOOTSEL_MODE] > 0)
+    {
+        visibleIndices[visibleCount++] = MOPT_ENTER_BOOTSEL_MODE;
+    }
+#if FRENS_USB_MSC
+    // USB drive mode hands the raw SD card to a PC, so it is a rom-browser
+    // feature only: in-game there are save files open and the rom is mapped out
+    // of flash, and letting a host rewrite the card underneath corrupts both.
+    // Leaving it out of visibleIndices when the in-game menu is open means it
+    // cannot be highlighted and its handler cannot run. It is forced visible
+    // rather than read from g_settings_visibility[] for the same reason as
+    // MOPT_RECENT_GAMES above: sibling emulators leave the trailing entry zero.
+    if (!calledFromGame)
+    {
+        visibleIndices[visibleCount++] = MOPT_USB_DRIVE_MODE;
+    }
+#endif
     // Layout rows (option list is a scrollable window of optionWindowSize rows):
     //   title, blank,
     //   upIndicatorRow,
