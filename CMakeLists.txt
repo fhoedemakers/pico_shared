@@ -20,6 +20,10 @@ soundrecorder.cpp
 samplesound.c
 wavplayer.cpp
 FlashParams.cpp
+# USB drive mode. Both compile to nothing unless the top-level CMakeLists
+# defines FRENS_USB_MSC=1, which it only does for RP2350 builds.
+usb_msc.cpp
+usb_descriptors.c
 #PicoPlusPsram.cpp
 )
 add_subdirectory(drivers/pico_fatfs)

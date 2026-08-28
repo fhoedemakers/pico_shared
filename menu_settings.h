@@ -38,6 +38,7 @@ enum MenuSettingsIndex {
     // [MOPT_COUNT], so a trailing entry they do not initialise is simply zero
     // (hidden), while inserting in the middle would shift all their values.
     MOPT_RECENT_GAMES,
+    MOPT_USB_DRIVE_MODE, // Rom browser only: shows the SD card on a PC over USB
     MOPT_COUNT
 };
 // Short description (max 40 chars) for each option. Use designated initializers
@@ -72,6 +73,7 @@ const char* const g_settings_descriptions[MOPT_COUNT] = {
     [MOPT_ENTER_BOOTSEL_MODE]        = "Reboot to BOOTSEL mode for flashing",
     [MOPT_CONTROLLER_TEST]           = "Test buttons on connected controllers",
     [MOPT_RECENT_GAMES]              = "Restart a recently played game",
+    [MOPT_USB_DRIVE_MODE]            = "Show SD card on your PC over USB",
 };
 
 extern const int8_t *g_settings_visibility; // Visibility configuration for options menu

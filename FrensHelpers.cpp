@@ -65,6 +65,15 @@ static bool paceTimerInited = false;
 // that never use line-streaming pay no SRAM for it.
 static volatile Frens::LineStreamFillFn lineStreamFill_ = nullptr;
 static volatile bool lineStreamActive_ = false;
+// Display park, for USB drive mode on line-buffer DVI builds (RP2040). Core0
+// cannot both feed the DVI line queue and block on SD transfers - five line
+// buffers give it about 317us of slack and a single 512-byte SD read already
+// costs ~205us - so the picture collapses into TMDS error symbols while the
+// host reads the card. Parking core1 stops the serialisers instead, which is
+// an honest black screen rather than a broken one. There is no unpark: the
+// caller reboots when the user is done. Two bools, no buffers.
+static volatile bool displayParkRequested_ = false;
+static volatile bool displayParked_ = false;
 static uint16_t *lineStreamScratch_ = nullptr;
 #endif
 char ErrorMessage[ERRORMESSAGESIZE];
@@ -756,6 +765,41 @@ const char *storage_get_flash_manufacturer_name(uint8_t manufacturerId)
         }
         return true;
     }
+
+    // Release the volume so nothing of the filesystem is left cached. Used by
+    // USB drive mode before it hands the card to a PC: FatFs keeps a window
+    // buffer of the last FAT/directory sector it touched, and that would be
+    // stale the moment the host writes.
+    void unmountSDCard()
+    {
+        FRESULT fr = f_mount(nullptr, "", 0);
+        if (fr != FR_OK)
+        {
+            printf("SD card unmount error: %d\n", fr);
+        }
+    }
+
+    // Mount the card again after USB drive mode and return to the directory the
+    // rom browser was in. The SPI/PIO configuration from initSDCard() is still
+    // in effect, so only the FatFs side has to be redone. Falls back to the
+    // root when the host removed or renamed that directory.
+    bool remountSDCard()
+    {
+        FRESULT fr = f_mount(&fs, "", 1);
+        if (fr != FR_OK)
+        {
+            snprintf(ErrorMessage, ERRORMESSAGESIZE, "SD card mount error: %d", fr);
+            printf("%s\n", ErrorMessage);
+            return false;
+        }
+        if (settings.currentDir[0] == 0 || f_chdir(settings.currentDir) != FR_OK)
+        {
+            f_chdir("/");
+            strcpy(settings.currentDir, "/");
+        }
+        return true;
+    }
+
     bool applyScreenMode(ScreenMode screenMode_)
     {
         bool scanLine = false;
@@ -1416,7 +1460,7 @@ const char *storage_get_flash_manufacturer_name(uint8_t manufacturerId)
                 dvi_->waitForValidLine();
 
             dvi_->start();
-            while (!exclProc_.isExist())
+            while (!exclProc_.isExist() && !displayParkRequested_)
             {
                 Frens::LineStreamFillFn fn = lineStreamFill_;
                 if (fn)
@@ -1457,8 +1501,36 @@ const char *storage_get_flash_manufacturer_name(uint8_t manufacturerId)
             dvi_->unregisterIRQThisCore();
             dvi_->stop();
 
+            // Parked: dvi_->stop() above disabled the serialisers, so stay out
+            // of the loop rather than restarting them. Only a reboot leaves.
+            while (displayParkRequested_)
+            {
+                displayParked_ = true;
+                tight_loop_contents();
+            }
+            displayParked_ = false;
+
             exclProc_.processOrWaitIfExist();
         }
+    }
+
+    // Stop the DVI output and leave core1 idling. Returns once core1 has
+    // acknowledged, so the caller knows the serialisers are really off. No-op
+    // where core1 does not drive a line-buffer display.
+    void parkDisplayCore1()
+    {
+        if (displayParkRequested_)
+        {
+            return;
+        }
+        displayParkRequested_ = true;
+        // Core1 finishes the frame it is on before checking, so give it time.
+        absolute_time_t deadline = make_timeout_time_ms(200);
+        while (!displayParked_ && !time_reached(deadline))
+        {
+            tight_loop_contents();
+        }
+        printf("Display parked for USB drive mode (core1 idle, DVI stopped)\n");
     }
 
     void setLineStreamFill(LineStreamFillFn fn)
@@ -1836,7 +1908,20 @@ const char *storage_get_flash_manufacturer_name(uint8_t manufacturerId)
 #else
         printf("Using internal USB.\n");
         dumpHeapStats("initAll/preUSB");
+#if FRENS_USB_MSC
+        // The argument-less tusb_init() brings up every enabled stack, and with
+        // USB drive mode compiled in that includes the device stack. Only the
+        // host is wanted at boot: the device side is started on demand by
+        // Frens::usbMscBegin() and stopped again on the way out.
+        {
+            tusb_rhport_init_t host_init = {
+                .role = TUSB_ROLE_HOST,
+                .speed = TUSB_SPEED_AUTO};
+            tusb_init(BOARD_TUH_RHPORT, &host_init);
+        }
+#else
         tusb_init();
+#endif
         dumpHeapStats("initAll/postTusbInit");
 #endif
 #if !HSTX
@@ -2045,6 +2130,83 @@ const char *storage_get_flash_manufacturer_name(uint8_t manufacturerId)
 
     // Set CPU clock to desired speed
     // Set HSTX clock to 126 MHz if HSTX is used so the HSTX display driver can output at no more than 60Hz
+    // True when setClocksAndStartStdio() repurposed PLL_USB as the 126 MHz
+    // HSTX source. The native USB device controller needs PLL_USB at 48 MHz,
+    // so USB drive mode has to borrow it back for the duration.
+    static bool pllUsbTakenForHstx = false;
+    static bool usbClockBorrowed = false;
+
+    // Give the native USB controller a valid 48 MHz clock.
+    //
+    // On HSTX builds that use PIO USB for gamepads, setClocksAndStartStdio()
+    // drives clk_hstx from PLL_USB at 126 MHz, because deriving it from
+    // PLL_SYS propagates CPU-clock jitter into the TMDS bit clock. That leaves
+    // clk_usb running at 126 MHz instead of 48, which is why a PC reports
+    // "USB device not recognized": the device attaches but cannot enumerate.
+    //
+    // clk_sys is a whole multiple of 126 MHz at the frequencies this runs at
+    // (252 and 378 MHz), so HSTX can be moved onto clk_sys for the duration
+    // and PLL_USB handed back to USB. The picture stays up; the only cost is
+    // the TMDS jitter the comment above describes, which is of no consequence
+    // for a static text screen. Returns false if the live clk_sys cannot
+    // source HSTX, in which case the caller must not enter USB drive mode.
+    bool usbDeviceClockAcquire()
+    {
+#if HSTX
+        if (!pllUsbTakenForHstx || usbClockBorrowed)
+        {
+            return true; // PLL_USB is already at 48 MHz
+        }
+        const uint32_t hstx_hz = 126000000u;
+        uint32_t sys_hz = clock_get_hz(clk_sys);
+        if (sys_hz == 0 || (sys_hz % hstx_hz) != 0)
+        {
+            printf("usbDeviceClockAcquire: clk_sys %lu is not a multiple of 126 MHz\n",
+                   (unsigned long)sys_hz);
+            return false;
+        }
+        // Move HSTX off PLL_USB first so the display never loses its clock.
+        if (!clock_configure(clk_hstx, 0,
+                             CLOCKS_CLK_HSTX_CTRL_AUXSRC_VALUE_CLK_SYS,
+                             sys_hz, hstx_hz))
+        {
+            printf("usbDeviceClockAcquire: cannot source HSTX from clk_sys\n");
+            return false;
+        }
+        // PLL_USB is free now: put back the 48 MHz the USB hardware needs.
+        pll_deinit(pll_usb);
+        pll_init(pll_usb, PLL_USB_REFDIV, PLL_USB_VCO_FREQ_HZ,
+                 PLL_USB_POSTDIV1, PLL_USB_POSTDIV2);
+        clock_configure(clk_usb, 0,
+                        CLOCKS_CLK_USB_CTRL_AUXSRC_VALUE_CLKSRC_PLL_USB,
+                        USB_CLK_HZ, USB_CLK_HZ);
+        usbClockBorrowed = true;
+        printf("USB drive mode: PLL_USB back to 48 MHz, HSTX now on clk_sys %lu\n",
+               (unsigned long)sys_hz);
+#endif
+        return true;
+    }
+
+    // Undo usbDeviceClockAcquire(): PLL_USB returns to 126 MHz and HSTX goes
+    // back onto it, restoring the low-jitter TMDS clock the emulator wants.
+    void usbDeviceClockRelease()
+    {
+#if HSTX
+        if (!usbClockBorrowed)
+        {
+            return;
+        }
+        const uint32_t hstx_hz = 126000000u;
+        pll_deinit(pll_usb);
+        pll_init(pll_usb, 1, 756000000, 6, 1); // 756 / (6*1) = 126 MHz
+        clock_configure(clk_hstx, 0,
+                        CLOCKS_CLK_HSTX_CTRL_AUXSRC_VALUE_CLKSRC_PLL_USB,
+                        hstx_hz, hstx_hz);
+        usbClockBorrowed = false;
+        printf("USB drive mode ended: HSTX back on PLL_USB at 126 MHz\n");
+#endif
+    }
+
     void setClocksAndStartStdio(uint32_t cpuFreqKHz, vreg_voltage voltage)
     {
         // Call this function before setting the clock to a higher frequency.
@@ -2146,6 +2308,10 @@ const char *storage_get_flash_manufacturer_name(uint8_t manufacturerId)
             // (Re)configure PLL_USB for 126 MHz HSTX source.
             pll_deinit(pll_usb);
             pll_init(pll_usb, 1, 756000000, 6, 1); // 756 / (6*1) = 126 MHz
+            // Remember that PLL_USB no longer carries 48 MHz. USB drive mode
+            // needs it back before the native USB device controller can
+            // enumerate - see usbDeviceClockAcquire().
+            pllUsbTakenForHstx = true;
 
             const uint32_t target_hstx_hz = 126000000u;
             hstx_ok = clock_configure(
