@@ -174,6 +174,11 @@ namespace Frens
     typedef void (*LineStreamFillFn)(int line, uint16_t *dst);
     void setLineStreamFill(LineStreamFillFn fn);
     bool lineStreamActive();
+    // Stop DVI output and leave core1 idling, so core0 can block for as long as
+    // it likes without the picture collapsing. Used by USB drive mode on
+    // line-buffer DVI builds. One-way: the caller reboots afterwards. Defined
+    // only on !HSTX builds, which are the only ones that run core1_main().
+    void parkDisplayCore1();
     int initLed();
     void initVintageControllers(uint32_t CPUFreqKHz);
     void initDVandAudio(int marginTop, int marginBottom);

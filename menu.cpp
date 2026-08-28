@@ -1452,23 +1452,112 @@ static bool showUsbDriveScreen()
     DWORD pad;
 
     waitForNoButtonPress(); // absorb the A press that opened the screen
+    // Before any screen is drawn: the warning below prints these, and an
+    // uninitialised buffer there showed a bare ": continue : back".
+    getButtonLabels(buttonLabel1, buttonLabel2);
 
     ClearScreen(settings.bgcolor);
     drawAllLines(-1);
     Menu_LoadFrame();
 
+#if !HSTX
+    // Line-buffer DVI (no framebuffer, i.e. RP2040): core0 has to hand the DVI
+    // driver a scanline every 63.5us and only five line buffers of slack, about
+    // 317us. A single 512-byte SD read costs roughly 205us and the host reads
+    // in bursts, so the picture collapses into TMDS error symbols - a red field
+    // with the image rolling through it - for as long as the PC is busy. There
+    // is no way to serve both from one core, so offer to switch the display off
+    // instead of showing a broken one.
+    const bool blackout = !Frens::isFrameBufferUsed();
+    if (blackout)
+    {
+        ClearScreen(settings.bgcolor);
+        const char *w0 = "-- USB Drive Mode --";
+        const char *w1 = "This board cannot drive the screen";
+        const char *w2 = "while the card is on your computer.";
+        const char *w3 = "The screen goes black until you finish.";
+        putText(centerColClamped(strlen(w0)), 0, w0, settings.fgcolor, settings.bgcolor);
+        putText(centerColClamped(strlen(w1)), 5, w1, settings.fgcolor, settings.bgcolor);
+        putText(centerColClamped(strlen(w2)), 6, w2, settings.fgcolor, settings.bgcolor);
+        putText(centerColClamped(strlen(w3)), 8, w3, settings.fgcolor, settings.bgcolor);
+        // How to get out, shown here because once the screen is black this is
+        // the only instruction the user will have had.
+        const char *w4 = "When you are done, eject the drive";
+        putText(centerColClamped(strlen(w4)), 12, w4, settings.fgcolor, settings.bgcolor);
+        snprintf(line, sizeof(line), "on your computer, or press %s.", buttonLabel2);
+        putText(centerColClamped(strlen(line)), 13, line, settings.fgcolor, settings.bgcolor);
+        const char *w5 = "The console then restarts.";
+        putText(centerColClamped(strlen(w5)), 15, w5, settings.fgcolor, settings.bgcolor);
+        snprintf(line, sizeof(line), "%s: continue    %s: back", buttonLabel1, buttonLabel2);
+        putText(centerColClamped(strlen(line)), 19, line, settings.fgcolor, settings.bgcolor);
+
+        while (true)
+        {
+            drawAllLines(-1);
+            Menu_LoadFrame();
+            RomSelect_PadState(&pad);
+            if (pad & B)
+            {
+                return false; // cancelled, nothing touched yet
+            }
+            if (pad & A)
+            {
+                break;
+            }
+        }
+        waitForNoButtonPress();
+        // Stop the serialisers and idle core1. One-way - we reboot on the way
+        // out - so nothing has to put the display back together afterwards.
+        Frens::parkDisplayCore1();
+    }
+#else
+    const bool blackout = false;
+#endif
+
     if (!Frens::usbMscBegin())
     {
-        showMessageBox("Cannot read SD card", CRED, "USB drive mode unavailable");
+        if (!blackout)
+        {
+            showMessageBox("Cannot read SD card", CRED, "USB drive mode unavailable");
+        }
         return false;
     }
 
-    getButtonLabels(buttonLabel1, buttonLabel2);
     uint32_t started = Frens::time_ms();
     bool done = false;
 
     while (!done)
     {
+        if (blackout)
+        {
+            // Display is off and core1 is idle, so there is nothing to draw and
+            // nothing to starve: pump USB flat out and only glance at the pad.
+            // The GPIO controller port still works (it is PIO on core0); USB
+            // pads do not, the host stack having given the port to the device.
+            for (int i = 0; i < 256; ++i)
+            {
+                Frens::usbMscTask();
+            }
+#if NES_PIN_CLK != -1
+            nespad_read_start();
+            nespad_read_finish();
+#endif
+            RomSelect_PadState(&pad);
+            if (pad & B)
+            {
+                done = true;
+            }
+            else if (Frens::usbMscEverConnected())
+            {
+                done = !Frens::usbMscHostConnected();
+            }
+            else if (Frens::time_ms() - started > noHostTimeoutMs)
+            {
+                done = true;
+            }
+            continue;
+        }
+
         bool mounted = Frens::usbMscHostConnected();
 
         ClearScreen(settings.bgcolor);

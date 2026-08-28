@@ -6,6 +6,7 @@
 #include <string.h>
 #include "tusb.h"
 #include "device/dcd.h"
+#include "hardware/sync.h"
 #include "ff.h"
 #include "diskio.h"
 #include "FrensHelpers.h"
@@ -38,6 +39,41 @@ namespace
     uint32_t blockCount = 0;
 }
 
+namespace
+{
+    // Bringing the device stack up claims a few hardware spinlocks
+    // (rp2040_usb.c rp2usb_lock, usbd.c _usbd_spin, and the device event
+    // queue). spin_lock_claim_unused() panics outright when the pool is empty,
+    // which is a hard stop with no way back for the user, so check first and
+    // decline politely instead. Claim and immediately release, which is the
+    // only way to ask "are there N free?".
+    bool spinlocksAvailable(int needed)
+    {
+        int claimed[8];
+        int n = 0;
+        bool ok = true;
+        if (needed > (int)(sizeof(claimed) / sizeof(claimed[0])))
+        {
+            needed = sizeof(claimed) / sizeof(claimed[0]);
+        }
+        for (int i = 0; i < needed; i++)
+        {
+            int id = spin_lock_claim_unused(false);
+            if (id < 0)
+            {
+                ok = false;
+                break;
+            }
+            claimed[n++] = id;
+        }
+        for (int i = 0; i < n; i++)
+        {
+            spin_lock_unclaim(claimed[i]);
+        }
+        return ok;
+    }
+}
+
 namespace Frens
 {
     bool usbMscBegin()
@@ -56,6 +92,13 @@ namespace Frens
             return false;
         }
         blockCount = (uint32_t)sectors;
+
+        // Refuse rather than panic if the device stack cannot get its locks.
+        if (!deviceInited && !spinlocksAvailable(4))
+        {
+            printf("usbMscBegin: not enough free hardware spinlocks\n");
+            return false;
+        }
 
         hostMounted = false;
         hostSuspended = false;
@@ -333,15 +376,30 @@ extern "C"
         return (int32_t)bufsize;
     }
 
+    // SCSI opcodes tinyusb does not answer itself. It handles TEST_UNIT_READY,
+    // START_STOP_UNIT, PREVENT_ALLOW_MEDIUM_REMOVAL, READ_CAPACITY_10,
+    // READ_FORMAT_CAPACITY, INQUIRY and MODE_SENSE_6; everything else lands
+    // here.
     int32_t tud_msc_scsi_cb(uint8_t lun, uint8_t const scsi_cmd[16],
                             void *buffer, uint16_t bufsize)
     {
-        (void)lun;
         (void)buffer;
         (void)bufsize;
-        // Nothing beyond the mandatory commands tinyusb already answers.
+
+        // SYNCHRONIZE_CACHE (10 and 16). Hosts send this to force a flush,
+        // typically right before an eject, and tinyusb does not define the
+        // opcode at all. Writes here are already write-through - write10 goes
+        // straight to disk_write() and the card is waited on - so the honest
+        // answer is success. Failing it with ILLEGAL_REQUEST made the host
+        // think the flush was refused, which can surface as an eject error on
+        // the very path users are told to prefer.
+        if (scsi_cmd[0] == 0x35 || scsi_cmd[0] == 0x91)
+        {
+            disk_ioctl(MSC_DRIVE, CTRL_SYNC, 0);
+            return 0;
+        }
+
         tud_msc_set_sense(lun, SCSI_SENSE_ILLEGAL_REQUEST, 0x20, 0x00);
-        (void)scsi_cmd;
         return -1;
     }
 }

@@ -65,6 +65,15 @@ static bool paceTimerInited = false;
 // that never use line-streaming pay no SRAM for it.
 static volatile Frens::LineStreamFillFn lineStreamFill_ = nullptr;
 static volatile bool lineStreamActive_ = false;
+// Display park, for USB drive mode on line-buffer DVI builds (RP2040). Core0
+// cannot both feed the DVI line queue and block on SD transfers - five line
+// buffers give it about 317us of slack and a single 512-byte SD read already
+// costs ~205us - so the picture collapses into TMDS error symbols while the
+// host reads the card. Parking core1 stops the serialisers instead, which is
+// an honest black screen rather than a broken one. There is no unpark: the
+// caller reboots when the user is done. Two bools, no buffers.
+static volatile bool displayParkRequested_ = false;
+static volatile bool displayParked_ = false;
 static uint16_t *lineStreamScratch_ = nullptr;
 #endif
 char ErrorMessage[ERRORMESSAGESIZE];
@@ -1451,7 +1460,7 @@ const char *storage_get_flash_manufacturer_name(uint8_t manufacturerId)
                 dvi_->waitForValidLine();
 
             dvi_->start();
-            while (!exclProc_.isExist())
+            while (!exclProc_.isExist() && !displayParkRequested_)
             {
                 Frens::LineStreamFillFn fn = lineStreamFill_;
                 if (fn)
@@ -1492,8 +1501,36 @@ const char *storage_get_flash_manufacturer_name(uint8_t manufacturerId)
             dvi_->unregisterIRQThisCore();
             dvi_->stop();
 
+            // Parked: dvi_->stop() above disabled the serialisers, so stay out
+            // of the loop rather than restarting them. Only a reboot leaves.
+            while (displayParkRequested_)
+            {
+                displayParked_ = true;
+                tight_loop_contents();
+            }
+            displayParked_ = false;
+
             exclProc_.processOrWaitIfExist();
         }
+    }
+
+    // Stop the DVI output and leave core1 idling. Returns once core1 has
+    // acknowledged, so the caller knows the serialisers are really off. No-op
+    // where core1 does not drive a line-buffer display.
+    void parkDisplayCore1()
+    {
+        if (displayParkRequested_)
+        {
+            return;
+        }
+        displayParkRequested_ = true;
+        // Core1 finishes the frame it is on before checking, so give it time.
+        absolute_time_t deadline = make_timeout_time_ms(200);
+        while (!displayParked_ && !time_reached(deadline))
+        {
+            tight_loop_contents();
+        }
+        printf("Display parked for USB drive mode (core1 idle, DVI stopped)\n");
     }
 
     void setLineStreamFill(LineStreamFillFn fn)
