@@ -2,7 +2,7 @@
 #include <cstring>
 
 #define FLASHPARAM_MIN_FREQ_KHZ 252000 // NES, GB, SMS
-#define FLASHPARAM_MIN_VOLTAGE vreg_voltage::VREG_VOLTAGE_1_20
+#define FLASHPARAM_MIN_VOLTAGE vreg_voltage::VREG_VOLTAGE_1_30
 
 // Genesis max settings
 #if !HSTX
