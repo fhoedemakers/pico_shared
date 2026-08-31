@@ -515,6 +515,15 @@ extern "C"
         {
             printf("HID device address = %d, instance = %d, player %d is unmounted\n", dev_addr, instance, player + 1);
             auto &gp = io::getCurrentGamePadState(player);
+            // A keyboard occupies a player slot like any other HID device; the only thing
+            // that identifies it here is the short name set when its first report arrived.
+            if (gp.GamePadShortName && strcmp(gp.GamePadShortName, "KB") == 0)
+            {
+                auto &kb = const_cast<io::KeyboardState &>(io::getCurrentKeyboardState());
+                kb.connected = false;
+                kb.modifier = 0;
+                memset(kb.keycode, 0, sizeof(kb.keycode));
+            }
             gp.flagConnected(false);
             gp.GamePadName = nullptr;
             gp.GamePadShortName = nullptr;
@@ -913,6 +922,7 @@ extern "C"
                     // real keyboard (e.g. O2 / G7400). The gamepad mapping
                     // below stays in place for joystick-style use.
                     auto &kb = const_cast<io::KeyboardState &>(io::getCurrentKeyboardState());
+                    kb.connected = true;
                     kb.modifier = r->modifier;
                     memcpy(kb.keycode, r->keycode, sizeof(kb.keycode));
                     auto &gp = io::getCurrentGamePadState(player);
