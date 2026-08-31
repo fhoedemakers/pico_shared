@@ -38,7 +38,11 @@ int32_t __no_inline_not_in_flash_func(SetupPsram)(int psramCS)
     while ((qmi_hw->direct_csr & QMI_DIRECT_CSR_BUSY_BITS) != 0)
     {
     }
-    (void)qmi_hw->direct_rx;
+    // BUSY can fall before the byte lands, so drain the whole FIFO
+    while ((qmi_hw->direct_csr & QMI_DIRECT_CSR_RXEMPTY_BITS) == 0)
+    {
+        (void)qmi_hw->direct_rx;
+    }
     qmi_hw->direct_csr &= ~(QMI_DIRECT_CSR_ASSERT_CS1N_BITS);
 
     // Read the id
