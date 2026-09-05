@@ -3711,7 +3711,7 @@ int showSettingsMenu(bool calledFromGame)
     // cannot be highlighted and its handler cannot run. It is forced visible
     // rather than read from g_settings_visibility[] for the same reason as
     // MOPT_RECENT_GAMES above: sibling emulators leave the trailing entry zero.
-    if (!calledFromGame)
+    if (!calledFromGame || FRENS_FORCE_USB_MSC_IN_SETTINGS)
     {
         visibleIndices[visibleCount++] = MOPT_USB_DRIVE_MODE;
     }

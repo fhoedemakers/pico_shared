@@ -96,18 +96,39 @@ namespace Frens
 
         printf("New FlashParams: cpuFreqKHz=%u, voltage=%u\n", params.cpuFreqKHz, params.voltage);
         printf("System will reboot after programming flash...\n");
-        // Program the hardware watchdog timer to reboot after 100 ms and do this before writing to flash,
+        // Program the hardware watchdog timer to reboot and do this before writing to flash,
         // system will likely hang after flash write.
-        // Must be time enough to complete flash write.
+        // Must be time enough to complete flash write: erasing a 4 KB sector is
+        // typically ~50 ms but several hundred ms worst case, so do not cut this fine.
         // This ensures the reboot even if the system crashes after flash write.
         // We will also reset core 1 to avoid it possibly interfering with the flash write.
         printf("Resetting core 1...\n");
         multicore_reset_core1();
-        printf("Setting watchdog timer to reboot in 100 ms\n");
-        watchdog_enable(100, 0);
+        printf("Setting watchdog timer to reboot in 1000 ms\n");
+        watchdog_enable(1000, 0);
 
+        // Interrupts stay off across BOTH operations, not just inside each one.
+        //
+        // On RP2350 flash_range_erase()/flash_range_program() finish in the bootrom's
+        // flash_enter_cmd_xip(), which resets qmi_hw->m[0] to its conservative default:
+        // the CLKDIV/RXDELAY setClocksAndStartStdio() programmed for the current
+        // (possibly overclocked) clock is gone, and XIP is back to a plain 03h serial
+        // read with RXDELAY=0. The SDK only saves and restores QMI CS1 (the PSRAM), so
+        // nothing puts M0 back. Code fetched from flash in that window is unreliable.
+        //
+        // flashEraseSafe() restores interrupts on the way out, so calling the two
+        // wrappers back to back leaves interrupts enabled while XIP is in that state,
+        // and the next IRQ vectors into a flash-resident handler. It faulted or stalled
+        // between the erase and the program, leaving the sector erased and never
+        // written: validateFlashParams() then rejected it on the next boot and the box
+        // came up at the default clock instead of the overclock the user had just
+        // enabled. Holding interrupts off across both calls is what this function did
+        // before the wrappers were introduced, and keeps every instruction from here to
+        // the watchdog reboot running from RAM.
+        uint32_t ints = save_and_disable_interrupts();
         flashEraseSafe(ofs, 4096);
         flashProgramSafe(ofs, (const uint8_t *)&params, sizeof(FlashParams));
+        restore_interrupts(ints);
         // Will likely to crash here.
         while (1)
         {
