@@ -20,6 +20,10 @@
 #define FRENS_USB_MSC 0
 #endif
 
+#ifndef FRENS_FORCE_USB_MSC_IN_SETTINGS
+#define FRENS_FORCE_USB_MSC_IN_SETTINGS 0
+#endif
+
 #if FRENS_USB_MSC
 
 namespace Frens
