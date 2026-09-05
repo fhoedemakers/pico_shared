@@ -67,7 +67,8 @@ namespace FrensSettings
         PCE = 5,
         O2EM = 6,
         SNES = 7,
-        TI99 = 8
+        TI99 = 8,
+        OUTRUN = 9
     } emulators;
     static emulators emulatorType = NES;
     void initSettings(emulators emu) ;

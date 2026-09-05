@@ -7,7 +7,7 @@ struct settings settings;
 namespace FrensSettings
 {
     #define SETTINGSFILE "/settings_%s.dat" // File to store settings
-    static const char *emulatorstrings[9] = { "NES", "SMS", "GB", "MD", "MUL", "PCE", "O2E", "SNES", "TI99" };
+    static const char *emulatorstrings[10] = { "NES", "SMS", "GB", "MD", "MUL", "PCE", "O2E", "SNES", "TI99", "ORUN" };
     static char settingsFileName[21] = {};
     static emulators emulatorTypeForSettings = emulators::MULTI;
     char *getSettingsFileName()
