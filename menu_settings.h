@@ -40,6 +40,7 @@ enum MenuSettingsIndex {
     MOPT_RECENT_GAMES,
     MOPT_USB_DRIVE_MODE, // Rom browser only: shows the SD card on a PC over USB
     MOPT_CASSETTE,       // TI-99/4A cassette deck (CS1/CS2): pick a tape, play, record, rewind
+    MOPT_DISK,           // TI-99/4A disk drives: mount a .dsk image into DSK1, DSK2 or DSK3
     MOPT_COUNT
 };
 // Short description (max 40 chars) for each option. Use designated initializers
@@ -76,6 +77,7 @@ const char* const g_settings_descriptions[MOPT_COUNT] = {
     [MOPT_RECENT_GAMES]              = "Restart a recently played game",
     [MOPT_USB_DRIVE_MODE]            = "Show SD card on your PC over USB",
     [MOPT_CASSETTE]                  = "Cassette tape: play, record, rewind",
+    [MOPT_DISK]                      = "Mount a disk image into DSK1, DSK2 or DSK3",
 };
 
 extern const int8_t *g_settings_visibility; // Visibility configuration for options menu

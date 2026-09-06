@@ -493,6 +493,20 @@ extern "C"
         printf("HID has %u reports and interface protocol = %d:%s\n", _report_count[instance],
                interface_protocol, protocol_str[interface_protocol]);
 
+        // A boot-protocol keyboard is recognised here rather than when its first key
+        // arrives. Without this, anything the menu offers before the user has typed
+        // anything finds no keyboard: creating a blank disk asks for a name, and would
+        // silently settle for the default instead. Keyboards that report no boot protocol
+        // are still picked up from their first report, in the HID_USAGE_DESKTOP_KEYBOARD
+        // branch, which sets the same two names the unmount path looks for.
+        if (interface_protocol == HID_ITF_PROTOCOL_KEYBOARD)
+        {
+            auto &kb = const_cast<io::KeyboardState &>(io::getCurrentKeyboardState());
+            kb.connected = true;
+            gp.GamePadName = "Keyboard";
+            gp.GamePadShortName = "KB";
+        }
+
         if (!tuh_hid_receive_report(dev_addr, instance))
         {
             printf("Error: cannot request to receive report\r\n");

@@ -81,6 +81,32 @@ void menuSetCassetteHooks(const MenuCassetteHooks *hooks);
 // Longest tape label the menu will show or let you type, plus the terminator.
 #define TAPE_LABEL_MAX 25
 
+// Optional disk-drive hooks, same contract as the two above: null unless an emulator
+// registers them, and the menu shows the option as "N/A" in that case. Written for the
+// TI-99/4A's DSK1-3, where a drive holds one sector image at a time and swapping one in
+// mid-session is normal. Images are addressed by their index in the list get_image_name()
+// walks, so the menu never has to know where they live on the card.
+struct MenuDiskHooks
+{
+    int  (*get_num_drives)();                   // drives offered, DSK1..DSKn
+    int  (*get_num_images)();                   // images found in the disk folder
+    const char *(*get_image_name)(int index);   // display name for 0..num-1
+    const char *(*get_mounted_name)(int drive); // image in that drive, or NULL when empty
+    int  (*mount)(int drive, int index);        // index -1 unmounts; 0 on success
+    void (*refresh)();                          // rescan the disk folder
+
+    // Making a blank disk. A new image has no name of its own, so the menu asks for one -
+    // the same problem, and the same answer, as labelling a tape before recording.
+    void (*default_name)(char *buf, size_t n);  // pre-fills the name field
+    int  (*name_exists)(const char *name);      // drives the overwrite confirm
+    int  (*create)(const char *name);           // formats it, rescans, returns its index or -1
+};
+void menuSetDiskHooks(const MenuDiskHooks *hooks);
+
+// A TI volume name is ten characters, and the image is named to match, so the field is
+// capped there rather than at the length of a filename.
+#define DISK_LABEL_MAX 11
+
 // Put a tape in the deck because the console just asked for one. Called from the
 // emulator's frame loop, not from the menu: SAVE CS1 / OLD CS1 name no file, so the
 // choice can only be made at the moment the DSR starts reading or writing. Pass 1 to
