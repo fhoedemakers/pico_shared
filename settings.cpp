@@ -122,6 +122,7 @@ namespace FrensSettings
         printf("autoInsertDiskA: %d\n", settings.flags.autoInsertDiskA);
         printf("overclock: %d\n", settings.flags.overclock);
         printf("useFM: %d\n", settings.flags.useFM);
+        printf("serialKeyboard: %d\n", settings.flags.serialKeyboard);
         printf("\n");
     }
     void resetsettings(struct settings *settingsPtr)
