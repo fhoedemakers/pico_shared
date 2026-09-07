@@ -159,6 +159,7 @@ namespace FrensSettings
         settings.flags.autoInsertDiskA = 1; // default: disk side A pre-inserted at boot
         settings.flags.overclock = 0; // default: run at FLASHPARAM_MIN_FREQ_KHZ
         settings.flags.useFM = 0; // default: disable FM audio
+        settings.flags.serialKeyboard = 0; // default: ignore the serial console as an input
         settings.flags.reserved = 0;  // clear spare bits
         snprintf(settings.currentDir, sizeof(settings.currentDir), "/roms/%s", emulatorstrings[static_cast<int>(emulatorType)]);
     }

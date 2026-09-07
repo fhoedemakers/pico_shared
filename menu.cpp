@@ -4132,6 +4132,12 @@ int showSettingsMenu(bool calledFromGame)
                 value = working.flags.useFM ? "ON" : "OFF";
                 break;
             }
+            case MenuSettingsIndex::MOPT_SERIAL_KEYBOARD:
+            {
+                label = "Serial keyboard";
+                value = working.flags.serialKeyboard ? "ON" : "OFF";
+                break;
+            }
             // case MenuSettingsIndex::MOPT_FRUITJAM_INTERNAL_SPEAKER:
             // {
             //     label = "Fruit Jam Internal Speaker";
@@ -4769,6 +4775,9 @@ int showSettingsMenu(bool calledFromGame)
                         break;
                     case MOPT_FM_AUDIO:
                         working.flags.useFM = !working.flags.useFM;
+                        break;
+                    case MOPT_SERIAL_KEYBOARD:
+                        working.flags.serialKeyboard = !working.flags.serialKeyboard;
                         break;
                     case MOPT_DMG_PALETTE:
                     {
