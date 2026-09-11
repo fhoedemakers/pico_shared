@@ -3474,7 +3474,12 @@ static int menuPickFromList(const char *title, const char *const *items, int n, 
 // The Cassette row's list, opened with A from the settings menu. The deck has two things
 // to choose - which tape and what to do with it - and they go in one list: the tapes on
 // the card, then the actions that have no tape to point at.
-static void cassetteMenuOverlay()
+//
+// Kept out of line on purpose. Its only caller is showSettingsMenu(), and inlined there the
+// items[] array and the label buffer became part of that function's frame - about 270 bytes
+// more stack every time any emulator opens the menu, cassette or not, on RP2040 boards that
+// have a 3 KB core 0 stack. Out of line, the cost is paid only when the list is opened.
+__attribute__((noinline)) static void cassetteMenuOverlay()
 {
     if (s_cassetteHooks->refresh) s_cassetteHooks->refresh();
 
@@ -3545,8 +3550,9 @@ static void cassetteMenuOverlay()
 // The Disk row's list: eject, then every image in the disk folder, mounted into whichever
 // drive the row is pointing at. A drive holding an image the folder does not list - one
 // auto-mounted from beside the cartridge - can still be emptied, so the list is offered
-// whenever there is either something to mount or something to eject.
-static void diskMenuOverlay(int drive)
+// whenever there is either something to mount or something to eject. Out of line for the
+// same reason as cassetteMenuOverlay().
+__attribute__((noinline)) static void diskMenuOverlay(int drive)
 {
     if (s_diskHooks->refresh) s_diskHooks->refresh();
 
