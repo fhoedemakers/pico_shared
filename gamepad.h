@@ -64,8 +64,13 @@ namespace io
     // and keycode[] holds the up to 6 currently-pressed HID usage codes
     // (HID_KEY_*). Emulators that emulate a real keyboard (e.g. O2 / G7400)
     // should read this in addition to the GamePadState mapping.
+    // connected is set once a keyboard report has been seen and cleared when the device
+    // is unmounted. Callers that need real typing (as opposed to the gamepad mapping a
+    // keyboard also drives) must check it: with no keyboard attached there is no ENTER
+    // key to confirm with, so a text prompt would have no way out.
     struct KeyboardState
     {
+        bool connected{false};
         uint8_t modifier;
         uint8_t keycode[6];
     };

@@ -41,6 +41,54 @@ void menuSetFdsHooks(const MenuFdsHooks *hooks) { s_fdsHooks = hooks; }
 // use the live current side". Set to "current side" each time the
 // menu opens.
 static int s_fdsPendingChoice = -1;
+
+// Cassette-deck hooks, same contract as the FDS ones above. Null unless an emulator
+// registers them; the option is hidden via g_settings_visibility[MOPT_CASSETTE] too.
+static const MenuCassetteHooks *s_cassetteHooks = nullptr;
+void menuSetCassetteHooks(const MenuCassetteHooks *hooks) { s_cassetteHooks = hooks; }
+
+// Disk-drive hooks, same contract again. Null unless an emulator registers them.
+static const MenuDiskHooks *s_diskHooks = nullptr;
+void menuSetDiskHooks(const MenuDiskHooks *hooks) { s_diskHooks = hooks; }
+
+// Which drive the Disk row points at. Unlike the FDS and cassette choices this is a
+// cursor rather than a pending value - LEFT/RIGHT moves it between DSK1..DSKn and A
+// opens that drive's image list - so there is nothing to commit and nothing to reset.
+static int s_diskDrive = 0;
+
+// The tape modes, as the cassette hooks report and accept them.
+enum { CAS_MODE_EMPTY = 0, CAS_MODE_PLAY = 1, CAS_MODE_REC_WAV = 2, CAS_MODE_REC_CAS = 3 };
+
+// Widest list menuPickFromList() will show. Both media lists are built on the stack as
+// arrays of borrowed name pointers, so this caps that array, not what the card may hold.
+#define MENU_PICK_MAX_ITEMS 72
+
+static int cassetteIsPlaying()
+{
+    return (s_cassetteHooks && s_cassetteHooks->get_mode &&
+            s_cassetteHooks->get_mode() == CAS_MODE_PLAY);
+}
+
+// What the Cassette row shows as its value. The row is only a door to the list overlay,
+// so this reports the live state of the deck rather than a choice waiting to be applied.
+static const char *cassetteRowLabel(char *buf, size_t bufsize)
+{
+    int m = (s_cassetteHooks && s_cassetteHooks->get_mode) ? s_cassetteHooks->get_mode()
+                                                           : CAS_MODE_EMPTY;
+    if (m == CAS_MODE_REC_WAV || m == CAS_MODE_REC_CAS) return "Recording";
+    if (m != CAS_MODE_PLAY) return "Empty";
+
+    int sel = s_cassetteHooks->get_selected  ? s_cassetteHooks->get_selected()  : -1;
+    int n   = s_cassetteHooks->get_num_tapes ? s_cassetteHooks->get_num_tapes() : 0;
+    if (sel < 0 || sel >= n || !s_cassetteHooks->get_tape_name) return "Empty";
+
+    // Drop the extension - the row has little width and the mode already says Play.
+    snprintf(buf, bufsize, "%s", s_cassetteHooks->get_tape_name(sel));
+    char *dot = strrchr(buf, '.');
+    if (dot) *dot = 0;
+    return buf;
+}
+
 #if !HSTX
 #define CC(x) (((x >> 1) & 15) | (((x >> 6) & 15) << 4) | (((x >> 11) & 15) << 8))
 const __UINT16_TYPE__ NesMenuPalette[64] = {
@@ -1001,6 +1049,111 @@ static bool showDialogYesNo(const char *message)
         {
             return false;
         }
+    }
+}
+
+// =====================================================================================
+// Single-line text entry, typed on the USB keyboard.
+//
+// Deliberately does NOT poll RomSelect_PadState. hid_app.cpp maps the same keyboard
+// report onto a gamepad slot as well - A becomes SELECT, S becomes START, Z and X become
+// A and B - so a loop that read pad state here would treat typing as menu navigation and
+// typing a name like "SAM" would walk out of the dialog. ENTER and ESC are the only way
+// out, which is why callers must check that a keyboard is actually attached.
+// =====================================================================================
+static char hidKeyToAscii(uint8_t hid, bool shift)
+{
+    if (hid >= HID_KEY_A && hid <= HID_KEY_Z) return (char)('A' + (hid - HID_KEY_A));
+    if (hid >= HID_KEY_1 && hid <= HID_KEY_9) return (char)('1' + (hid - HID_KEY_1));
+    if (hid == HID_KEY_0) return '0';
+    if (hid == HID_KEY_MINUS) return shift ? '_' : '-';
+    if (hid == HID_KEY_SPACE) return '-';       // spaces would be eaten by putText
+    return 0;
+}
+
+bool showTextEntry(const char *prompt, char *buf, size_t bufsize)
+{
+    // putText renders '_' as a space and collapses runs of real spaces, so the field is
+    // drawn with '.' for the empty cells rather than blanks.
+    const size_t maxLen = (bufsize > 25) ? 24 : bufsize - 1;
+    size_t len = strnlen(buf, maxLen);
+    buf[len] = 0;
+
+    // Seed the "already seen" set from whatever is held right now. Getting here means the
+    // user pressed the menu's A button, and on a keyboard that is the Z key - without
+    // this, opening the dialog types a Z into the field.
+    uint8_t prevKeys[6];
+    memcpy(prevKeys, io::getCurrentKeyboardState().keycode, sizeof(prevKeys));
+
+    uint32_t heldFrames = 0;
+    uint8_t heldKey = 0;
+
+    while (true)
+    {
+        char field[40];
+        size_t i = 0;
+        for (; i < len && i < sizeof(field) - 2; i++) field[i] = buf[i];
+        field[i++] = '['; // caret
+        field[i] = 0;
+
+        ClearScreen(settings.bgcolor);
+        int row = SCREEN_ROWS / 2 - 2;
+        putText(centerColClamped(strlen(prompt)), row, prompt, settings.fgcolor, settings.bgcolor);
+        row += 2;
+        putText(centerColClamped(strlen(field)), row, field, settings.bgcolor, settings.fgcolor);
+        row += 2;
+        putText(centerColClamped(24), row, "ENTER:Save__ESC:Cancel_", settings.fgcolor, settings.bgcolor);
+
+        drawAllLines(-1);
+        Menu_LoadFrame();
+
+        const io::KeyboardState &kb = io::getCurrentKeyboardState();
+        bool shift = (kb.modifier & (KEYBOARD_MODIFIER_LEFTSHIFT | KEYBOARD_MODIFIER_RIGHTSHIFT)) != 0;
+
+        // Auto-repeat, only for Backspace - holding a letter down to fill the field is
+        // never what anyone wants.
+        bool repeat = false;
+        if (heldKey == HID_KEY_BACKSPACE)
+        {
+            bool stillDown = false;
+            for (int k = 0; k < 6; k++) if (kb.keycode[k] == heldKey) stillDown = true;
+            if (stillDown)
+            {
+                heldFrames++;
+                if (heldFrames > (LONG_PRESS_TRESHOLD / 16) && (heldFrames % 3) == 0) repeat = true;
+            }
+            else { heldKey = 0; heldFrames = 0; }
+        }
+
+        for (int k = 0; k < 6; k++)
+        {
+            uint8_t code = kb.keycode[k];
+            if (!code) continue;
+
+            bool isNew = true;
+            for (int p = 0; p < 6; p++) if (prevKeys[p] == code) isNew = false;
+            if (!isNew) continue;
+
+            if (code == HID_KEY_ENTER || code == HID_KEY_KEYPAD_ENTER)
+            {
+                if (len == 0) continue;         // an empty name is not a name
+                return true;
+            }
+            if (code == HID_KEY_ESCAPE) return false;
+            if (code == HID_KEY_BACKSPACE)
+            {
+                if (len) buf[--len] = 0;
+                heldKey = code;
+                heldFrames = 0;
+                continue;
+            }
+            char c = hidKeyToAscii(code, shift);
+            if (c && len < maxLen) buf[len++] = c, buf[len] = 0;
+        }
+
+        if (repeat && len) buf[--len] = 0;
+
+        memcpy(prevKeys, kb.keycode, sizeof(prevKeys));
     }
 }
 
@@ -3268,6 +3421,316 @@ static int showRecentGamesMenu(char *outPath, size_t outPathSize)
 //         3 exit to menu
 //         6 start the game in recentLaunchPath (rom browser only - the option
 //           is hidden when calledFromGame, so this never reaches an emulator)
+
+// -------------------------------------------------------------------------------------
+// The list overlay.
+//
+// One full-screen list, used wherever a piece of media has to be chosen: UP/DOWN scroll,
+// A takes the highlighted line, B leaves without choosing. The caller hands over an array
+// of display strings it owns for the duration of the call and gets an index back, or -1.
+//
+// screenBuffer must already be allocated - every caller runs either inside the settings
+// menu or inside menuCassettePrompt(), and both of those own one.
+// -------------------------------------------------------------------------------------
+static int menuPickFromList(const char *title, const char *const *items, int n, int sel)
+{
+    if (n <= 0) return -1;
+    if (sel < 0 || sel >= n) sel = 0;
+
+    const int rows = SCREEN_ROWS - 9;
+    DWORD pad;
+    waitForNoButtonPress();
+
+    while (true)
+    {
+        ClearScreen(settings.bgcolor);
+        putText(centerColClamped(strlen(title)), 2, title, settings.fgcolor, settings.bgcolor);
+
+        // Keep the cursor on screen by scrolling the window, not the cursor.
+        int first = (sel >= rows) ? sel - rows + 1 : 0;
+        int row = 4;
+        for (int i = first; i < n && row < 4 + rows; i++, row++)
+        {
+            if (i == sel) putText(4, row, items[i], settings.bgcolor, settings.fgcolor);
+            else          putText(4, row, items[i], settings.fgcolor, settings.bgcolor);
+        }
+
+        getButtonLabels(buttonLabel1, buttonLabel2);
+        char help[SCREEN_COLS];
+        snprintf(help, sizeof(help), "%s:Select__%s:Cancel", buttonLabel1, buttonLabel2);
+        putText(centerColClamped(strlen(help)), SCREEN_ROWS - 3, help, settings.fgcolor, settings.bgcolor);
+
+        drawAllLines(-1);
+        RomSelect_PadState(&pad);
+        Menu_LoadFrame();
+
+        if      (pad & DOWN) sel = (sel + 1) % n;
+        else if (pad & UP)   sel = (sel + n - 1) % n;
+        else if (pad & A)    { waitForNoButtonPress(); return sel; }
+        else if (pad & B)    { waitForNoButtonPress(); return -1; }
+    }
+}
+
+// The Cassette row's list, opened with A from the settings menu. The deck has two things
+// to choose - which tape and what to do with it - and they go in one list: the tapes on
+// the card, then the actions that have no tape to point at.
+//
+// Kept out of line on purpose. Its only caller is showSettingsMenu(), and inlined there the
+// items[] array and the label buffer became part of that function's frame - about 270 bytes
+// more stack every time any emulator opens the menu, cassette or not, on RP2040 boards that
+// have a 3 KB core 0 stack. Out of line, the cost is paid only when the list is opened.
+__attribute__((noinline)) static void cassetteMenuOverlay()
+{
+    if (s_cassetteHooks->refresh) s_cassetteHooks->refresh();
+
+    int n = s_cassetteHooks->get_num_tapes ? s_cassetteHooks->get_num_tapes() : 0;
+    if (n > MENU_PICK_MAX_ITEMS - 4) n = MENU_PICK_MAX_ITEMS - 4;
+
+    const char *items[MENU_PICK_MAX_ITEMS];
+    int count = 0;
+    items[count++] = "<no tape>";
+    for (int i = 0; i < n; i++) items[count++] = s_cassetteHooks->get_tape_name(i);
+
+    int recWav = count; items[count++] = "Record (WAV)";
+    int recCas = count; items[count++] = "Record (CAS)";
+    int rewind = -1;
+    if (cassetteIsPlaying()) { rewind = count; items[count++] = "Rewind"; }
+
+    // Open on whatever is in the deck now, so the common case is one press of A.
+    int sel = 0;
+    if (cassetteIsPlaying() && s_cassetteHooks->get_selected)
+    {
+        int live = s_cassetteHooks->get_selected();
+        if (live >= 0 && live < n) sel = live + 1;
+    }
+
+    int choice = menuPickFromList("Cassette:", items, count, sel);
+    if (choice < 0) return;
+
+    if (choice == rewind)
+    {
+        if (s_cassetteHooks->rewind) s_cassetteHooks->rewind();
+        return;
+    }
+
+    if (choice == recWav || choice == recCas)
+    {
+        int recMode = (choice == recWav) ? CAS_MODE_REC_WAV : CAS_MODE_REC_CAS;
+
+        // SAVE CS1 carries no filename, so this is where the tape gets labelled. Without
+        // a keyboard there is no ENTER to confirm with, so the default name is used as-is.
+        char label[TAPE_LABEL_MAX] = {0};
+        if (s_cassetteHooks->default_name) s_cassetteHooks->default_name(label, sizeof(label));
+
+        bool go = true;
+        if (io::getCurrentKeyboardState().connected)
+            go = showTextEntry("Label this tape:", label, sizeof(label));
+
+        if (go && s_cassetteHooks->name_exists && s_cassetteHooks->name_exists(label, recMode))
+            go = showDialogYesNo("Tape exists. Overwrite?");
+
+        if (go && s_cassetteHooks->commit && s_cassetteHooks->commit(-1, recMode, label) != 0)
+            showMessageBox("Could not start recording.", CRED);
+
+        if (s_cassetteHooks->refresh) s_cassetteHooks->refresh();
+        return;
+    }
+
+    // Eject, or play the tape on that line. Play always reopens at the start, which is
+    // what BASIC's CHECK TAPE verify pass needs after a save: switch from Record to Play
+    // and the tape is rewound.
+    if (s_cassetteHooks->commit &&
+        s_cassetteHooks->commit(choice - 1, choice == 0 ? CAS_MODE_EMPTY : CAS_MODE_PLAY,
+                                nullptr) != 0)
+    {
+        showMessageBox("Could not read that tape.", CRED);
+    }
+}
+
+// The Disk row's list: eject, then every image in the disk folder, mounted into whichever
+// drive the row is pointing at. A drive holding an image the folder does not list - one
+// auto-mounted from beside the cartridge - can still be emptied, so the list is offered
+// whenever there is either something to mount or something to eject. Out of line for the
+// same reason as cassetteMenuOverlay().
+__attribute__((noinline)) static void diskMenuOverlay(int drive)
+{
+    if (s_diskHooks->refresh) s_diskHooks->refresh();
+
+    int n = s_diskHooks->get_num_images ? s_diskHooks->get_num_images() : 0;
+    const char *cur = s_diskHooks->get_mounted_name ? s_diskHooks->get_mounted_name(drive) : nullptr;
+
+    if (n <= 0 && !(cur && cur[0]) && !s_diskHooks->create)
+    {
+        showMessageBox("No disk images found in", CWHITE, "/saves/ti99/disks");
+        return;
+    }
+    if (n > MENU_PICK_MAX_ITEMS - 2) n = MENU_PICK_MAX_ITEMS - 2;
+
+    const char *items[MENU_PICK_MAX_ITEMS];
+    int count = 0;
+    items[count++] = "<no disk>";
+    for (int i = 0; i < n; i++) items[count++] = s_diskHooks->get_image_name(i);
+
+    int createEntry = -1;
+    if (s_diskHooks->create) { createEntry = count; items[count++] = "Create blank disk"; }
+
+    // Open on the image already in this drive, when it is one of the listed ones.
+    int sel = 0;
+    if (cur && cur[0])
+    {
+        for (int i = 1; i < count; i++)
+            if (strcasecmp(items[i], cur) == 0) { sel = i; break; }
+    }
+
+    char title[SCREEN_COLS];
+    snprintf(title, sizeof(title), "Mount into DSK%d:", drive + 1);
+
+    int choice = menuPickFromList(title, items, count, sel);
+    if (choice < 0) return;
+
+    if (choice == createEntry)
+    {
+        // A blank disk has no name until someone gives it one, so this is the moment to
+        // ask - and the name goes on both the file and the TI volume header, so a
+        // catalogue of it reads back the same name the menu lists.
+        char label[DISK_LABEL_MAX] = {0};
+        if (s_diskHooks->default_name) s_diskHooks->default_name(label, sizeof(label));
+
+        bool go;
+        if (io::getCurrentKeyboardState().connected)
+        {
+            go = showTextEntry("Name the new disk:", label, sizeof(label));
+        }
+        else
+        {
+            // No keyboard to type a name with. Show the one that will be used and ask -
+            // formatting a disk without saying so first is too much of a surprise.
+            char msg[SCREEN_COLS];
+            snprintf(msg, sizeof(msg), "Create disk %s?", label);
+            go = showDialogYesNo(msg);
+        }
+
+        if (go && s_diskHooks->name_exists && s_diskHooks->name_exists(label))
+            go = showDialogYesNo("Disk exists. Overwrite?");
+        if (!go) return;
+
+        // 360K of empty sectors takes a moment to lay down on the card. Say so rather
+        // than looking like a freeze.
+        ClearScreen(settings.bgcolor);
+        putText(centerColClamped(16), 10, "Creating disk...", settings.fgcolor, settings.bgcolor);
+        drawAllLines(-1);
+        Menu_LoadFrame();
+
+        int made = s_diskHooks->create(label);
+        if (made < 0)
+        {
+            showMessageBox("Could not create that disk.", CRED);
+            return;
+        }
+
+        // A disk you have just made is a disk you want in the drive.
+        if (s_diskHooks->mount && s_diskHooks->mount(drive, made) != 0)
+            showMessageBox("Could not open that disk.", CRED);
+        return;
+    }
+
+    // disk_mount() reports a failure by printing onto the emulated screen, which nobody
+    // would see until the menu closes, so the result is checked and shown here instead.
+    if (s_diskHooks->mount && s_diskHooks->mount(drive, choice - 1) != 0)
+        showMessageBox("Could not open that disk.", CRED);
+}
+
+// =====================================================================================
+// Cassette prompts, driven by the console rather than by the menu.
+//
+// SAVE CS1 and OLD CS1 carry no filename - the TI cassette device takes only a device
+// name - so there is nothing to pick a file from until the console actually asks. The
+// emulator spots that from the DSR's first CRU access and calls in here, which is the
+// same moment the console is telling the user to press RECORD or PLAY.
+// =====================================================================================
+
+// Tapes only: OLD CS1 is asking to be fed, so there is nothing to do here but choose one
+// and start playing it.
+static bool cassettePickTape()
+{
+    int n = s_cassetteHooks->get_num_tapes ? s_cassetteHooks->get_num_tapes() : 0;
+    if (n <= 0)
+    {
+        showMessageBox("No tapes found in", CWHITE, "/saves/ti99/tapes");
+        return false;
+    }
+    if (n > MENU_PICK_MAX_ITEMS) n = MENU_PICK_MAX_ITEMS;
+
+    const char *items[MENU_PICK_MAX_ITEMS];
+    for (int i = 0; i < n; i++) items[i] = s_cassetteHooks->get_tape_name(i);
+
+    int sel = s_cassetteHooks->get_selected ? s_cassetteHooks->get_selected() : 0;
+    int choice = menuPickFromList("Insert a tape:", items, n, sel);
+    if (choice < 0) return false;
+
+    return (s_cassetteHooks->commit(choice, CAS_MODE_PLAY, nullptr) == 0);
+}
+
+
+bool menuCassettePrompt(int wantRecord)
+{
+    if (!s_cassetteHooks || !s_cassetteHooks->commit) return false;
+
+    // Same screen setup showSettingsMenu does when it is opened from a running game.
+    int margintop = 0, marginbottom = 0;
+    screenBuffer = (charCell *)Frens::f_malloc(screenbufferSize);
+    if (!screenBuffer) return false;
+#if !HSTX
+    margintop = dvi_->getBlankSettings().top;
+    marginbottom = dvi_->getBlankSettings().bottom;
+    dvi_->getBlankSettings().top = 0;
+    dvi_->getBlankSettings().bottom = 0;
+#endif
+    scaleMode8_7_ = Frens::applyScreenMode(ScreenMode::NOSCANLINE_1_1);
+
+    if (s_cassetteHooks->refresh) s_cassetteHooks->refresh();
+
+    bool ok = false;
+    if (wantRecord)
+    {
+        // This is where a tape gets its label: the console has just started writing and
+        // will not tell us a name, because there is no name to tell.
+        char label[TAPE_LABEL_MAX] = {0};
+        if (s_cassetteHooks->default_name) s_cassetteHooks->default_name(label, sizeof(label));
+
+        bool go = true;
+        if (io::getCurrentKeyboardState().connected)
+            go = showTextEntry("Label this tape:", label, sizeof(label));
+
+        if (go && s_cassetteHooks->name_exists && s_cassetteHooks->name_exists(label, CAS_MODE_REC_WAV))
+            go = showDialogYesNo("Tape exists. Overwrite?");
+
+        if (go)
+        {
+            ok = (s_cassetteHooks->commit(-1, CAS_MODE_REC_WAV, label) == 0);
+            if (!ok) showMessageBox("Could not start recording.", CWHITE);
+        }
+    }
+    else
+    {
+        ok = cassettePickTape();
+    }
+
+    ClearScreen(CBLACK);
+    waitForNoButtonPress();
+    Frens::f_free((void *)screenBuffer);
+    screenBuffer = nullptr;
+    scaleMode8_7_ = Frens::applyScreenMode(settings.screenMode);
+#if !HSTX
+    if (!Frens::isFrameBufferUsed())
+    {
+        dvi_->getBlankSettings().top = margintop;
+        dvi_->getBlankSettings().bottom = marginbottom;
+    }
+#endif
+    return ok;
+}
+
 int showSettingsMenu(bool calledFromGame)
 {
     bool settingsChanged = false;
@@ -3278,7 +3741,14 @@ int showSettingsMenu(bool calledFromGame)
     // Re-seed the FDS preview from the live current side on every menu
     // open. The render switch fills it in on first draw.
     s_fdsPendingChoice = -1;
-    
+
+    // The media rows need only their folders rescanned - each list is built when its
+    // overlay opens. Scanning here rather than from the redraw lambda keeps SD access off
+    // the per-frame path, where it would stall the menu.
+    if (s_cassetteHooks && s_cassetteHooks->refresh) s_cassetteHooks->refresh();
+    if (s_diskHooks && s_diskHooks->refresh) s_diskHooks->refresh();
+
+
     // #if HSTX
     //     if (settings.flags.useDVIModeForHDMI)
     //     {
@@ -3393,6 +3863,9 @@ int showSettingsMenu(bool calledFromGame)
         // Overclock is reachable only from the file-browser menu — applying it
         // mid-game would reboot the box and drop unsaved emulator state.
         if (i == MOPT_OVERCLOCK && calledFromGame) continue;
+        // The mirror of that: a disk can only be mounted against a running machine,
+        // because loading a cartridge resets every drive. In-game only.
+        if (i == MOPT_DISK && !calledFromGame) continue;
         // -1 is always hidden
         if (g_settings_visibility[i] >= 0)
         {
@@ -3665,6 +4138,12 @@ int showSettingsMenu(bool calledFromGame)
                 value = working.flags.useFM ? "ON" : "OFF";
                 break;
             }
+            case MenuSettingsIndex::MOPT_SERIAL_KEYBOARD:
+            {
+                label = "Serial keyboard";
+                value = working.flags.serialKeyboard ? "ON" : "OFF";
+                break;
+            }
             // case MenuSettingsIndex::MOPT_FRUITJAM_INTERNAL_SPEAKER:
             // {
             //     label = "Fruit Jam Internal Speaker";
@@ -3795,6 +4274,44 @@ int showSettingsMenu(bool calledFromGame)
                                  'A' + s_fdsPendingChoice);
                         value = fdsBuf;
                     }
+                }
+                break;
+            }
+            case MenuSettingsIndex::MOPT_CASSETTE:
+            {
+                label = "Cassette";
+                static char casBuf[TAPE_LABEL_MAX];
+                value = s_cassetteHooks ? cassetteRowLabel(casBuf, sizeof(casBuf)) : "N/A";
+                break;
+            }
+            case MenuSettingsIndex::MOPT_DISK:
+            {
+                // The label carries the drive because that is what LEFT/RIGHT changes;
+                // the value is what is in it. A opens the list for the drive shown.
+                static char dskLabel[16];
+                static char dskBuf[40];
+                if (!s_diskHooks)
+                {
+                    label = "Disk";
+                    value = "N/A";
+                }
+                else
+                {
+                    int drives = s_diskHooks->get_num_drives ? s_diskHooks->get_num_drives() : 0;
+                    if (drives <= 0) drives = 1;
+                    if (s_diskDrive < 0 || s_diskDrive >= drives) s_diskDrive = 0;
+
+                    snprintf(dskLabel, sizeof(dskLabel), "Disk DSK%d", s_diskDrive + 1);
+                    label = dskLabel;
+
+                    const char *m = s_diskHooks->get_mounted_name
+                                        ? s_diskHooks->get_mounted_name(s_diskDrive) : nullptr;
+                    if (m && m[0])
+                    {
+                        snprintf(dskBuf, sizeof(dskBuf), "%s", m);
+                        value = dskBuf;
+                    }
+                    else value = "Empty";
                 }
                 break;
             }
@@ -4058,7 +4575,7 @@ int showSettingsMenu(bool calledFromGame)
                         firstVisibleOption = selectedOptionIndex - optionWindowSize + 1; // scroll down
                 }
             }
-            else if (pad & LEFT || pad & RIGHT || ((pad & A) && (optIndex == MOPT_EXIT_GAME || optIndex == MOPT_SAVE_RESTORE_STATE || optIndex == MOPT_ENTER_BOOTSEL_MODE || optIndex == MOPT_REBOOT_TO_LOADER || optIndex == MOPT_RESET_GAME || optIndex == MOPT_FDS_DISK_SWAP || optIndex == MOPT_CONTROLLER_TEST || optIndex == MOPT_RECENT_GAMES || optIndex == MOPT_USB_DRIVE_MODE)))
+            else if (pad & LEFT || pad & RIGHT || ((pad & A) && (optIndex == MOPT_EXIT_GAME || optIndex == MOPT_SAVE_RESTORE_STATE || optIndex == MOPT_ENTER_BOOTSEL_MODE || optIndex == MOPT_REBOOT_TO_LOADER || optIndex == MOPT_RESET_GAME || optIndex == MOPT_FDS_DISK_SWAP || optIndex == MOPT_CASSETTE || optIndex == MOPT_DISK || optIndex == MOPT_CONTROLLER_TEST || optIndex == MOPT_RECENT_GAMES || optIndex == MOPT_USB_DRIVE_MODE)))
             {
                 // LEFT/RIGHT on the action row cycles sub-selection
                 if (onActionRow && (pad & (LEFT | RIGHT)))
@@ -4265,6 +4782,9 @@ int showSettingsMenu(bool calledFromGame)
                     case MOPT_FM_AUDIO:
                         working.flags.useFM = !working.flags.useFM;
                         break;
+                    case MOPT_SERIAL_KEYBOARD:
+                        working.flags.serialKeyboard = !working.flags.serialKeyboard;
+                        break;
                     case MOPT_DMG_PALETTE:
                     {
                         if (right)
@@ -4380,6 +4900,35 @@ int showSettingsMenu(bool calledFromGame)
                                 ? (s_fdsPendingChoice + 1) % total
                                 : (s_fdsPendingChoice + total - 1) % total;
                         }
+                        break;
+                    }
+                    case MOPT_CASSETTE:
+                    {
+                        // A door, not a value: LEFT/RIGHT does nothing and A opens the
+                        // list. Control returns here afterwards, so the row redraws with
+                        // whatever is now in the deck and a second choice costs one press.
+                        if (!s_cassetteHooks || !s_cassetteHooks->commit) break;
+                        if (!(pad & A)) break;
+
+                        cassetteMenuOverlay();  // nothing here is a saveable setting
+                        break;
+                    }
+                    case MOPT_DISK:
+                    {
+                        if (!s_diskHooks) break;
+                        int drives = s_diskHooks->get_num_drives ? s_diskHooks->get_num_drives() : 0;
+                        if (drives <= 0) break;
+                        if (s_diskDrive < 0 || s_diskDrive >= drives) s_diskDrive = 0;
+
+                        if (!(pad & A))
+                        {
+                            // LEFT/RIGHT walks DSK1..DSKn; nothing is mounted until A.
+                            s_diskDrive = right ? (s_diskDrive + 1) % drives
+                                                : (s_diskDrive + drives - 1) % drives;
+                            break;
+                        }
+
+                        diskMenuOverlay(s_diskDrive);
                         break;
                     }
                     default:

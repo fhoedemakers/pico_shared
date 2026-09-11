@@ -493,6 +493,20 @@ extern "C"
         printf("HID has %u reports and interface protocol = %d:%s\n", _report_count[instance],
                interface_protocol, protocol_str[interface_protocol]);
 
+        // A boot-protocol keyboard is recognised here rather than when its first key
+        // arrives. Without this, anything the menu offers before the user has typed
+        // anything finds no keyboard: creating a blank disk asks for a name, and would
+        // silently settle for the default instead. Keyboards that report no boot protocol
+        // are still picked up from their first report, in the HID_USAGE_DESKTOP_KEYBOARD
+        // branch, which sets the same two names the unmount path looks for.
+        if (interface_protocol == HID_ITF_PROTOCOL_KEYBOARD)
+        {
+            auto &kb = const_cast<io::KeyboardState &>(io::getCurrentKeyboardState());
+            kb.connected = true;
+            gp.GamePadName = "Keyboard";
+            gp.GamePadShortName = "KB";
+        }
+
         if (!tuh_hid_receive_report(dev_addr, instance))
         {
             printf("Error: cannot request to receive report\r\n");
@@ -515,6 +529,15 @@ extern "C"
         {
             printf("HID device address = %d, instance = %d, player %d is unmounted\n", dev_addr, instance, player + 1);
             auto &gp = io::getCurrentGamePadState(player);
+            // A keyboard occupies a player slot like any other HID device; the only thing
+            // that identifies it here is the short name set when its first report arrived.
+            if (gp.GamePadShortName && strcmp(gp.GamePadShortName, "KB") == 0)
+            {
+                auto &kb = const_cast<io::KeyboardState &>(io::getCurrentKeyboardState());
+                kb.connected = false;
+                kb.modifier = 0;
+                memset(kb.keycode, 0, sizeof(kb.keycode));
+            }
             gp.flagConnected(false);
             gp.GamePadName = nullptr;
             gp.GamePadShortName = nullptr;
@@ -913,6 +936,7 @@ extern "C"
                     // real keyboard (e.g. O2 / G7400). The gamepad mapping
                     // below stays in place for joystick-style use.
                     auto &kb = const_cast<io::KeyboardState &>(io::getCurrentKeyboardState());
+                    kb.connected = true;
                     kb.modifier = r->modifier;
                     memcpy(kb.keycode, r->keycode, sizeof(kb.keycode));
                     auto &gp = io::getCurrentGamePadState(player);
